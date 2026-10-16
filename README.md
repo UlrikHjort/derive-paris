@@ -86,5 +86,11 @@ Debug options for screenshots: `PARIS_SHOT=file.ppm`, `PARIS_SPAWN`,
 `PARIS_CAM`, `PARIS_DRONE`, `PARIS_FLY`, `PARIS_TIME`, `PARIS_RAIN`,
 `PARIS_ZOOM`, `PARIS_TILES`, `PARIS_TELEPORT`, `PARIS_WAV`, `PARIS_COMPASS_PNG`, `PARIS_NAV`, `PARIS_MAP_PNG`, `PARIS_PROFILE` (see `src/game/game.adb`).
 
-Map data © OpenStreetMap contributors, available under the Open Database
-License (ODbL).
+## License
+
+The code is released under the MIT License (see `LICENSE`).
+
+The map data is not part of this repository: it is downloaded from
+OpenStreetMap when you build the city.  Map data © OpenStreetMap
+contributors, available under the Open Database License (ODbL); the game
+shows this credit on screen.
