@@ -589,7 +589,7 @@ package body Game is
             Amb_Sky := Mix (Amb_Sky, 1.1 * Grey (Amb_Sky, (0.95, 1.0, 1.08)), R);
          end;
       end if;
-      Fog_Density := Fog_Base * (1.0 + 2.5 * Rain_Amount);
+      Fog_Density := Fog_Base * (if Visiting then 0.4 else 1.0) * (1.0 + 2.5 * Rain_Amount);
    end Compute_Lighting;
 
    function Light_View_Proj return Mat4 is
@@ -938,6 +938,7 @@ package body Game is
    begin
       if Visiting then
          Visiting := False;
+         World.Set_Radius (3);
          Pending_Load := True;
       elsif Home.Known and then Mode = Driving then
          Visiting := True;
@@ -954,6 +955,8 @@ package body Game is
          --  look out of the window, slightly down onto the square
          Eye_Yaw := Arctan (-Home.Inward.X, Home.Inward.Z);
          Eye_Pitch := -0.12;
+         --  from up here you see far: the Pantheon is 1.1 km away
+         World.Set_Radius (6);
          Pending_Load := True;
          Announce := Ada.Strings.Unbounded.To_Unbounded_String ("76, rue Bonaparte");
          Announce_Timer := 1.0E9;
@@ -1081,6 +1084,9 @@ package body Game is
 
       if Ready and then Frame_Number = 2 and then Env ("PARIS_VISIT") /= "" and then not Visiting then
          Toggle_Visit;
+         if Env ("PARIS_VISIT_D") /= "" then
+            Eye_D := Float'Value (Env ("PARIS_VISIT_D"));
+         end if;
          if Env ("PARIS_VISIT") /= "1" then
             Eye_Yaw := Eye_Yaw + Float'Value (Env ("PARIS_VISIT")) * Ada.Numerics.Pi / 180.0;
          end if;
