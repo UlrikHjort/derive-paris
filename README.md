@@ -88,7 +88,9 @@ Debug options for screenshots: `PARIS_SHOT=file.ppm`, `PARIS_SPAWN`,
 
 ## License
 
-The code is released under the MIT License (see `LICENSE`).
+The code is released under the MIT License (see `LICENSE`).  The polygon
+triangulation in `src/tools/earcut.*` is a port of Mapbox's earcut and
+keeps its ISC License (in those files).
 
 The map data is not part of this repository: it is downloaded from
 OpenStreetMap when you build the city.  Map data © OpenStreetMap

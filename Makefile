@@ -1,3 +1,7 @@
+# Dérive: open-world Paris in Ada
+# Copyright (c) 2026 Ulrik Hørlyk Hjort
+# SPDX-License-Identifier: MIT
+#
 # Derive -- an open-world city game in Ada/GtkAda, Paris from OpenStreetMap
 #
 #   make            build converter and game

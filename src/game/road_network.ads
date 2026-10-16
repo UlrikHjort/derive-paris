@@ -1,3 +1,7 @@
+--  Dérive: open-world Paris in Ada
+--  Copyright (c) 2026 Ulrik Hørlyk Hjort
+--  SPDX-License-Identifier: MIT
+--
 --  The drivable road graph (tiles/roads.bin, written by osm2tiles), shared
 --  by the traffic and the pedestrians, and the traffic-light timing that
 --  the shader uses too.

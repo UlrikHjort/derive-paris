@@ -1,3 +1,7 @@
+--  Dérive: open-world Paris in Ada
+--  Copyright (c) 2026 Ulrik Hørlyk Hjort
+--  SPDX-License-Identifier: MIT
+--
 --  Flight mode: a small high-wing plane with arcade flight physics, for
 --  seeing the city from above.
 

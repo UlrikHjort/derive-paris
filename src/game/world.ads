@@ -1,3 +1,7 @@
+--  Dérive: open-world Paris in Ada
+--  Copyright (c) 2026 Ulrik Hørlyk Hjort
+--  SPDX-License-Identifier: MIT
+--
 --  Streaming of world tiles around the player, drawing, and collision.
 
 with Math3D;

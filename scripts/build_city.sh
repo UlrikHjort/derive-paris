@@ -1,4 +1,8 @@
 #!/bin/sh
+# Dérive: open-world Paris in Ada
+# Copyright (c) 2026 Ulrik Hørlyk Hjort
+# SPDX-License-Identifier: MIT
+#
 # Download and convert a whole city area in 2 km chunks.
 #
 #   scripts/build_city.sh <south> <west> <north> <east>

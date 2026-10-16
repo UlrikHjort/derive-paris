@@ -1,3 +1,7 @@
+--  Dérive: open-world Paris in Ada
+--  Copyright (c) 2026 Ulrik Hørlyk Hjort
+--  SPDX-License-Identifier: MIT
+--
 --  Projection from WGS84 to the game's local metric coordinate system.
 --
 --  The world uses a fixed origin in central Paris so that tiles produced

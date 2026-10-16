@@ -1,3 +1,7 @@
+--  Dérive: open-world Paris in Ada
+--  Copyright (c) 2026 Ulrik Hørlyk Hjort
+--  SPDX-License-Identifier: MIT
+--
 with Ada.Numerics.Float_Random;
 with System.Storage_Elements;
 

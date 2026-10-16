@@ -1,3 +1,7 @@
+--  Dérive: open-world Paris in Ada
+--  Copyright (c) 2026 Ulrik Hørlyk Hjort
+--  SPDX-License-Identifier: MIT
+--
 --  On-screen compass rose and position read-out (lat/lon, heading,
 --  altitude in flight), drawn with Cairo in a corner of the window.
 

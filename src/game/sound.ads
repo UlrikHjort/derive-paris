@@ -1,3 +1,7 @@
+--  Dérive: open-world Paris in Ada
+--  Copyright (c) 2026 Ulrik Hørlyk Hjort
+--  SPDX-License-Identifier: MIT
+--
 --  Synthesised sound: engine (car or plane), tyres and wind, and the city
 --  around you (distant traffic, passing cars, horns, birds, rain, church
 --  bells striking the hours).  Mixed in a background task and played

@@ -1,3 +1,7 @@
+--  Dérive: open-world Paris in Ada
+--  Copyright (c) 2026 Ulrik Hørlyk Hjort
+--  SPDX-License-Identifier: MIT
+--
 --  GPS navigation: a route through the real streets to a destination,
 --  turn-by-turn instructions with street names, and a minimap.
 

@@ -1,3 +1,7 @@
+--  Dérive: open-world Paris in Ada
+--  Copyright (c) 2026 Ulrik Hørlyk Hjort
+--  SPDX-License-Identifier: MIT
+--
 --  On-disk tile format shared by the converter and the game.
 --
 --  A tile holds one interleaved vertex buffer, one index list per draw

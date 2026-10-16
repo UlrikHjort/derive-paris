@@ -1,3 +1,7 @@
+--  Dérive: open-world Paris in Ada
+--  Copyright (c) 2026 Ulrik Hørlyk Hjort
+--  SPDX-License-Identifier: MIT
+--
 --  Pedestrians walking the sidewalks of the road network around the focus.
 --  They walk on both sides of the streets, pick a way at each corner and
 --  step aside when the player's car comes too close.

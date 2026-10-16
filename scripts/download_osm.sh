@@ -1,4 +1,8 @@
 #!/bin/sh
+# Dérive: open-world Paris in Ada
+# Copyright (c) 2026 Ulrik Hørlyk Hjort
+# SPDX-License-Identifier: MIT
+#
 # Download the OpenStreetMap extract for the game area from the Overpass API.
 #
 #   scripts/download_osm.sh <output.osm> <south> <west> <north> <east>

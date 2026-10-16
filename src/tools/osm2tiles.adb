@@ -1,3 +1,7 @@
+--  Dérive: open-world Paris in Ada
+--  Copyright (c) 2026 Ulrik Hørlyk Hjort
+--  SPDX-License-Identifier: MIT
+--
 --  osm2tiles: convert OpenStreetMap extracts into game tiles.
 --
 --  osm2tiles <input.osm> <out_dir> <south> <west> <north> <east>

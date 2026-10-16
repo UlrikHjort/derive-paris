@@ -1,3 +1,7 @@
+--  Dérive: open-world Paris in Ada
+--  Copyright (c) 2026 Ulrik Hørlyk Hjort
+--  SPDX-License-Identifier: MIT
+--
 with Ada.Containers.Generic_Array_Sort;
 with Ada.Directories;
 with Ada.Containers.Hashed_Maps;

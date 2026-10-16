@@ -1,3 +1,7 @@
+--  Dérive: open-world Paris in Ada
+--  Copyright (c) 2026 Ulrik Hørlyk Hjort
+--  SPDX-License-Identifier: MIT
+--
 --  Minimal OpenGL 3.3 core binding.
 --
 --  GTK already uses libepoxy for GL dispatch, so we bind to epoxy's

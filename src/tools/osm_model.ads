@@ -1,3 +1,7 @@
+--  Dérive: open-world Paris in Ada
+--  Copyright (c) 2026 Ulrik Hørlyk Hjort
+--  SPDX-License-Identifier: MIT
+--
 --  In-memory OSM data: nodes, ways, relations and tagged nodes, loaded
 --  from an .osm XML file (the one-element-per-line layout written by the
 --  OSM API and Overpass).

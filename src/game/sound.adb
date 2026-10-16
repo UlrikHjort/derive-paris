@@ -1,3 +1,7 @@
+--  Dérive: open-world Paris in Ada
+--  Copyright (c) 2026 Ulrik Hørlyk Hjort
+--  SPDX-License-Identifier: MIT
+--
 with Ada.Environment_Variables;
 with Ada.Numerics;
 with Ada.Streams.Stream_IO;

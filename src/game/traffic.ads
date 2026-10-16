@@ -1,3 +1,7 @@
+--  Dérive: open-world Paris in Ada
+--  Copyright (c) 2026 Ulrik Hørlyk Hjort
+--  SPDX-License-Identifier: MIT
+--
 --  Traffic: cars that drive along the OSM road network around the player.
 --
 --  The network is Road_Network.  Cars keep to the right, follow one-way

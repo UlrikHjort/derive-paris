@@ -1,3 +1,7 @@
+--  Dérive: open-world Paris in Ada
+--  Copyright (c) 2026 Ulrik Hørlyk Hjort
+--  SPDX-License-Identifier: MIT
+--
 --  Small GPU meshes built from boxes (the cars, the plane, pedestrians),
 --  in the world shader's vertex format.
 
