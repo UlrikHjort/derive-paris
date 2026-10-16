@@ -34,6 +34,9 @@ package World is
 
    function Loaded_Tiles return Natural;
 
+   procedure Pin_Tile (IX, IZ : Integer);
+   --  Keep this tile loaded wherever the player is (skyline landmarks)
+
    procedure Set_Radius (Tiles : Positive);
    --  How many tiles around the centre to keep loaded (3 by default)
 

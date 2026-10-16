@@ -51,6 +51,14 @@ package body World is
      (Tile_Key, Tile_Slot, Hash, "=");
 
    Tiles    : Tile_Maps.Map;
+
+   package Pin_Maps is new Ada.Containers.Hashed_Maps (Tile_Key, Boolean, Hash, "=");
+   Pinned   : Pin_Maps.Map;
+
+   procedure Pin_Tile (IX, IZ : Integer) is
+   begin
+      Pinned.Include ((IX, IZ), True);
+   end Pin_Tile;
    Tile_Dir : Ada.Strings.Unbounded.Unbounded_String;
 
    procedure Init (Dir : String) is
@@ -161,7 +169,8 @@ package body World is
             declare
                K : constant Tile_Key := Key (C);
             begin
-               if abs (K.IX - CX) > Unload_Radius or else abs (K.IZ - CZ) > Unload_Radius
+               if (abs (K.IX - CX) > Unload_Radius or else abs (K.IZ - CZ) > Unload_Radius)
+                 and then not Pinned.Contains (K)
                then
                   N := N + 1;
                   To_Delete (N) := K;
@@ -179,7 +188,17 @@ package body World is
          end loop;
       end;
 
-      --  Load near tiles, closest rings first
+      --  Skyline landmarks first, then near tiles, closest rings first
+      for C in Pinned.Iterate loop
+         if not Tiles.Contains (Pin_Maps.Key (C)) then
+            if Max_Loads > 0 and then Loads >= Max_Loads then
+               return;
+            end if;
+            Load_Tile (Pin_Maps.Key (C));
+            Loads := Loads + 1;
+         end if;
+      end loop;
+
       for Ring in 0 .. Load_Radius loop
          for DX in -Ring .. Ring loop
             for DZ in -Ring .. Ring loop

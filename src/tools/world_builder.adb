@@ -1934,6 +1934,17 @@ package body World_Builder is
    --  The top floor of the home building: real window openings with
    --  balconies on the street side and the apartment behind them.
    --  Y0 .. Y1 is the top floor band of the facade.
+   --  Tiles holding skyline landmarks; the game keeps them loaded so
+   --  they are seen from anywhere in the city
+   Skyline : Ada.Strings.Unbounded.Unbounded_String;
+
+   procedure Add_Skyline (P : P2; Name : String) is
+   begin
+      Ada.Strings.Unbounded.Append
+        (Skyline, Integer'Image (Geo.Tile_Of (P.X)) & " " & Integer'Image (Geo.Tile_Of (P.Z))
+         & " " & Name & ASCII.LF);
+   end Add_Skyline;
+
    procedure Emit_Home (T : in out Tile_Builder; Outer : Ring; Holes : Ring_Vectors.Vector;
                         Y0, Y1, Floors, Seed : Long_Float) is
       N       : constant Natural := Natural (Outer.Length);
@@ -2420,6 +2431,11 @@ package body World_Builder is
       end if;
       if B.Edge_Only then
          return;   --  drawn by the neighbouring chunk
+      end if;
+      if H >= 150.0 then
+         Add_Skyline (B.Center, "tower block");
+      elsif Religious and then H >= 60.0 then
+         Add_Skyline (B.Center, "church");
       end if;
 
       --  Planar roofs: walls follow the roof, nothing else to add
@@ -3104,12 +3120,15 @@ package body World_Builder is
       Ada.Text_IO.Close (F);
    end Emit_Hand_Landmarks;
 
+
    procedure Emit_Landmark (B : Building) is
       T : Tile_Builder renames Tile (Geo.Tile_Of (B.Center.X), Geo.Tile_Of (B.Center.Z)).all;
    begin
       case Landmark (B.Tags) is
          when Lattice_Tower  => Lattice_Tower_Model (T, B);
+            Add_Skyline (B.Center, "tower");
          when Triumphal_Arch => Triumphal_Arch_Model (T, B);
+            Add_Skyline (B.Center, "arch");
          when None           => null;
       end case;
    end Emit_Landmark;
@@ -4476,6 +4495,15 @@ package body World_Builder is
 
       Write_Tiles (Out_Dir);
       Write_Roads (Out_Dir & "/" & Roads_File);
+      declare
+         F : Ada.Text_IO.File_Type;
+      begin
+         Ada.Text_IO.Create (F, Ada.Text_IO.Out_File,
+                             Out_Dir & "/skyline_" & Roads_File (Roads_File'First .. Roads_File'Last - 4)
+                             & ".txt");
+         Ada.Text_IO.Put (F, Ada.Strings.Unbounded.To_String (Skyline));
+         Ada.Text_IO.Close (F);
+      end;
    end Build_Rect;
 
    procedure Build

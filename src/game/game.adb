@@ -462,6 +462,56 @@ package body Game is
          Home.Known := False;
    end Load_Home;
 
+   --  skyline_*.txt from osm2tiles: "ix iz name" per landmark tile
+   procedure Load_Skyline (Dir : String) is
+      use Ada.Directories;
+      Search : Search_Type;
+      Item   : Directory_Entry_Type;
+      Count  : Natural := 0;
+   begin
+      if not Exists (Dir) then
+         return;
+      end if;
+      Start_Search (Search, Dir, "skyline_*.txt", (Ordinary_File => True, others => False));
+      while More_Entries (Search) loop
+         Get_Next_Entry (Search, Item);
+         declare
+            F : Ada.Text_IO.File_Type;
+         begin
+            Ada.Text_IO.Open (F, Ada.Text_IO.In_File, Full_Name (Item));
+            while not Ada.Text_IO.End_Of_File (F) loop
+               declare
+                  Line : constant String := Ada.Text_IO.Get_Line (F) & " ";
+                  P1   : Natural := Line'First;
+                  P2   : Natural;
+               begin
+                  while Line (P1) = ' ' loop
+                     P1 := P1 + 1;
+                  end loop;
+                  P2 := Index_Of (Line, ' ', P1);
+                  declare
+                     IX : constant Integer := Integer'Value (Line (P1 .. P2 - 1));
+                     P3 : Natural := P2;
+                     P4 : Natural;
+                  begin
+                     while Line (P3) = ' ' loop
+                        P3 := P3 + 1;
+                     end loop;
+                     P4 := Index_Of (Line, ' ', P3);
+                     World.Pin_Tile (IX, Integer'Value (Line (P3 .. P4 - 1)));
+                     Count := Count + 1;
+                  end;
+               exception
+                  when Constraint_Error => null;   --  empty or malformed line
+               end;
+            end loop;
+            Ada.Text_IO.Close (F);
+         end;
+      end loop;
+      End_Search (Search);
+      Ada.Text_IO.Put_Line ("Skyline landmarks:" & Count'Image);
+   end Load_Skyline;
+
    procedure Realize (Widget, Data : System.Address) with Convention => C;
    procedure Realize (Widget, Data : System.Address) is
       pragma Unreferenced (Widget, Data);
@@ -527,6 +577,7 @@ package body Game is
          World.Init (Dir);
          Road_Network.Load (Dir);
          Load_Home (Dir & "/home.txt");
+         Load_Skyline (Dir);
       end;
       Reset_Car;
       World.Load_All_Near (Player.X, Player.Z);
@@ -700,7 +751,7 @@ package body Game is
 
       declare
          Proj : constant Mat4 :=
-           Perspective (1.05, Float (W) / Float (H), 0.3, 3000.0);
+           Perspective (1.05, Float (W) / Float (H), 0.3, 9000.0);
          View : constant Mat4 := Look_At (Cam_Pos, Cam_Look, (0.0, 1.0, 0.0));
          VP   : constant Mat4 := Proj * View;
          LVP  : constant Mat4 := Light_View_Proj;
