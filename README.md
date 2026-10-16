@@ -1,6 +1,8 @@
-# Paris
+# Dérive
 
-An open-world driving (and flying) game in Ada and GtkAda.  The 3D city of
+*La dérive* is the Parisian art of drifting through a city, letting the
+streets lead you.  Dérive is an open-world driving (and flying, and
+walking) game in Ada and GtkAda.  The 3D city of
 Paris (inside the Périphérique, plus the Bois de Boulogne, Vincennes and a
 corner of La Défense) is generated from OpenStreetMap data: buildings with their
 real outlines, heights and roofs, streets with markings and traffic
@@ -27,7 +29,7 @@ played the game and said what to change next.
 Needs GNAT with gprbuild, GtkAda (GTK 3), libepoxy, zlib, PulseAudio
 (libpulse-simple), curl and an OpenGL 3.3 graphics card.
 
-    make            # build the converter (bin/osm2tiles) and the game (bin/paris)
+    make            # build the converter (bin/osm2tiles) and the game (bin/derive)
     make tiles      # download the OSM data if needed, build tiles/
     make run        # play
 
@@ -63,7 +65,7 @@ fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 
 ## Settings
 
-`~/.adadriverc` holds settings as `name = value` lines (`#` starts a
+`~/.deriverc` holds settings as `name = value` lines (`#` starts a
 comment); the game writes a commented starter file on its first run.
 So far: `traffic`, `pedestrians` (1.0 = normal), `volume` (0 .. 1),
 `start_hour`, `time_speed` (game minutes per real second), `compass` and

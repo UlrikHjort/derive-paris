@@ -1,10 +1,10 @@
 with "gtkada";
 
-project Paris is
+project Derive is
    for Source_Dirs use ("src/common", "src/game");
    for Object_Dir use "obj/game";
    for Exec_Dir use "bin";
-   for Main use ("paris.adb");
+   for Main use ("derive.adb");
 
    package Compiler is
       for Default_Switches ("Ada") use
@@ -14,4 +14,4 @@ project Paris is
    package Linker is
       for Default_Switches ("Ada") use ("-lepoxy", "-lz", "-lpulse-simple", "-lpulse");
    end Linker;
-end Paris;
+end Derive;

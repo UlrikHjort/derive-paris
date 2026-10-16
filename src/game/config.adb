@@ -14,7 +14,7 @@ package body Config is
    Values : Maps.Map;
 
    Starter : constant String :=
-     "# ~/.adadriverc -- settings for Paris (the Ada driving game)" & ASCII.LF
+     "# ~/.deriverc -- settings for Derive (open-world Paris, in Ada)" & ASCII.LF
      & "# name = value; lines starting with # are comments." & ASCII.LF
      & "# Delete a line (or this file) to get the default back." & ASCII.LF
      & ASCII.LF
@@ -38,12 +38,26 @@ package body Config is
      & "street_names = yes" & ASCII.LF;
 
    function File_Name return String is
+     (Ada.Environment_Variables.Value ("HOME", ".") & "/.deriverc");
+
+   --  The game was called differently before: take an old file over
+   function Old_File_Name return String is
      (Ada.Environment_Variables.Value ("HOME", ".") & "/.adadriverc");
 
    procedure Load is
       use Ada.Strings.Fixed;
       F : Ada.Text_IO.File_Type;
    begin
+      if not Ada.Directories.Exists (File_Name)
+        and then Ada.Directories.Exists (Old_File_Name)
+      then
+         begin
+            Ada.Directories.Rename (Old_File_Name, File_Name);
+            Ada.Text_IO.Put_Line ("Moved " & Old_File_Name & " to " & File_Name);
+         exception
+            when others => null;
+         end;
+      end if;
       if not Ada.Directories.Exists (File_Name) then
          begin
             Ada.Text_IO.Create (F, Ada.Text_IO.Out_File, File_Name);

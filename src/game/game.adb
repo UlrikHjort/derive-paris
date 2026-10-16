@@ -1652,7 +1652,7 @@ package body Game is
       Sound.Set_Volume (Config.Get ("volume", 0.8));
 
       Gtk.Window.Gtk_New (Window);
-      Window.Set_Title ("Paris");
+      Window.Set_Title ("Dérive");
       Window.Set_Default_Size (1600, 900);
       Window.On_Destroy (On_Destroy'Access);
       Window.On_Key_Press_Event (Key_Press'Access);

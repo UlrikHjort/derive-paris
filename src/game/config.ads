@@ -1,4 +1,4 @@
---  Settings from ~/.adadriverc: "name = value" lines, '#' starts a comment.
+--  Settings from ~/.deriverc: "name = value" lines, '#' starts a comment.
 --  A commented starter file is written when there is none.
 
 package Config is

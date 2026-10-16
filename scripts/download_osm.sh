@@ -19,7 +19,7 @@ BBOX="$2,$3,$4,$5"
 DIR=$(dirname "$0")/..
 QUERY_TEMPLATE=$DIR/data/query.overpassql
 SERVERS="https://overpass-api.de/api/interpreter https://overpass.kumi.systems/api/interpreter"
-AGENT="paris-ada-game/0.3 (OpenStreetMap city driving game)"
+AGENT="derive-game/0.4 (OpenStreetMap city game)"
 
 mkdir -p "$(dirname "$OUT")"
 TMP=$(mktemp "${OUT}.XXXXXX")

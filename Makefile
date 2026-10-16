@@ -1,4 +1,4 @@
-# Paris -- OSM city driving game in Ada/GtkAda
+# Derive -- an open-world city game in Ada/GtkAda, Paris from OpenStreetMap
 #
 #   make            build converter and game
 #   make tiles      download (missing) OSM chunks and generate tiles/
@@ -20,13 +20,13 @@ tools:
 	gprbuild -p -P tools.gpr -j0
 
 game:
-	gprbuild -p -P paris.gpr -j0
+	gprbuild -p -P derive.gpr -j0
 
 tiles: tools
 	./scripts/build_city.sh $(BBOX)
 
 run: game
-	./bin/paris
+	./bin/derive
 
 download: tools
 	rm -rf data/osm/chunks
@@ -34,6 +34,6 @@ download: tools
 
 clean:
 	gprclean -P tools.gpr
-	gprclean -P paris.gpr
+	gprclean -P derive.gpr
 
 .PHONY: all tools game tiles run download clean
