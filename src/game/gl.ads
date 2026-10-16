@@ -39,6 +39,7 @@ package GL is
    GL_TIME_ELAPSED       : constant := 16#88BF#;
    GL_QUERY_RESULT       : constant := 16#8866#;
    GL_STENCIL_TEST       : constant := 16#0B90#;
+   GL_SAMPLE_ALPHA_TO_COVERAGE : constant := 16#809E#;
    GL_STENCIL_BUFFER_BIT : constant := 16#0400#;
    GL_KEEP               : constant := 16#1E00#;
    GL_REPLACE            : constant := 16#1E01#;

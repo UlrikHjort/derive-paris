@@ -83,6 +83,29 @@ package body Game is
    Sign    : Gtk.Label.Gtk_Label;      --  street name, like a Paris plaque
 
    Show_Street  : Boolean := True;     --  N toggles
+   Announce       : Ada.Strings.Unbounded.Unbounded_String;   --  shown on the
+   Announce_Timer : Float := 0.0;                             --  plaque briefly
+
+   --  Teleport destinations, keys 1 .. 9 and 0
+   type Place is record
+      Name     : Ada.Strings.Unbounded.Unbounded_String;
+      Lat, Lon : Long_Float;
+   end record;
+
+   function "+" (S : String) return Ada.Strings.Unbounded.Unbounded_String
+     renames Ada.Strings.Unbounded.To_Unbounded_String;
+
+   Places : constant array (0 .. 9) of Place :=
+     ((+"Bastille", 48.85320, 2.36910),
+      (+"Saint-Sulpice", 48.85190, 2.33302),
+      (+"Notre-Dame", 48.85395, 2.34860),
+      (+"Louvre", 48.86180, 2.33600),
+      (+"Tour Eiffel", 48.85930, 2.29560),
+      (+"Arc de Triomphe", 48.87290, 2.29880),
+      (+"Sacré-Cœur", 48.88690, 2.34180),
+      (+"Panthéon", 48.84660, 2.34400),
+      (+"Concorde", 48.86560, 2.32120),
+      (+"Opéra", 48.87060, 2.33200));
    Street_Timer : Float := 0.0;
    Street_Shown : Ada.Strings.Unbounded.Unbounded_String;
 
@@ -380,8 +403,14 @@ package body Game is
       Rain.Create;
 
       Profiling := Ada.Environment_Variables.Exists ("PARIS_PROFILE");
-      World.Init ("tiles");
-      Road_Network.Load ("tiles/roads.bin");
+      declare
+         Dir : constant String :=
+           (if Ada.Environment_Variables.Exists ("PARIS_TILES")
+            then Ada.Environment_Variables.Value ("PARIS_TILES") else "tiles");
+      begin
+         World.Init (Dir);
+         Road_Network.Load (Dir);
+      end;
       Reset_Car;
       World.Load_All_Near (Player.X, Player.Z);
       Ready := True;
@@ -631,10 +660,13 @@ package body Game is
          glActiveTexture (GL_TEXTURE0);
          glBindTexture (GL_TEXTURE_2D, Shadow_Tex);
 
-         --  Solids first, then the ground only where nothing covers it
+         --  Solids first, then the ground only where nothing covers it.
+         --  Alpha to coverage makes the lattice (alpha < 1) see-through.
          glDepthFunc (GL_LESS);
          World.Cull_To (VP);
+         glEnable (GL_SAMPLE_ALPHA_TO_COVERAGE);
          World.Draw_Solid;
+         glDisable (GL_SAMPLE_ALPHA_TO_COVERAGE);
          Set (WU.Model, Car_M);
          Set (WU.Car_Color, Car_Color);
          Car.Draw;
@@ -754,6 +786,32 @@ package body Game is
          Cam_Pos.Y := 1.0;
       end if;
    end Update_Camera;
+
+   --  Jump to a place: the car onto the nearest road, the plane above it
+   procedure Teleport (P : Place) is
+      X, Z : Long_Float;
+      Found : Boolean;
+      RX, RZ, H : Float;
+   begin
+      Geo.To_Local (P.Lat, P.Lon, X, Z);
+      if Mode = Flying then
+         Plane.Start (Aircraft, Float (X), Float (Z), Aircraft.Heading);
+      else
+         Road_Network.Nearest_Road (Float (X), Float (Z), Found, RX, RZ, H);
+         if not Found then
+            RX := Float (X);
+            RZ := Float (Z);
+            H := Player.Heading;
+         end if;
+         Player := (X => RX, Z => RZ, Heading => H, others => <>);
+         Cam_Pos := (RX, 6.0, RZ) - 10.0 * Car.Forward (Player);
+         Cam_Look := (RX, 1.2, RZ);
+      end if;
+      World.Load_All_Near (Focus.X, Focus.Z);
+      Announce := P.Name;
+      Announce_Timer := 3.0;
+      Street_Timer := 1.0;   --  refresh the plaque now
+   end Teleport;
 
    --  F: take off from the car, or land: the car goes to the nearest road
    --  below the plane
@@ -898,7 +956,7 @@ package body Game is
                  "[W/S] throttle  [up/down] nose down/up  [left/right] bank")
             & "  [wheel/+/-] zoom  [F] "
             & (if Mode = Driving then "fly" else "land and drive")
-            & "  [T] +1 hour  [P] rain  [N] street names  [R] reset </span>");
+            & "  [T] +1 hour  [P] rain  [N] street names  [1-0] places  [R] reset </span>");
       end if;
 
       --  Street name sign: a few times a second, and only touch the label
@@ -906,10 +964,12 @@ package body Game is
       Street_Timer := Street_Timer + Dt;
       if Ready and then Street_Timer >= 0.3 then
          Street_Timer := 0.0;
+         Announce_Timer := Announce_Timer - 0.3;
          declare
             use Ada.Strings.Unbounded;
             Name : constant String :=
-              (if not Show_Street then ""
+              (if Announce_Timer > 0.0 then To_String (Announce)
+               elsif not Show_Street then ""
                elsif Mode = Flying then
                  (if Aircraft.Pos.Y < 150.0
                   then Road_Network.Street_At (Aircraft.Pos.X, Aircraft.Pos.Z, 40.0) else "")
@@ -954,6 +1014,10 @@ package body Game is
          when 16#66# =>                                       --  f
             if Down then
                Toggle_Flight;
+            end if;
+         when 16#30# .. 16#39# =>                             --  0 .. 9
+            if Down then
+               Teleport (Places (Integer (K) - 16#30#));
             end if;
          when 16#6E# =>                                       --  n
             if Down then

@@ -13,6 +13,9 @@ package Geo is
 
    procedure To_Local (Lat, Lon : Long_Float; X, Z : out Long_Float);
 
+   procedure To_Lat_Lon (X, Z : Long_Float; Lat, Lon : out Long_Float);
+   --  Inverse of To_Local
+
    function Tile_Of (C : Long_Float) return Integer;
    --  Tile index along one axis for a local coordinate
 

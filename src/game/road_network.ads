@@ -49,7 +49,8 @@ package Road_Network is
    Links      : Link_Table_Access;   --  directions cars may take
    Walk_Links : Link_Table_Access;   --  every direction (pedestrians)
 
-   procedure Load (File_Name : String);
+   procedure Load (Dir : String);
+   --  Read and merge every roads*.bin in Dir (one per converted chunk)
 
    function Loaded return Boolean is (Ways /= null and then Ways'Length > 0);
 
@@ -62,8 +63,11 @@ package Road_Network is
    procedure Segment (L : Link; A, B : out Node; Len : out Float);
    function Direction (L : Link) return Math3D.Vec3;
 
-   function Pick_Way (R : Float) return Natural;
-   --  A way chosen by length (R uniform in [0, 1)); wide roads count double
+   procedure Pick_Segment
+     (X, Z, Near, Far : Float; R1, R2, R3 : Float;
+      Found : out Boolean; W, Pos : out Natural);
+   --  A random road segment roughly between Near and Far metres from
+   --  (X, Z); R1 .. R3 are uniform random numbers in [0, 1)
 
    procedure Nearest_Road
      (X, Z : Float; Found : out Boolean; PX, PZ, Heading : out Float);

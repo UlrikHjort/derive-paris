@@ -137,16 +137,16 @@ package body Traffic is
    begin
       for Attempt in 1 .. 30 loop
          declare
-            W   : constant Natural := Pick_Way (Rnd);
-            Seg : Natural;
+            W, Seg : Natural;
+            Got : Boolean;
             L   : Link;
             P, Q : Node;
             Len : Float;
             Ok  : Boolean := True;
          begin
-            if Ways (W).Count >= 2 then
-               Seg := Natural'Min (Ways (W).Count - 2,
-                                   Natural (Float'Floor (Rnd * Float (Ways (W).Count - 1))));
+            Pick_Segment (Focus_X, Focus_Z, Near, Spawn_Far, Rnd, Rnd, Rnd, Got, W, Seg);
+            --  wide roads are busier: take narrow ones only half the time
+            if Got and then (Ways (W).Width >= 9.0 or else Rnd < 0.5) then
                if Ways (W).Oneway > 0 or else (Ways (W).Oneway = 0 and then Rnd < 0.5) then
                   L := (W, Seg, 1);
                else

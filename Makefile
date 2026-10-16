@@ -1,18 +1,18 @@
 # Paris -- OSM city driving game in Ada/GtkAda
 #
 #   make            build converter and game
-#   make tiles      generate tiles/ from the OSM extract (downloads it first
-#                   when it is missing)
+#   make tiles      download (missing) OSM chunks and generate tiles/
 #   make run        start the game
-#   make download   fetch the OSM extract again (Overpass API)
+#   make download   fetch all OSM chunks again (Overpass API)
 #
 # The OSM data and the generated tiles are not kept in git: a fresh
-# checkout only needs "make tiles" (about 50 MB download, 15 s converting).
+# checkout only needs "make tiles".  For all of Paris that downloads about
+# 50 chunks of 2 x 2 km (several hundred MB, takes a while; an interrupted
+# run continues where it stopped) and converts them in parallel.
 
-# Central Paris: Saint-Germain, Latin Quarter, the islands, the Louvre
-OSM   := data/osm/paris_centre.osm
-# south west north east; the download query uses the same box
-BBOX  := 48.8360 2.3150 48.8660 2.3600
+# All of Paris inside the Peripherique, plus the Bois de Boulogne and
+# Vincennes and a bit of La Defense: south west north east
+BBOX  := 48.8150 2.2240 48.9030 2.4700
 
 all: tools game
 
@@ -22,19 +22,15 @@ tools:
 game:
 	gprbuild -p -P paris.gpr -j0
 
-$(OSM):
-	./scripts/download_osm.sh $(OSM) $(BBOX)
-
-tiles: tools $(OSM)
-	mkdir -p tiles
-	rm -f tiles/*.bin tiles/roads.bin
-	./bin/osm2tiles $(OSM) tiles $(BBOX)
+tiles: tools
+	./scripts/build_city.sh $(BBOX)
 
 run: game
 	./bin/paris
 
-download:
-	./scripts/download_osm.sh $(OSM) $(BBOX)
+download: tools
+	rm -rf data/osm/chunks
+	./scripts/build_city.sh $(BBOX)
 
 clean:
 	gprclean -P tools.gpr

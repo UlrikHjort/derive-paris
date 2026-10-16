@@ -2,6 +2,7 @@ with Ada.Containers.Generic_Array_Sort;
 with Ada.Containers.Hashed_Maps;
 with Ada.Containers.Vectors;
 with Ada.Streams.Stream_IO;
+with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
 with Ada.Numerics.Long_Elementary_Functions;
 with Ada.Text_IO;
@@ -85,6 +86,8 @@ package body World_Builder is
    Mat_Lamp_Post  : constant := 26.0;
    Mat_Lantern    : constant := 27.0;
    Mat_Signal     : constant := 28.0;   --  traffic light lamp, uv = (offset, group)
+   Mat_Stone      : constant := 29.0;   --  dressed stone of monuments, uv in metres
+   Mat_Lattice    : constant := 33.0;   --  wrought-iron lattice (Eiffel Tower)
 
    Water_Level    : constant := -6.0;   --  the Seine below the quays
    Low_Level      : constant := -3.8;   --  the lower quays (bas-ports)
@@ -157,6 +160,14 @@ package body World_Builder is
 
    function In_Data (X, Z : Long_Float) return Boolean is
      (X >= DX0 and then X < DX1 and then Z >= DZ0 and then Z < DZ1);
+
+   --  Buildings this close outside the data rectangle (a neighbouring chunk)
+   --  still give collision edges and party walls, so chunks fit seamlessly
+   Margin : constant := 200.0;
+
+   function In_Margin (X, Z : Long_Float) return Boolean is
+     (X >= DX0 - Margin and then X < DX1 + Margin
+      and then Z >= DZ0 - Margin and then Z < DZ1 + Margin);
 
    function Hash01 (Id : Osm_Id; Salt : Natural := 0) return Long_Float is
       use Interfaces;
@@ -680,6 +691,8 @@ package body World_Builder is
       Is_Part   : Boolean;
       Has_Parts : Boolean := False;
       Sacred    : Boolean := False;   --  part of a church, cathedral...
+      Edge_Only : Boolean := False;   --  in the margin: collision edges only
+      Skip      : Boolean := False;   --  part of a landmark we model ourselves
       Center    : P2;
       X0, X1, Z0, Z1 : Long_Float;
    end record;
@@ -713,6 +726,7 @@ package body World_Builder is
       Kind   : Ada.Strings.Unbounded.Unbounded_String;   --  highway=*
       Layer  : Integer := 0;
       Low    : Boolean := False;   --  on the lower quays by the river
+      Way_Id : Osm_Id := 0;
    end record;
 
    package Line_Vectors is new Ada.Containers.Vectors (Natural, Line_Feature);
@@ -723,6 +737,23 @@ package body World_Builder is
    River_Polys  : Poly_Vectors.Vector;
    Bridge_Polys : Poly_Vectors.Vector;
    Marina_Polys : Poly_Vectors.Vector;   --  the river ports: lower quays
+
+   type Landmark_Kind is (None, Lattice_Tower, Triumphal_Arch);
+
+   function Landmark (Tags : Tag_Maps.Map) return Landmark_Kind is
+      Name : constant String := Tag (Tags, "name");
+   begin
+      if Tag (Tags, "tower:construction") = "lattice" and then Num (Tags, "height") > 150.0
+        and then Tag (Tags, "building") /= ""
+      then
+         return Lattice_Tower;
+      elsif Name'Length >= 15 and then Name (Name'First .. Name'First + 14) = "Arc de Triomphe"
+        and then Tag (Tags, "building") /= ""
+      then
+         return Triumphal_Arch;
+      end if;
+      return None;
+   end Landmark;
 
    procedure Add_Building (Id : Osm_Id; P : Poly; Tags : Tag_Maps.Map;
                            Is_Part : Boolean)
@@ -735,7 +766,8 @@ package body World_Builder is
       B.Is_Part := Is_Part;
       B.Center := Centroid (P.Outer);
       Bounds (P.Outer, B.X0, B.X1, B.Z0, B.Z1);
-      if In_Data (B.Center.X, B.Center.Z) then
+      B.Edge_Only := not In_Data (B.Center.X, B.Center.Z);
+      if In_Margin (B.Center.X, B.Center.Z) then
          Buildings.Append (B);
       end if;
    end Add_Building;
@@ -907,7 +939,8 @@ package body World_Builder is
           Layer  => (if Tag (W.Tags, "layer") = "" then 0
                      elsif Tag (W.Tags, "layer") (Tag (W.Tags, "layer")'First) = '-'
                      then -1 else 1),
-          Low    => False));
+          Low    => False,
+          Way_Id => W.Id));
    end Classify_Highway;
 
    procedure Collect_Features is
@@ -952,11 +985,29 @@ package body World_Builder is
                  and then Point_In_Ring (Part.Center, B.Shape.Outer)
                then
                   B.Has_Parts := True;
+                  if Landmark (B.Tags) /= None then
+                     Part.Skip := True;
+                  end if;
                   if One_Of (Tag (B.Tags, "building"),
                              "church|cathedral|chapel|basilica|temple|mosque|synagogue")
                   then
                      Part.Sacred := True;
                   end if;
+               end if;
+            end loop;
+         end if;
+      end loop;
+
+      --  Landmarks we model ourselves replace everything mapped inside
+      --  their bounding box (the parts of the Eiffel Tower, its legs...)
+      for L of Buildings loop
+         if not L.Is_Part and then Landmark (L.Tags) /= None then
+            for B of Buildings loop
+               if B.Id /= L.Id
+                 and then B.Center.X >= L.X0 - 2.0 and then B.Center.X <= L.X1 + 2.0
+                 and then B.Center.Z >= L.Z0 - 2.0 and then B.Center.Z <= L.Z1 + 2.0
+               then
+                  B.Skip := True;
                end if;
             end loop;
          end if;
@@ -1790,8 +1841,10 @@ package body World_Builder is
         (if Wall_Colour > 0.0 or else Style = Style_Glass
          then 100.0 + Style * 40000.0 + Wall_Colour
          else Style + 0.999 * Hash01 (B.Id));
-      TX    : constant Integer := Geo.Tile_Of (B.Center.X);
-      TZ    : constant Integer := Geo.Tile_Of (B.Center.Z);
+      TX    : constant Integer :=
+        Integer'Max (TX0, Integer'Min (TX1, Geo.Tile_Of (B.Center.X)));
+      TZ    : constant Integer :=
+        Integer'Max (TZ0, Integer'Min (TZ1, Geo.Tile_Of (B.Center.Z)));
       T     : Tile_Builder renames Tile (TX, TZ).all;
       N_Out : constant Natural := Natural (B.Shape.Outer.Length);
       Party : Bool_Array (0 .. N_Out - 1) := (others => False);
@@ -1912,6 +1965,9 @@ package body World_Builder is
                Edges_Of (Hole);
             end loop;
          end;
+      end if;
+      if B.Edge_Only then
+         return;   --  drawn by the neighbouring chunk
       end if;
 
       --  Planar roofs: walls follow the roof, nothing else to add
@@ -2106,6 +2162,293 @@ package body World_Builder is
          end loop;
       end if;
    end Emit_Building;
+
+   ---------------------------------------------------------------------------
+   --  Landmarks with their own models
+   ---------------------------------------------------------------------------
+
+   --  Smallest rectangle around a ring (by trying all orientations):
+   --  centre, unit axes U (long side) and V, half sizes HU >= HV
+   procedure Oriented_Box (R : Ring; C : out P2; U, V : out P2; HU, HV : out Long_Float) is
+      Best : Long_Float := Long_Float'Last;
+   begin
+      C := (0.0, 0.0);
+      U := (1.0, 0.0);
+      V := (0.0, 1.0);
+      HU := 0.0;
+      HV := 0.0;
+      for Step in 0 .. 89 loop
+         declare
+            A   : constant Long_Float := Long_Float (Step) * Ada.Numerics.Pi / 180.0;
+            DU  : constant P2 := (Cos (A), Sin (A));
+            DV  : constant P2 := (-Sin (A), Cos (A));
+            U0, V0 : Long_Float := Long_Float'Last;
+            U1, V1 : Long_Float := Long_Float'First;
+         begin
+            for P of R loop
+               U0 := Long_Float'Min (U0, P.X * DU.X + P.Z * DU.Z);
+               U1 := Long_Float'Max (U1, P.X * DU.X + P.Z * DU.Z);
+               V0 := Long_Float'Min (V0, P.X * DV.X + P.Z * DV.Z);
+               V1 := Long_Float'Max (V1, P.X * DV.X + P.Z * DV.Z);
+            end loop;
+            if (U1 - U0) * (V1 - V0) < Best then
+               Best := (U1 - U0) * (V1 - V0);
+               C := (0.5 * (U0 + U1)) * DU + (0.5 * (V0 + V1)) * DV;
+               if U1 - U0 >= V1 - V0 then
+                  U := DU; V := DV; HU := 0.5 * (U1 - U0); HV := 0.5 * (V1 - V0);
+               else
+                  U := DV; V := DU; HU := 0.5 * (V1 - V0); HV := 0.5 * (U1 - U0);
+               end if;
+            end if;
+         end;
+      end loop;
+   end Oriented_Box;
+
+   --  A four-sided frustum: square-ish sections around C0 and C1 with half
+   --  sizes along the axes U and V, from Y0 to Y1.  uv are metres along
+   --  the face and up, for the lattice and stone patterns.
+   procedure Frustum
+     (T : in out Tile_Builder; U, V : P2;
+      C0 : P2; HU0, HV0, Y0 : Long_Float;
+      C1 : P2; HU1, HV1, Y1 : Long_Float;
+      Mat, Seed : Long_Float; Caps : Boolean := False)
+   is
+      type Corner_Array is array (0 .. 3) of P2;
+      function Corners (C : P2; HU, HV : Long_Float) return Corner_Array is
+        ((C - HU * U - HV * V), (C + HU * U - HV * V),
+         (C + HU * U + HV * V), (C - HU * U + HV * V));
+      B   : constant Corner_Array := Corners (C0, HU0, HV0);
+      Tp  : constant Corner_Array := Corners (C1, HU1, HV1);
+      Mid : constant P2 := 0.25 * (B (0) + B (1) + B (2) + B (3));
+   begin
+      for I in 0 .. 3 loop
+         declare
+            J  : constant Natural := (I + 1) mod 4;
+            P0 : constant V3 := (B (I).X, Y0, B (I).Z);
+            P1 : constant V3 := (B (J).X, Y0, B (J).Z);
+            P2v : constant V3 := (Tp (J).X, Y1, Tp (J).Z);
+            P3 : constant V3 := (Tp (I).X, Y1, Tp (I).Z);
+            N  : V3 := Normalize (Cross (P1 - P0, P3 - P0));
+            W0 : constant Long_Float := Dist (B (I), B (J));
+         begin
+            if N.X * (B (I).X - Mid.X) + N.Z * (B (I).Z - Mid.Z) < 0.0 then
+               N := (-1.0) * N;
+            end if;
+            Solid_Quad (T, P0, P1, P2v, P3, N, 0.0, W0, Y0, Y1, Mat, Seed);
+         end;
+      end loop;
+      if Caps then
+         Solid_Quad (T, (Tp (0).X, Y1, Tp (0).Z), (Tp (1).X, Y1, Tp (1).Z),
+                     (Tp (2).X, Y1, Tp (2).Z), (Tp (3).X, Y1, Tp (3).Z),
+                     (0.0, 1.0, 0.0), 0.0, 2.0 * HU1, 0.0, 2.0 * HV1, Mat, Seed);
+         Solid_Quad (T, (B (0).X, Y0, B (0).Z), (B (1).X, Y0, B (1).Z),
+                     (B (2).X, Y0, B (2).Z), (B (3).X, Y0, B (3).Z),
+                     (0.0, -1.0, 0.0), 0.0, 2.0 * HU0, 0.0, 2.0 * HV0, Mat, Seed);
+      end if;
+   end Frustum;
+
+   --  The Eiffel Tower: four curved legs joining above the second floor
+   --  into one tapering shaft, arches between the legs, three platforms.
+   --  The half width follows the real profile closely: w(y) = a exp(-y/100).
+   procedure Lattice_Tower_Model (T : in out Tile_Builder; B : Building) is
+      C : P2;
+      U, V : P2;
+      HU, HV : Long_Float;
+      H : constant Long_Float := Long_Float'Max (100.0, Num (B.Tags, "height"));
+      Seed : constant Long_Float := 0.5;
+   begin
+      Oriented_Box (B.Shape.Outer, C, U, V, HU, HV);
+      declare
+         A : constant Long_Float := 0.5 * (HU + HV);
+         function W (Y : Long_Float) return Long_Float is
+           (Long_Float'Max (1.2, A * Exp (-Y / (H / 3.3))));
+         --  Leg size (half) grows thinner with height
+         function Leg (Y : Long_Float) return Long_Float is
+           (Long_Float'Max (2.0, 0.21 * A * Exp (-Y / (H / 2.6))));
+         Join : constant Long_Float := 0.35 * H;   --  legs meet (2nd floor)
+         Steps : constant := 8;
+      begin
+         --  Four legs, each a stack of frusta following the curve
+         for SU in -1 .. 1 loop
+            for SV in -1 .. 1 loop
+               if SU /= 0 and then SV /= 0 then
+                  for K in 0 .. Steps - 1 loop
+                     declare
+                        Y0 : constant Long_Float := Join * Long_Float (K) / Long_Float (Steps);
+                        Y1 : constant Long_Float := Join * Long_Float (K + 1) / Long_Float (Steps);
+                        function Ctr (Y : Long_Float) return P2 is
+                          (C + (Long_Float (SU) * (W (Y) - Leg (Y))) * U
+                             + (Long_Float (SV) * (W (Y) - Leg (Y))) * V);
+                     begin
+                        Frustum (T, U, V, Ctr (Y0), Leg (Y0), Leg (Y0), Y0,
+                                 Ctr (Y1), Leg (Y1), Leg (Y1), Y1, Mat_Lattice, Seed);
+                     end;
+                  end loop;
+                  --  Collision: the foot of each leg
+                  declare
+                     F  : constant P2 := C + (Long_Float (SU) * (W (0.0) - Leg (0.0))) * U
+                                            + (Long_Float (SV) * (W (0.0) - Leg (0.0))) * V;
+                     L  : constant Long_Float := Leg (0.0);
+                     Q  : constant Quad_P2 := (F - L * U - L * V, F + L * U - L * V,
+                                               F + L * U + L * V, F - L * U + L * V);
+                  begin
+                     for I in 0 .. 3 loop
+                        Add_Edge (Q (I), Q ((I + 1) mod 4), 0.0, Join);
+                     end loop;
+                  end;
+               end if;
+            end loop;
+         end loop;
+
+         --  Upper shaft
+         for K in 0 .. Steps - 1 loop
+            declare
+               Y0 : constant Long_Float := Join + (0.83 * H - Join) * Long_Float (K) / Long_Float (Steps);
+               Y1 : constant Long_Float := Join + (0.83 * H - Join) * Long_Float (K + 1) / Long_Float (Steps);
+            begin
+               Frustum (T, U, V, C, W (Y0), W (Y0), Y0, C, W (Y1), W (Y1), Y1,
+                        Mat_Lattice, Seed);
+            end;
+         end loop;
+         --  Top: third floor cabin, lantern and antenna
+         Frustum (T, U, V, C, W (0.83 * H) + 1.5, W (0.83 * H) + 1.5, 0.83 * H,
+                  C, W (0.83 * H) + 1.5, W (0.83 * H) + 1.5, 0.86 * H, Mat_Stone, 0.3, True);
+         Frustum (T, U, V, C, W (0.86 * H), W (0.86 * H), 0.86 * H,
+                  C, 1.6, 1.6, 0.9 * H, Mat_Lattice, Seed);
+         Frustum (T, U, V, C, 1.6, 1.6, 0.9 * H, C, 0.5, 0.5, H, Mat_Lamp_Post, 0.0);
+
+         --  Platforms: first and second floor, as solid decks with rails
+         for Floor in 1 .. 2 loop
+            declare
+               Y  : constant Long_Float := (if Floor = 1 then 0.175 * H else Join);
+               HW : constant Long_Float := W (Y) + 1.0;
+            begin
+               Frustum (T, U, V, C, HW, HW, Y, C, HW, HW, Y + (if Floor = 1 then 7.0 else 4.0),
+                        Mat_Stone, 0.3, True);
+            end;
+         end loop;
+
+         --  The great arches between the legs, under the first floor
+         for Side in 0 .. 3 loop
+            declare
+               Along : constant P2 := (case Side is when 0 => U, when 1 => V,
+                                       when 2 => (-1.0) * U, when others => (-1.0) * V);
+               Out_D : constant P2 := (case Side is when 0 => V, when 1 => (-1.0) * U,
+                                       when 2 => (-1.0) * V, when others => U);
+               Y_Top : constant Long_Float := 0.175 * H;
+               Span  : constant Long_Float := W (0.6 * Y_Top) - Leg (0.6 * Y_Top);
+               Segs  : constant := 12;
+            begin
+               for K in 0 .. Segs - 1 loop
+                  declare
+                     A0 : constant Long_Float := Ada.Numerics.Pi * Long_Float (K) / Long_Float (Segs);
+                     A1 : constant Long_Float := Ada.Numerics.Pi * Long_Float (K + 1) / Long_Float (Segs);
+                     function Pt (Ang : Long_Float) return P2 is
+                       (C + (Span * Cos (Ang)) * Along + (W (Y_Top * 0.7) - 1.0) * Out_D);
+                     function Hgt (Ang : Long_Float) return Long_Float is
+                       (Y_Top * (0.45 + 0.5 * Sin (Ang)));
+                     P0 : constant P2 := Pt (A0);
+                     P1 : constant P2 := Pt (A1);
+                  begin
+                     Solid_Quad (T, (P0.X, Hgt (A0), P0.Z), (P1.X, Hgt (A1), P1.Z),
+                                 (P1.X, Hgt (A1) + 2.5, P1.Z), (P0.X, Hgt (A0) + 2.5, P0.Z),
+                                 (Out_D.X, 0.0, Out_D.Z), 0.0, 4.0, 0.0, 2.5, Mat_Lattice, Seed);
+                  end;
+               end loop;
+            end;
+         end loop;
+      end;
+   end Lattice_Tower_Model;
+
+   --  A triumphal arch from its footprint and height: four piers, the main
+   --  vault across the long sides, smaller arches through the piers and the
+   --  attic on top (proportions of the Arc de Triomphe de l'Etoile)
+   procedure Triumphal_Arch_Model (T : in out Tile_Builder; B : Building) is
+      C : P2;
+      U, V : P2;
+      HU, HV : Long_Float;
+      H : Long_Float := Num (B.Tags, "height");
+      Seed : constant Long_Float := 0.6;
+   begin
+      Oriented_Box (B.Shape.Outer, C, U, V, HU, HV);
+      if H <= 0.0 then
+         H := 1.1 * HU * 2.0;
+      end if;
+      declare
+         Main_W  : constant Long_Float := 0.32 * HU;     --  half width of the vault
+         Main_H  : constant Long_Float := 0.58 * H;      --  vault crown
+         Side_W  : constant Long_Float := 0.38 * HV;     --  half width, small arches
+         Side_H  : constant Long_Float := 0.37 * H;
+         Pier_U0 : constant Long_Float := Main_W;
+         Pier_HU : constant Long_Float := 0.5 * (HU - Main_W);
+         procedure Block (CU, CV, HBU, HBV, Y0, Y1 : Long_Float) is
+            Ctr : constant P2 := C + CU * U + CV * V;
+         begin
+            Frustum (T, U, V, Ctr, HBU, HBV, Y0, Ctr, HBU, HBV, Y1, Mat_Stone, Seed, True);
+         end Block;
+      begin
+         for SU in -1 .. 1 loop
+            if SU /= 0 then
+               declare
+                  PU : constant Long_Float := Long_Float (SU) * (Pier_U0 + Pier_HU);
+                  Sub_HV : constant Long_Float := 0.5 * (HV - Side_W);
+               begin
+                  --  each pier is split by the small arch into two legs
+                  for SV in -1 .. 1 loop
+                     if SV /= 0 then
+                        Block (PU, Long_Float (SV) * (Side_W + Sub_HV), Pier_HU, Sub_HV,
+                               0.0, Main_H);
+                        declare
+                           Ctr : constant P2 := C + PU * U
+                                                + (Long_Float (SV) * (Side_W + Sub_HV)) * V;
+                           Q   : constant Quad_P2 :=
+                             (Ctr - Pier_HU * U - Sub_HV * V, Ctr + Pier_HU * U - Sub_HV * V,
+                              Ctr + Pier_HU * U + Sub_HV * V, Ctr - Pier_HU * U + Sub_HV * V);
+                        begin
+                           for I in 0 .. 3 loop
+                              Add_Edge (Q (I), Q ((I + 1) mod 4), 0.0, H);
+                           end loop;
+                        end;
+                     end if;
+                  end loop;
+                  --  above the small arch
+                  Block (PU, 0.0, Pier_HU, Side_W, Side_H, Main_H);
+               end;
+            end if;
+         end loop;
+         --  attic over everything
+         Block (0.0, 0.0, HU, HV, Main_H, H);
+         --  the vault: slices following a half circle
+         declare
+            Slices : constant := 10;
+            Spring : constant Long_Float := Main_H - Main_W;
+         begin
+            for K in 0 .. Slices - 1 loop
+               declare
+                  X0 : constant Long_Float := -Main_W + 2.0 * Main_W * Long_Float (K) / Long_Float (Slices);
+                  X1 : constant Long_Float := X0 + 2.0 * Main_W / Long_Float (Slices);
+                  XM : constant Long_Float := 0.5 * (X0 + X1);
+                  Y  : constant Long_Float :=
+                    Spring + Sqrt (Long_Float'Max (0.0, Main_W * Main_W - XM * XM));
+               begin
+                  if Y < Main_H - 0.05 then
+                     Block (XM, 0.0, 0.5 * (X1 - X0), HV, Y, Main_H);
+                  end if;
+               end;
+            end loop;
+         end;
+      end;
+   end Triumphal_Arch_Model;
+
+   procedure Emit_Landmark (B : Building) is
+      T : Tile_Builder renames Tile (Geo.Tile_Of (B.Center.X), Geo.Tile_Of (B.Center.Z)).all;
+   begin
+      case Landmark (B.Tags) is
+         when Lattice_Tower  => Lattice_Tower_Model (T, B);
+         when Triumphal_Arch => Triumphal_Arch_Model (T, B);
+         when None           => null;
+      end case;
+   end Emit_Landmark;
 
    ---------------------------------------------------------------------------
    --  Areas, river and roads
@@ -3181,24 +3524,14 @@ package body World_Builder is
       Ada.Text_IO.Put_Line ("Wrote" & Count'Image & " tiles ("
                             & Img (Integer (Bytes / 1_000_000)) & " MB) to " & Out_Dir);
 
-      declare
-         F : Ada.Text_IO.File_Type;
-      begin
-         Ada.Text_IO.Create (F, Ada.Text_IO.Out_File, Out_Dir & "/world.txt");
-         Ada.Text_IO.Put_Line
-           (F, "tiles " & Img (TX0) & " " & Img (TX1) & " " & Img (TZ0) & " " & Img (TZ1));
-         Ada.Text_IO.Put_Line
-           (F, "bounds " & Img (Integer (DX0)) & " " & Img (Integer (DX1)) & " "
-            & Img (Integer (DZ0)) & " " & Img (Integer (DZ1)));
-         Ada.Text_IO.Close (F);
-      end;
    end Write_Tiles;
 
    --  The drivable road network for traffic, as one small file:
-   --    "PRD3", node count, (x, z, signal offset or -1) per node,
-   --    way count, per way: oneway, lanes, width, point count, node indices,
-   --    name length, name (UTF-8)
-   procedure Write_Roads (Out_Dir : String) is
+   --    "PRD4", node count, (OSM id, x, z, signal offset or -1) per node,
+   --    way count, per way: OSM id, oneway, lanes, width, point count, node
+   --    indices, name length, name (UTF-8)
+   --  Every chunk writes its own file; the game merges them by OSM id.
+   procedure Write_Roads (File_Name : String) is
       use Ada.Streams.Stream_IO;
       use Interfaces;
       Index : Use_Maps.Map;
@@ -3220,11 +3553,12 @@ package body World_Builder is
             end loop;
          end if;
       end loop;
-      Create (F, Out_File, Out_Dir & "/roads.bin");
+      Create (F, Out_File, File_Name);
       S := Stream (F);
-      String'Write (S, "PRD3");
+      String'Write (S, "PRD4");
       Integer_32'Write (S, Integer_32 (Pos.Length));
       for I in Pos.First_Index .. Pos.Last_Index loop
+         Integer_64'Write (S, Integer_64 (Ids.Element (I)));
          Float'Write (S, Float (Pos (I).X));
          Float'Write (S, Float (Pos (I).Z));
          declare
@@ -3239,6 +3573,7 @@ package body World_Builder is
       Integer_32'Write (S, Integer_32 (Ways));
       for L of Lines loop
          if L.Drive then
+            Integer_64'Write (S, Integer_64 (L.Way_Id));
             Integer_32'Write (S, Integer_32 (L.Oneway));
             Integer_32'Write (S, Integer_32 (L.Lanes));
             Float'Write (S, Float (L.Width));
@@ -3259,21 +3594,24 @@ package body World_Builder is
                             & Ways'Image & " ways");
    end Write_Roads;
 
-   procedure Build
-     (M                         : Osm_Model.Model;
-      South, West, North, East  : Long_Float;
-      Out_Dir                   : String)
+   procedure Build_Rect
+     (M          : Osm_Model.Model;
+      X0, X1, Z0, Z1 : Long_Float;
+      Out_Dir    : String;
+      Roads_File : String)
    is
       Area_Count : Natural;
       Lamps      : Natural := 0;
    begin
       Model_Ref := M'Unrestricted_Access;
-      Geo.To_Local (North, West, DX0, DZ0);
-      Geo.To_Local (South, East, DX1, DZ1);
+      DX0 := X0;
+      DX1 := X1;
+      DZ0 := Z0;
+      DZ1 := Z1;
       TX0 := Geo.Tile_Of (DX0);
-      TX1 := Geo.Tile_Of (DX1);
+      TX1 := Geo.Tile_Of (DX1 - 0.001);
       TZ0 := Geo.Tile_Of (DZ0);
-      TZ1 := Geo.Tile_Of (DZ1);
+      TZ1 := Geo.Tile_Of (DZ1 - 0.001);
       Grid := new Tile_Grid (TX0 .. TX1, TZ0 .. TZ1);
       Build_Sphere;
 
@@ -3390,7 +3728,11 @@ package body World_Builder is
       Ada.Text_IO.Put_Line ("  roads done");
 
       for I in Buildings.First_Index .. Buildings.Last_Index loop
-         if Buildings (I).Is_Part or else not Buildings (I).Has_Parts then
+         if Buildings (I).Skip then
+            null;
+         elsif Landmark (Buildings (I).Tags) /= None and then not Buildings (I).Edge_Only then
+            Emit_Landmark (Buildings (I));
+         elsif Buildings (I).Is_Part or else not Buildings (I).Has_Parts then
             Emit_Building (I);
          end if;
       end loop;
@@ -3422,7 +3764,32 @@ package body World_Builder is
       Ada.Text_IO.Put_Line ("  street lamps:" & Lamps'Image);
 
       Write_Tiles (Out_Dir);
-      Write_Roads (Out_Dir);
+      Write_Roads (Out_Dir & "/" & Roads_File);
+   end Build_Rect;
+
+   procedure Build
+     (M                         : Osm_Model.Model;
+      South, West, North, East  : Long_Float;
+      Out_Dir                   : String)
+   is
+      X0, X1, Z0, Z1 : Long_Float;
+   begin
+      Geo.To_Local (North, West, X0, Z0);
+      Geo.To_Local (South, East, X1, Z1);
+      Build_Rect (M, X0, X1, Z0, Z1, Out_Dir, "roads.bin");
    end Build;
+
+   procedure Build_Tiles
+     (M                  : Osm_Model.Model;
+      TX0, TX1, TZ0, TZ1 : Integer;
+      Out_Dir            : String)
+   is
+      function Img (I : Integer) return String is
+        (Ada.Strings.Fixed.Trim (Integer'Image (I), Ada.Strings.Both));
+   begin
+      Build_Rect (M, Long_Float (TX0) * Geo.Tile_Size, Long_Float (TX1 + 1) * Geo.Tile_Size,
+                  Long_Float (TZ0) * Geo.Tile_Size, Long_Float (TZ1 + 1) * Geo.Tile_Size,
+                  Out_Dir, "roads_" & Img (TX0) & "_" & Img (TZ0) & ".bin");
+   end Build_Tiles;
 
 end World_Builder;

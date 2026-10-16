@@ -3,3 +3,4 @@ bin/
 tiles/*.bin
 tiles/world.txt
 data/osm/
+tiles/.log_*

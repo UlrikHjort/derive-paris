@@ -16,6 +16,12 @@ package body Geo is
       Z := -(Lat - Origin_Lat) * Metres_Per_Degree;
    end To_Local;
 
+   procedure To_Lat_Lon (X, Z : Long_Float; Lat, Lon : out Long_Float) is
+   begin
+      Lon := Origin_Lon + X / (Metres_Per_Degree * Cos_Lat0);
+      Lat := Origin_Lat - Z / Metres_Per_Degree;
+   end To_Lat_Lon;
+
    function Tile_Of (C : Long_Float) return Integer is
      (Integer (Long_Float'Floor (C / Tile_Size)));
 

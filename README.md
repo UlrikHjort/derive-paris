@@ -1,7 +1,8 @@
 # Paris
 
 An open-world driving (and flying) game in Ada and GtkAda.  The 3D city of
-central Paris is generated from OpenStreetMap data: buildings with their
+Paris (inside the Périphérique, plus the Bois de Boulogne, Vincennes and a
+corner of La Défense) is generated from OpenStreetMap data: buildings with their
 real outlines, heights and roofs, streets with markings and traffic
 lights, the Seine with its quays and bridges, trees, street lamps, traffic
 and pedestrians, day and night, and rain.
@@ -12,13 +13,16 @@ Needs GNAT with gprbuild, GtkAda (GTK 3), libepoxy, curl and an OpenGL 3.3
 graphics card.
 
     make            # build the converter (bin/osm2tiles) and the game (bin/paris)
-    make tiles      # download the OSM extract (~50 MB) if needed, build tiles/
+    make tiles      # download the OSM data if needed, build tiles/
     make run        # play
 
 The OSM data (`data/osm/`) and the generated tiles are not in the
-repository; `make tiles` recreates them.  `make download` fetches fresh
-OSM data.  The map area is the `BBOX` in the Makefile, the download query
-is `data/query.overpassql`.
+repository; `make tiles` recreates them.  The map area (`BBOX` in the
+Makefile) is split into 2 x 2 km chunks which are downloaded one after the
+other from the Overpass API (`scripts/build_city.sh`, query in
+`data/query.overpassql`) and converted in parallel.  An interrupted
+download simply continues where it stopped when run again; `make download`
+fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 
 ## Controls
 
@@ -33,6 +37,7 @@ is `data/query.overpassql`.
 | T | one hour later |
 | P | rain |
 | N | street names |
+| 1 .. 9, 0 | jump to Saint-Sulpice, Notre-Dame, Louvre, Tour Eiffel, Arc de Triomphe, Sacré-Cœur, Panthéon, Concorde, Opéra, Bastille |
 | R | reset |
 
 ## How it works
@@ -45,7 +50,7 @@ is `data/query.overpassql`.
 
 Debug options for screenshots: `PARIS_SHOT=file.ppm`, `PARIS_SPAWN`,
 `PARIS_CAM`, `PARIS_DRONE`, `PARIS_FLY`, `PARIS_TIME`, `PARIS_RAIN`,
-`PARIS_ZOOM`, `PARIS_PROFILE` (see `src/game/game.adb`).
+`PARIS_ZOOM`, `PARIS_TILES`, `PARIS_PROFILE` (see `src/game/game.adb`).
 
 Map data © OpenStreetMap contributors, available under the Open Database
 License (ODbL).

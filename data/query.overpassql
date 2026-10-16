@@ -1,6 +1,6 @@
 // Overpass query for the game area.  {{bbox}} is replaced by
 // scripts/download_osm.sh with "south,west,north,east" from the Makefile.
-[out:xml][timeout:600][maxsize:1073741824];
+[out:xml][timeout:300][maxsize:536870912];
 (
   wr["building"]({{bbox}});
   wr["building:part"]({{bbox}});

@@ -8,4 +8,8 @@ project Tools is
       for Default_Switches ("Ada") use
         ("-O2", "-gnat2012", "-gnatwa", "-gnatwl", "-gnatyN");
    end Compiler;
+
+   package Linker is
+      for Default_Switches ("Ada") use ("-lz");
+   end Linker;
 end Tools;

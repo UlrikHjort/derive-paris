@@ -12,6 +12,6 @@ project Paris is
    end Compiler;
 
    package Linker is
-      for Default_Switches ("Ada") use ("-lepoxy");
+      for Default_Switches ("Ada") use ("-lepoxy", "-lz");
    end Linker;
 end Paris;

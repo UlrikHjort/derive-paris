@@ -28,7 +28,7 @@ trap 'rm -f "$TMP" "$QUERY"' EXIT
 
 grep -v '^//' "$QUERY_TEMPLATE" | sed "s/{{bbox}}/$BBOX/g" > "$QUERY"
 
-for attempt in 1 2 3; do
+for attempt in 1 2 3 4 5; do
     for server in $SERVERS; do
         echo "Downloading $BBOX from $server (attempt $attempt)..."
         if curl -sS --fail --compressed -A "$AGENT" \
@@ -44,7 +44,7 @@ for attempt in 1 2 3; do
             echo "  incomplete answer, retrying" >&2
         fi
     done
-    sleep $((attempt * 20))
+    sleep $((attempt * 30))
 done
 
 echo "Download failed; the Overpass servers may be busy, try again later." >&2

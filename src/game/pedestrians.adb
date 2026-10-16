@@ -135,14 +135,13 @@ package body Pedestrians is
    begin
       for Attempt in 1 .. 20 loop
          declare
-            Way_I : constant Natural := Pick_Way (Rnd);
-            Seg   : Natural;
+            Way_I, Seg : Natural;
+            Got   : Boolean;
             P, Q  : Node;
             Len   : Float;
          begin
-            if Ways (Way_I).Count >= 2 then
-               Seg := Natural'Min (Ways (Way_I).Count - 2,
-                                   Natural (Float'Floor (Rnd * Float (Ways (Way_I).Count - 1))));
+            Pick_Segment (Focus_X, Focus_Z, Near, Spawn_Far, Rnd, Rnd, Rnd, Got, Way_I, Seg);
+            if Got then
                declare
                   L  : constant Link :=
                     (if Rnd < 0.5 then (Way_I, Seg, 1) else (Way_I, Seg + 1, -1));

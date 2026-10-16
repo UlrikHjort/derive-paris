@@ -31,6 +31,8 @@ uniform float uWet;          // 0 dry .. 1 soaked streets
 
 out vec4 fragColor;
 
+float gAlpha = 1.0;   // < 1 only for see-through lattice (alpha to coverage)
+
 // ---------------------------------------------------------------- noise ---
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -479,6 +481,31 @@ void main()
         vec3 col = vSeed < 0.5 ? vec3(1.0, 0.08, 0.04)
                  : vSeed < 1.5 ? vec3(1.0, 0.55, 0.05) : vec3(0.1, 1.0, 0.45);
         s = Surface(toLinear(col * 0.12), 0.5, 60.0, col * on * (1.5 + 2.5 * uNight), 0.0);
+    } else if (m == 29) {          // dressed stone of monuments: courses and joints
+        vec2 fw = fwidth(vUV);
+        float row = floor(vUV.y / 0.6);
+        float u = vUV.x / 1.4 + 0.5 * mod(row, 2.0);
+        float joint = max(fpulse(0.0, 0.03, u, fw.x / 1.4), fpulse(0.0, 0.04, vUV.y / 0.6, fw.y / 0.6));
+        float detail = 1.0 - smoothstep(0.3, 0.7, max(fw.x, fw.y));
+        vec3 c = vec3(0.86, 0.82, 0.73) * (0.92 + 0.1 * hash(vec2(floor(u), row)));
+        c = mix(c, c * 0.8, joint * detail);
+        c *= 0.85 + 0.15 * smoothstep(0.0, 8.0, vWorld.y);
+        s = Surface(toLinear(c), 0.05, 16.0, vec3(0), 0.0);
+        if (uNight > 0.01)   // floodlit monuments
+            s.emissive = toLinear(vec3(1.0, 0.86, 0.62)) * 0.35 * uNight;
+    } else if (m == 33) {          // wrought-iron lattice, golden lights at night
+        vec2 p = vUV / 3.0;
+        vec2 fw = max(fwidth(p), vec2(1e-4));
+        float d1 = fpulse(0.0, 0.14, p.x + p.y, fw.x + fw.y);
+        float d2 = fpulse(0.0, 0.14, p.x - p.y, fw.x + fw.y);
+        float hb = fpulse(0.0, 0.18, p.y, fw.y);
+        float edge = 1.0 - smoothstep(0.3, 1.2, min(vUV.x, 1e3));   // solid corner posts
+        float bars = clamp(max(max(d1, d2), max(hb, edge)), 0.0, 1.0);
+        // far away the lattice reads as a dense, darker surface
+        bars = mix(bars, 0.75, smoothstep(0.2, 0.6, max(fw.x, fw.y)));
+        gAlpha = bars;
+        vec3 iron = vec3(0.44, 0.39, 0.31) * (0.85 + 0.2 * noise(vWorld.xy * 0.3));
+        s = Surface(toLinear(iron), 0.25, 30.0, toLinear(vec3(1.0, 0.72, 0.32)) * 1.6 * uNight, 0.0);
     } else if (m == 30) {          // clothes
         s = Surface(toLinear(uCarColor), 0.0, 8.0, vec3(0), 0.2);
     } else if (m == 31) {          // skin
@@ -537,5 +564,5 @@ void main()
     col = mix(col, toLinear(uSkyHorizon), fog);
 
     col = col / (1.0 + col) * 1.25;   // gentle tone mapping
-    fragColor = vec4(pow(col, vec3(1.0 / 2.2)), 1.0);
+    fragColor = vec4(pow(col, vec3(1.0 / 2.2)), gAlpha);
 }
