@@ -86,6 +86,9 @@ package body Game is
    Show_Street  : Boolean := True;     --  N toggles
    Announce       : Ada.Strings.Unbounded.Unbounded_String;   --  shown on the
    Announce_Timer : Float := 0.0;                             --  plaque briefly
+   Pending_Load   : Boolean := False;
+   --  Load the tiles around the focus at the next frame.  GL objects can
+   --  only be made in the render callback, where the context is current.
 
    --  Teleport destinations, keys 1 .. 9 and 0
    type Place is record
@@ -563,6 +566,11 @@ package body Game is
          return 1;
       end if;
 
+      if Pending_Load then
+         World.Load_All_Near (Focus.X, Focus.Z);
+         Pending_Load := False;
+      end if;
+
       declare
          T0 : constant Ada.Real_Time.Time := Clock_Now;
       begin
@@ -808,7 +816,7 @@ package body Game is
          Cam_Pos := (RX, 6.0, RZ) - 10.0 * Car.Forward (Player);
          Cam_Look := (RX, 1.2, RZ);
       end if;
-      World.Load_All_Near (Focus.X, Focus.Z);
+      Pending_Load := True;
       Announce := P.Name;
       Announce_Timer := 3.0;
       Street_Timer := 1.0;   --  refresh the plaque now
@@ -868,6 +876,9 @@ package body Game is
       Last_Frame := Now;
       Time := Time + Dt;
 
+      if Ready and then Frame_Number = 30 and then Env ("PARIS_TELEPORT") /= "" then
+         Teleport (Places (Integer'Value (Env ("PARIS_TELEPORT"))));
+      end if;
       if Ready and then Env ("PARIS_AUTODRIVE") /= "" then
          Keys.W := True;
       end if;
