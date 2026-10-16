@@ -77,6 +77,26 @@ package Road_Network is
    function Street_At (X, Z : Float; Max_Distance : Float := 14.0) return String;
    --  Name of the nearest named street within Max_Distance, "" if none
 
+   --  Routing ---------------------------------------------------------------
+
+   type Route_Point is record
+      X, Z : Float;
+      Way  : Natural;   --  the way driven from this point to the next
+   end record;
+
+   package Route_Vectors is new Ada.Containers.Vectors (Natural, Route_Point);
+
+   procedure Find_Route
+     (From_X, From_Z, Heading, To_X, To_Z : Float;
+      Route : out Route_Vectors.Vector; Found : out Boolean);
+   --  Shortest drivable route (one-way streets respected), starting in the
+   --  direction of Heading if possible.  Route starts at the car.
+
+   generic
+      with procedure Visit (AX, AZ, BX, BZ, Width : Float; Named : Boolean);
+   procedure For_Segments_Near (X, Z, Radius : Float);
+   --  Every road segment near (X, Z), for drawing the minimap
+
    type Light is (Green, Amber, Red);
 
    Signal_Cycle : constant := 32.0;   --  seconds; matches world.frag

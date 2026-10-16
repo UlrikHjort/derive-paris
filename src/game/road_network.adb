@@ -365,6 +365,208 @@ package body Road_Network is
       return (if Found then Ada.Strings.Unbounded.To_String (Ways (W).Name) else "");
    end Street_At;
 
+   procedure For_Segments_Near (X, Z, Radius : Float) is
+   begin
+      if not Loaded then
+         return;
+      end if;
+      for CX in Cell_Of (X - Radius) .. Cell_Of (X + Radius) loop
+         for CZ in Cell_Of (Z - Radius) .. Cell_Of (Z + Radius) loop
+            declare
+               C : constant Cell_Maps.Cursor := Grid.Find ((CX, CZ));
+            begin
+               if Cell_Maps.Has_Element (C) then
+                  for S of Grid.Constant_Reference (C).Element.all loop
+                     declare
+                        A : constant Node := Point (S.W, S.Pos);
+                        B : constant Node := Point (S.W, S.Pos + 1);
+                     begin
+                        --  only from the cell holding its first point
+                        if Cell_Of (A.X) = CX and then Cell_Of (A.Z) = CZ then
+                           Visit (A.X, A.Z, B.X, B.Z, Ways (S.W).Width,
+                                  Ada.Strings.Unbounded.Length (Ways (S.W).Name) > 0);
+                        end if;
+                     end;
+                  end loop;
+               end if;
+            end;
+         end loop;
+      end loop;
+   end For_Segments_Near;
+
+   ---------------------------------------------------------------------------
+   --  A* over the nodes; links give the allowed driving directions
+   ---------------------------------------------------------------------------
+
+   procedure Find_Route
+     (From_X, From_Z, Heading, To_X, To_Z : Float;
+      Route : out Route_Vectors.Vector; Found : out Boolean)
+   is
+      type Real_Array is array (Natural range <>) of Float;
+      type Nat_Array is array (Natural range <>) of Integer;
+      N     : constant Natural := Nodes'Length;
+      Cost  : Real_Array (0 .. N - 1) := (others => Float'Last);
+      Prev  : Nat_Array (0 .. N - 1) := (others => -1);
+      Via   : Nat_Array (0 .. N - 1) := (others => -1);   --  way used to arrive
+      Done  : array (0 .. N - 1) of Boolean := (others => False);
+
+      --  binary heap of (estimate, node)
+      type Entry_T is record
+         F    : Float;
+         Node : Natural;
+      end record;
+      package Heap_Vectors is new Ada.Containers.Vectors (Natural, Entry_T);
+      Heap : Heap_Vectors.Vector;
+
+      procedure Push (E : Entry_T) is
+         I : Natural := Natural (Heap.Length);
+      begin
+         Heap.Append (E);
+         while I > 0 and then Heap ((I - 1) / 2).F > Heap (I).F loop
+            Heap.Swap (I, (I - 1) / 2);
+            I := (I - 1) / 2;
+         end loop;
+      end Push;
+
+      function Pop return Entry_T is
+         Top : constant Entry_T := Heap (0);
+         I   : Natural := 0;
+      begin
+         Heap (0) := Heap.Last_Element;
+         Heap.Delete_Last;
+         loop
+            declare
+               L : constant Natural := 2 * I + 1;
+               R : constant Natural := 2 * I + 2;
+               M : Natural := I;
+            begin
+               if L < Natural (Heap.Length) and then Heap (L).F < Heap (M).F then
+                  M := L;
+               end if;
+               if R < Natural (Heap.Length) and then Heap (R).F < Heap (M).F then
+                  M := R;
+               end if;
+               exit when M = I;
+               Heap.Swap (I, M);
+               I := M;
+            end;
+         end loop;
+         return Top;
+      end Pop;
+
+      function H (Node_I : Natural) return Float is
+        (Sqrt ((Nodes (Node_I).X - To_X) ** 2 + (Nodes (Node_I).Z - To_Z) ** 2));
+
+      Got    : Boolean;
+      SW, SP : Natural;
+      PX, PZ : Float;
+      GW, GP : Natural;
+      GX, GZ : Float;
+      Goal_A, Goal_B : Natural;
+      Hx : constant Float := Sin (Heading);
+      Hz : constant Float := -Cos (Heading);
+      Best_Goal : Integer := -1;
+   begin
+      Route.Clear;
+      Found := False;
+      if not Loaded then
+         return;
+      end if;
+      Closest (From_X, From_Z, 60.0, False, Got, SW, SP, PX, PZ);
+      if not Got then
+         return;
+      end if;
+      Closest (To_X, To_Z, 300.0, False, Got, GW, GP, GX, GZ);
+      if not Got then
+         return;
+      end if;
+      Goal_A := Node_Index (GW, GP);
+      Goal_B := Node_Index (GW, GP + 1);
+
+      --  start: both ends of the car's segment, where driving there is
+      --  allowed; turning round costs extra
+      declare
+         A  : constant Node := Point (SW, SP);
+         B  : constant Node := Point (SW, SP + 1);
+         DX : constant Float := B.X - A.X;
+         DZ : constant Float := B.Z - A.Z;
+         Along : constant Boolean := DX * Hx + DZ * Hz >= 0.0;
+         procedure Seed (Node_I : Natural; Dist : Float; Forward_Ok : Boolean; With_Heading : Boolean) is
+            C : constant Float := Dist + (if With_Heading then 0.0 else 150.0);
+         begin
+            if Forward_Ok and then C < Cost (Node_I) then
+               Cost (Node_I) := C;
+               Via (Node_I) := SW;
+               Push ((C + H (Node_I), Node_I));
+            end if;
+         end Seed;
+      begin
+         Seed (Node_Index (SW, SP + 1), Sqrt ((B.X - PX) ** 2 + (B.Z - PZ) ** 2),
+               Ways (SW).Oneway >= 0, Along);
+         Seed (Node_Index (SW, SP), Sqrt ((A.X - PX) ** 2 + (A.Z - PZ) ** 2),
+               Ways (SW).Oneway <= 0, not Along);
+      end;
+
+      while not Heap.Is_Empty loop
+         declare
+            E : constant Entry_T := Pop;
+            U : constant Natural := E.Node;
+         begin
+            if not Done (U) then
+               Done (U) := True;
+               if U = Goal_A or else U = Goal_B then
+                  Best_Goal := U;
+                  exit;
+               end if;
+               for L of Links (U) loop
+                  declare
+                     V   : constant Natural := Node_Index (L.W, L.Pos + L.Dir);
+                     A   : constant Node := Nodes (U);
+                     B   : constant Node := Nodes (V);
+                     Len : constant Float := Sqrt ((B.X - A.X) ** 2 + (B.Z - A.Z) ** 2);
+                     --  small penalty for changing street: prefer simple routes
+                     C   : constant Float := Cost (U) + Len
+                       + (if Via (U) >= 0 and then Via (U) /= L.W then 8.0 else 0.0);
+                  begin
+                     if not Done (V) and then C < Cost (V) then
+                        Cost (V) := C;
+                        Prev (V) := U;
+                        Via (V) := L.W;
+                        Push ((C + H (V), V));
+                     end if;
+                  end;
+               end loop;
+            end if;
+         end;
+      end loop;
+
+      if Best_Goal < 0 then
+         return;
+      end if;
+      --  walk back from the goal
+      declare
+         package Int_Vectors2 is new Ada.Containers.Vectors (Natural, Natural);
+         Path : Int_Vectors2.Vector;
+         K    : Integer := Best_Goal;
+      begin
+         while K >= 0 loop
+            Path.Prepend (K);
+            K := Prev (K);
+         end loop;
+         Route.Append ((From_X, From_Z, Via (Path.First_Element)));
+         for I in Path.First_Index .. Path.Last_Index loop
+            declare
+               Next_Way : constant Natural :=
+                 (if I < Path.Last_Index then Via (Path (I + 1)) else GW);
+            begin
+               Route.Append ((Nodes (Path (I)).X, Nodes (Path (I)).Z, Next_Way));
+            end;
+         end loop;
+         Route.Append ((GX, GZ, GW));
+         Found := True;
+      end;
+   end Find_Route;
+
    function Signal_State (Offset, Dir_X, Dir_Z, Time : Float) return Light is
       Phase : constant Float :=
         Time + Offset - Signal_Cycle * Float'Floor ((Time + Offset) / Signal_Cycle);

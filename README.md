@@ -37,7 +37,9 @@ fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 | T | one hour later |
 | P | rain |
 | N | street names |
-| G | compass and position (lat/lon, heading, altitude in flight) |
+| G | compass, position (lat/lon, heading, altitude) and minimap |
+| Shift + 1 .. 0 | GPS: navigate to that place (route through the real streets, turn-by-turn with street names) |
+| X | stop navigating |
 | M | sound on/off |
 | 1 .. 9, 0 | jump to Saint-Sulpice, Notre-Dame, Louvre, Tour Eiffel, Arc de Triomphe, Sacré-Cœur, Panthéon, Concorde, Opéra, Bastille |
 | H | home: Place Saint-Sulpice (also where the game starts) |
@@ -53,7 +55,7 @@ fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 
 Debug options for screenshots: `PARIS_SHOT=file.ppm`, `PARIS_SPAWN`,
 `PARIS_CAM`, `PARIS_DRONE`, `PARIS_FLY`, `PARIS_TIME`, `PARIS_RAIN`,
-`PARIS_ZOOM`, `PARIS_TILES`, `PARIS_TELEPORT`, `PARIS_WAV`, `PARIS_COMPASS_PNG`, `PARIS_PROFILE` (see `src/game/game.adb`).
+`PARIS_ZOOM`, `PARIS_TILES`, `PARIS_TELEPORT`, `PARIS_WAV`, `PARIS_COMPASS_PNG`, `PARIS_NAV`, `PARIS_MAP_PNG`, `PARIS_PROFILE` (see `src/game/game.adb`).
 
 Map data © OpenStreetMap contributors, available under the Open Database
 License (ODbL).

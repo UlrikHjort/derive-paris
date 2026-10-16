@@ -29,6 +29,7 @@ with Geo;
 with GL;
 with GL_Area;
 with Math3D;
+with Navigation;
 with Pedestrians;
 with Plane;
 with Rain;
@@ -887,6 +888,10 @@ package body Game is
          if Env ("PARIS_COMPASS_PNG") /= "" then
             Compass.Save_Png (Env ("PARIS_COMPASS_PNG"));
          end if;
+         if Env ("PARIS_MAP_PNG") /= "" then
+            Navigation.Save_Png (Env ("PARIS_MAP_PNG"));
+            Ada.Text_IO.Put_Line ("navigation: " & Navigation.Current_Text);
+         end if;
          Ada.Text_IO.Put_Line
            ("frames:" & Natural'Image (Frame_Number) & "  avg fps:"
             & Integer'Image (Integer (Float (Frame_Number) / Time))
@@ -1185,6 +1190,9 @@ package body Game is
          Compass.Update (Head, Lat, Lon, (if Mode = Flying and then not Visiting
                                            then Aircraft.Pos.Y else -1.0));
       end if;
+      Navigation.Update (Where.X, Where.Z,
+                         (if Visiting or else Mode = Flying then Head else Player.Heading),
+                         1.0 / 60.0, Route_Allowed => Mode = Driving and then not Visiting);
 
       Sound.Set
         ((Mode     => (if Visiting then Sound.Visiting
@@ -1249,6 +1257,16 @@ package body Game is
          if Env ("PARIS_VISIT") /= "1" then
             Eye_Yaw := Eye_Yaw + Float'Value (Env ("PARIS_VISIT")) * Ada.Numerics.Pi / 180.0;
          end if;
+      end if;
+      if Ready and then Frame_Number = 3 and then Env ("PARIS_NAV") /= "" then
+         declare
+            P : constant Place := Places (Integer'Value (Env ("PARIS_NAV")));
+            X, Z : Long_Float;
+         begin
+            Geo.To_Local (P.Lat, P.Lon, X, Z);
+            Navigation.Set_Destination (Ada.Strings.Unbounded.To_String (P.Name),
+                                        Float (X), Float (Z));
+         end;
       end if;
       if Ready and then Frame_Number = 30 and then Env ("PARIS_TELEPORT") /= "" then
          Teleport (Places (Integer'Value (Env ("PARIS_TELEPORT"))));
@@ -1350,7 +1368,7 @@ package body Game is
                  "[W/S] throttle  [up/down] nose down/up  [left/right] bank")
             & "  [wheel/+/-] zoom  [F] "
             & (if Mode = Driving then "fly" else "land and drive")
-            & "  [T] +1 hour  [P] rain  [N] street names  [G] compass  [M] sound  [1-0] places  [H] home  [R] reset </span>");
+            & "  [T] +1 hour  [P] rain  [N] street names  [G] compass+map  [M] sound  [1-0] places  [Shift+1-0] navigate  [X] stop  [H] home  [R] reset </span>");
       end if;
 
       --  Street name sign: a few times a second, and only touch the label
@@ -1437,10 +1455,15 @@ package body Game is
                else
                   Compass_Widget.Hide;
                end if;
+               Navigation.Show (Show_Compass);
             end if;
          when 16#6D# =>                                       --  m
             if Down then
                Sound.Toggle_Mute;
+            end if;
+         when 16#78# =>                                       --  x: stop navigating
+            if Down then
+               Navigation.Clear;
             end if;
          when 16#6E# =>                                       --  n
             if Down then
@@ -1500,7 +1523,23 @@ package body Game is
       Event : Gdk.Event.Gdk_Event_Key) return Boolean
    is
       pragma Unreferenced (Self);
+      use type Gdk.Types.Gdk_Modifier_Type;
    begin
+      --  Shift + 1 .. 0 (the digit row, whatever the keyboard layout):
+      --  navigate to that place
+      if (Event.State and Gdk.Types.Shift_Mask) /= 0
+        and then Event.Hardware_Keycode in 10 .. 19
+      then
+         declare
+            P : constant Place := Places ((Integer (Event.Hardware_Keycode) - 9) mod 10);
+            X, Z : Long_Float;
+         begin
+            Geo.To_Local (P.Lat, P.Lon, X, Z);
+            Navigation.Set_Destination (Ada.Strings.Unbounded.To_String (P.Name),
+                                        Float (X), Float (Z));
+         end;
+         return True;
+      end if;
       Set_Key (Event.Keyval, True);
       return True;
    end Key_Press;
@@ -1647,6 +1686,8 @@ package body Game is
 
       Compass_Widget := Compass.Create;
       Overlay.Add_Overlay (Compass_Widget);
+      Overlay.Add_Overlay (Navigation.Create_Minimap);
+      Overlay.Add_Overlay (Navigation.Create_Instructions);
 
       Gtk.Label.Gtk_New (Credit);
       Credit.Set_Markup
