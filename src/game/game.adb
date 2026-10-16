@@ -46,8 +46,9 @@ package body Game is
    use type Gdk.Types.Gdk_Key_Type;
    use type Gdk.Event.Gdk_Event_Mask;
 
-   --  Start: Rue Bonaparte at the corner of Place Saint-Sulpice, facing
-   --  north towards Saint-Germain-des-Pres (the street is one-way north)
+   --  Start and home (H, R): Rue Bonaparte at the corner of Place
+   --  Saint-Sulpice, facing north towards Saint-Germain-des-Pres (the
+   --  street is one-way north)
    Spawn_Lat     : constant Long_Float := 48.85190;
    Spawn_Lon     : constant Long_Float := 2.333020;
    Spawn_Heading : constant Float := 8.0 * Ada.Numerics.Pi / 180.0;
@@ -956,7 +957,7 @@ package body Game is
                  "[W/S] throttle  [up/down] nose down/up  [left/right] bank")
             & "  [wheel/+/-] zoom  [F] "
             & (if Mode = Driving then "fly" else "land and drive")
-            & "  [T] +1 hour  [P] rain  [N] street names  [1-0] places  [R] reset </span>");
+            & "  [T] +1 hour  [P] rain  [N] street names  [1-0] places  [H] home  [R] reset </span>");
       end if;
 
       --  Street name sign: a few times a second, and only touch the label
@@ -1018,6 +1019,10 @@ package body Game is
          when 16#30# .. 16#39# =>                             --  0 .. 9
             if Down then
                Teleport (Places (Integer (K) - 16#30#));
+            end if;
+         when 16#68# =>                                       --  h: home
+            if Down then
+               Teleport (Places (1));
             end if;
          when 16#6E# =>                                       --  n
             if Down then

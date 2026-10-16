@@ -38,6 +38,7 @@ fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 | P | rain |
 | N | street names |
 | 1 .. 9, 0 | jump to Saint-Sulpice, Notre-Dame, Louvre, Tour Eiffel, Arc de Triomphe, Sacré-Cœur, Panthéon, Concorde, Opéra, Bastille |
+| H | home: Place Saint-Sulpice (also where the game starts) |
 | R | reset |
 
 ## How it works

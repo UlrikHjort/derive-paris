@@ -125,6 +125,7 @@ package body Tile_IO is
       String'Read (Stream (F), Mg);
       if Mg /= Magic then
          Close (F);
+         Found_Old_Format := True;
          return;
       end if;
       Integer_32'Read (Stream (F), Raw);

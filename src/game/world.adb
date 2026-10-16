@@ -206,6 +206,10 @@ package body World is
    begin
       Update_Internal (Center_X, Center_Z, 0);
       Ada.Text_IO.Put_Line ("Loaded" & Natural'Image (Natural (Tiles.Length)) & " tiles");
+      if Tile_IO.Found_Old_Format then
+         Ada.Text_IO.Put_Line
+           ("The tiles were made by an older osm2tiles: run ""make tiles""");
+      end if;
    end Load_All_Near;
 
    type Plane is array (0 .. 3) of Float;

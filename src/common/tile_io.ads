@@ -49,4 +49,8 @@ package Tile_IO is
 
    procedure Free (T : in out Tile_Data);
 
+   Found_Old_Format : Boolean := False;
+   --  Set by Read when a tile file exists but was written by an older
+   --  version of osm2tiles (the tiles need to be generated again)
+
 end Tile_IO;
