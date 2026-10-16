@@ -1796,6 +1796,7 @@ package body World_Builder is
    Home_Id      : Osm_Id := -1;
    Home_Facade  : P2 := (1.0, 0.0);     --  outward direction of the street facade
    Home_Depth   : Long_Float := 10.0;
+   Home_Height  : Long_Float := -1.0;   --  wall height of the building, if given
    Home_North   : Boolean := True;      --  kitchen window at the north end
    Output_Dir   : Ada.Strings.Unbounded.Unbounded_String;
 
@@ -1826,6 +1827,8 @@ package body World_Builder is
                                              elsif Value = "north" then "N" else "S");
                   elsif Key = "depth" then
                      Home_Depth := Long_Float'Value (Value);
+                  elsif Key = "height" then
+                     Home_Height := Long_Float'Value (Value);
                   elsif Key = "kitchen" then
                      Home_North := Value = "north";
                   end if;
@@ -2138,7 +2141,12 @@ package body World_Builder is
          end if;
       end if;
 
-      if Height > 0.0 then
+      if Is_Home and then Home_Height > 0.0 then
+         H := Home_Height;
+         if Levels < 0.0 then
+            Levels := 8.0;
+         end if;
+      elsif Height > 0.0 then
          H := Height;
       elsif Religious and then Levels < 0.0 then
          H := 25.0 + (if Kind = Flat then 0.0 else Roof_Part);
