@@ -13,7 +13,8 @@ package body Pedestrians is
    use Math3D;
    use Road_Network;
 
-   Max_Walkers : constant := 160;
+   Max_Walkers : constant := 400;
+   Limit       : Natural := 160;
    Spawn_Near  : constant := 30.0;
    Spawn_Far   : constant := 150.0;
    Retire_Far  : constant := 190.0;
@@ -52,10 +53,20 @@ package body Pedestrians is
 
    function Rnd return Float is (Ada.Numerics.Float_Random.Random (Gen));
 
+   procedure Set_Density (Factor : Float) is
+   begin
+      Limit := Natural (Float'Max (0.0, Float'Min (Float (Max_Walkers), 160.0 * Factor)));
+   end Set_Density;
+
    function Count return Natural is
       N : Natural := 0;
    begin
-      for W of Walkers loop
+      for I in Walkers'Range loop
+         if I > Limit then
+            Walkers (I).Active := False;
+         end if;
+      end loop;
+      for W of Walkers (1 .. Limit) loop
          if W.Active then
             N := N + 1;
          end if;
@@ -246,7 +257,12 @@ package body Pedestrians is
       if not Primed then
          Ada.Numerics.Float_Random.Reset (Gen, 1789);
       end if;
-      for W of Walkers loop
+      for I in Walkers'Range loop
+         if I > Limit then
+            Walkers (I).Active := False;
+         end if;
+      end loop;
+      for W of Walkers (1 .. Limit) loop
          if W.Active then
             Walk (W, Dt, Player);
             if (W.X - Focus_X) ** 2 + (W.Z - Focus_Z) ** 2 > Retire_Far ** 2 then

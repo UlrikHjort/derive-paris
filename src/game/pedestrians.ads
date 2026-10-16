@@ -20,4 +20,7 @@ package Pedestrians is
 
    function Count return Natural;
 
+   procedure Set_Density (Factor : Float);
+   --  1.0 = normal (160 people), 0 = none, up to 2.5
+
 end Pedestrians;

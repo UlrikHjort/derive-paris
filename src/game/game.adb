@@ -25,6 +25,7 @@ with Gtk.Window;
 
 with Car;
 with Compass;
+with Config;
 with Geo;
 with GL;
 with GL_Area;
@@ -74,7 +75,7 @@ package body Game is
 
    --  Time of day (hours) and the lighting derived from it
    Hour         : Float := 18.0;
-   Clock_Rate   : constant := 1.0 / 60.0;   --  game hours per second
+   Clock_Rate   : Float := 1.0 / 60.0;      --  game hours per second
    Sun_Dir      : Vec3 := Normalize ((-0.55, 0.62, 0.50));   --  sun or moon
    Sun_Color    : Vec3 := (3.0, 2.75, 2.35);
    Sky_Zenith   : Vec3 := (0.30, 0.50, 0.82);
@@ -1636,6 +1637,14 @@ package body Game is
       Id      : Glib.Guint;
    begin
       Gtk.Main.Init;
+      Config.Load;
+      Hour := Config.Get ("start_hour", 18.0);
+      Clock_Rate := Config.Get ("time_speed", 1.0) / 60.0;
+      Show_Compass := Config.Get ("compass", True);
+      Show_Street := Config.Get ("street_names", True);
+      Traffic.Set_Density (Config.Get ("traffic", 1.0));
+      Pedestrians.Set_Density (Config.Get ("pedestrians", 1.0));
+      Sound.Set_Volume (Config.Get ("volume", 0.8));
 
       Gtk.Window.Gtk_New (Window);
       Window.Set_Title ("Paris");
@@ -1710,6 +1719,10 @@ package body Game is
       pragma Unreferenced (Id);
 
       Window.Show_All;
+      if not Show_Compass then
+         Compass_Widget.Hide;
+         Navigation.Show (False);
+      end if;
       --  no sound when making screenshots, unless asked for
       if Env ("PARIS_SHOT") = "" or else Env ("PARIS_SOUND") /= "" then
          Sound.Start;

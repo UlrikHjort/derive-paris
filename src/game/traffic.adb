@@ -13,7 +13,8 @@ package body Traffic is
    use Math3D;
    use Road_Network;
 
-   Max_Cars     : constant := 180;
+   Max_Cars     : constant := 400;      --  room for dense traffic
+   Limit        : Natural := 180;      --  vehicles around you (setting)
    Spawn_Near   : constant := 60.0;    --  spawn ring around the player (m)
    Spawn_Far    : constant := 250.0;
    Retire_Far   : constant := 320.0;
@@ -65,6 +66,11 @@ package body Traffic is
       end loop;
       return (if Best = Float'Last then Best else Sqrt (Best));
    end Nearest;
+
+   procedure Set_Density (Factor : Float) is
+   begin
+      Limit := Natural (Float'Max (0.0, Float'Min (Float (Max_Cars), 180.0 * Factor)));
+   end Set_Density;
 
    procedure Reset is
    begin
@@ -427,7 +433,12 @@ package body Traffic is
             end if;
          end;
       end loop;
-      for A of Agents loop
+      for I in Agents'Range loop
+         if I > Limit then
+            Agents (I).Active := False;
+         end if;
+      end loop;
+      for A of Agents (1 .. Limit) loop
          if not A.Active and then (not Primed or else Spawned < 2) then
             Spawn (A, Focus_X, Focus_Z, Focus_Heading, (if Primed then Spawn_Near else 12.0));
             Spawned := Spawned + 1;

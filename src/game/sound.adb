@@ -66,12 +66,15 @@ package body Sound is
       function Stopping return Boolean;
       procedure Flip_Mute;
       function Is_Muted return Boolean;
+      procedure Put_Volume (V : Float);
+      function Volume return Float;
    private
       Current   : Params;
       Bell_Count : Natural := 0;
       Bell_Loud  : Float := 0.0;
       Stop_Flag : Boolean := False;
       Mute      : Boolean := False;
+      Master    : Float := 0.8;
    end Shared;
 
    protected body Shared is
@@ -101,6 +104,11 @@ package body Sound is
          Mute := not Mute;
       end Flip_Mute;
       function Is_Muted return Boolean is (Mute);
+      procedure Put_Volume (V : Float) is
+      begin
+         Master := Float'Max (0.0, Float'Min (1.0, V));
+      end Put_Volume;
+      function Volume return Float is (Master);
    end Shared;
 
    procedure Set (P : Params) is
@@ -112,6 +120,11 @@ package body Sound is
    begin
       Shared.Ring (Strikes, Loudness);
    end Bells;
+
+   procedure Set_Volume (V : Float) is
+   begin
+      Shared.Put_Volume (V);
+   end Set_Volume;
 
    procedure Toggle_Mute is
    begin
@@ -271,6 +284,7 @@ package body Sound is
       City  : constant Float := 1.0 / (1.0 + Ear / 60.0);
       Day   : constant Float := 1.0 - P.Night;
       Inside : constant Boolean := P.Mode = Visiting;
+      Gain   : constant Float := Shared.Volume / 0.8;
    begin
       --  Schedule events for this buffer
       Next_Pass := Next_Pass - Dt;
@@ -424,8 +438,8 @@ package body Sound is
             end loop;
 
             --  soft clip and convert
-            L := 0.8 * L / (1.0 + abs L);
-            R := 0.8 * R / (1.0 + abs R);
+            L := 0.8 * Gain * L / (1.0 + abs L);
+            R := 0.8 * Gain * R / (1.0 + abs R);
             Buffer (2 * I) := Integer_16 (L * 32000.0);
             Buffer (2 * I + 1) := Integer_16 (R * 32000.0);
          end;

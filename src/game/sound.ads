@@ -29,6 +29,9 @@ package Sound is
    procedure Bells (Strikes : Positive; Loudness : Float);
    --  A church bell striking the hour; Loudness 0 .. 1 (distance)
 
+   procedure Set_Volume (V : Float);
+   --  Master volume 0 .. 1
+
    procedure Toggle_Mute;
    function Muted return Boolean;
 

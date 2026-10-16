@@ -28,6 +28,9 @@ package Traffic is
 
    function Count return Natural;
 
+   procedure Set_Density (Factor : Float);
+   --  1.0 = normal (180 vehicles), 0 = none, up to 2.2
+
    procedure Reset;
    --  Remove all traffic; new cars arrive gradually, out of sight
 

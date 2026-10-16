@@ -46,6 +46,14 @@ fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 | H | home: Place Saint-Sulpice (also where the game starts) |
 | R | reset |
 
+## Settings
+
+`~/.adadriverc` holds settings as `name = value` lines (`#` starts a
+comment); the game writes a commented starter file on its first run.
+So far: `traffic`, `pedestrians` (1.0 = normal), `volume` (0 .. 1),
+`start_hour`, `time_speed` (game minutes per real second), `compass` and
+`street_names` (yes/no).
+
 ## How it works
 
 - `src/tools`: `osm2tiles` reads the OSM extract and writes 250 m tiles
