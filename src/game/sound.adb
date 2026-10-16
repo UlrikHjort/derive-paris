@@ -157,6 +157,11 @@ package body Sound is
       Freq     : Float := 0.0;
       Phase    : Float := 0.0;
       Filter   : Lowpass;
+      --  passing cars: closest distance (m), speed (m/s), direction
+      Near     : Float := 8.0;
+      Speed    : Float := 10.0;
+      Dir      : Float := 1.0;
+      Filter2, Filter3 : Lowpass;
    end record;
 
    Events : array (1 .. 24) of Event;
@@ -186,9 +191,35 @@ package body Sound is
       end if;
       case E.Kind is
          when Passing =>
-            --  tyre and engine noise swelling and fading as a car goes by
-            Env := Sin (Ada.Numerics.Pi * E.T / E.Dur) ** 3;
-            S := Step (E.Filter, Noise, 500.0 + 900.0 * Env) * 2.2;
+            --  a car driving past: X is its position along the street,
+            --  loudness follows the distance, the engine note drops as it
+            --  passes (Doppler) and the sound moves from one side to the other
+            declare
+               X      : constant Float := E.Speed * (E.T - 0.5 * E.Dur);
+               R      : constant Float := Sqrt (E.Near * E.Near + X * X);
+               Radial : constant Float := E.Speed * X / R;   --  > 0: going away
+               Shift  : constant Float := 343.0 / (343.0 + Radial);
+               Tyres  : Float;
+               Hum    : Float;
+            begin
+               Env := (E.Near / R) ** 1.6;
+               E.Pan := E.Dir * X / R;
+               --  tyre hiss: band of noise, brighter when close
+               Tyres := Step (E.Filter, Noise, 900.0 + 900.0 * Env);
+               Tyres := Tyres - Step (E.Filter2, Tyres, 180.0);
+               E.Phase := E.Phase + E.Freq * Shift / Float (Rate);
+               E.Phase := E.Phase - Float'Floor (E.Phase);
+               if E.Freq > 90.0 then
+                  --  a scooter: thin, buzzing two-stroke whine
+                  Hum := (if E.Phase < 0.3 then 1.0 else -0.43);
+                  Hum := Step (E.Filter3, Hum, 900.0);
+                  S := 1.2 * Tyres + 0.9 * Hum;
+               else
+                  Hum := Sin (Two_Pi * E.Phase) + 0.35 * Sin (2.0 * Two_Pi * E.Phase);
+                  Hum := Step (E.Filter3, Hum, 200.0);
+                  S := 2.6 * Tyres + 0.5 * Hum;
+               end if;
+            end;
          when Horn =>
             Env := (if E.T < 0.03 then E.T / 0.03 else 1.0);
             E.Phase := E.Phase + E.Freq * Dt;
@@ -217,6 +248,10 @@ package body Sound is
 
    --  Continuous sounds
    Engine_Phase, Prop_Phase : Float := 0.0;
+   type Hum_Phases is array (1 .. 4) of Float;
+   Hum_Freq  : constant Hum_Phases := (47.0, 61.3, 83.1, 104.7);
+   Hum_Gain  : constant Hum_Phases := (1.0, 1.0, 0.7, 0.5);
+   Hum_Phase : Hum_Phases := (others => 0.0);
    Rpm_Now                  : Float := 850.0;
    Rumble, Road, Wind, Rain_F, Engine_Tone, Engine_Grit : Lowpass;
    Engine_Tone2, Road2, Wind2 : Lowpass;   --  second stages: softer roll-off
@@ -240,10 +275,22 @@ package body Sound is
       --  Schedule events for this buffer
       Next_Pass := Next_Pass - Dt;
       if Next_Pass <= 0.0 then
-         Add ((Kind => Passing, Dur => 2.5 + 3.0 * Uniform,
-               Volume => (0.05 + 0.08 * Uniform) * City * (0.4 + 0.6 * Day),
-               Pan => Noise, others => <>));
-         Next_Pass := (1.5 + 5.0 * Uniform) * (1.0 + 2.0 * P.Night) / (0.5 + P.Traffic);
+         declare
+            Speed   : constant Float := 8.0 + 7.0 * Uniform;
+            Scooter : constant Boolean := Uniform < 0.25;
+         begin
+            --  at street level cars pass close by; from up high they are
+            --  further away, so their sound spreads into a murmur
+            Add ((Kind => Passing, Dur => 2.0 * 40.0 / Speed,
+                  Volume => (0.06 + 0.06 * Uniform) * (0.4 + 0.6 * Day)
+                            * (if Scooter then 0.6 else 1.0),
+                  Near => Float'Max (0.9 * Ear, 2.5 + 7.0 * Uniform), Speed => Speed,
+                  Dir => (if Uniform < 0.5 then -1.0 else 1.0),
+                  Freq => (if Scooter then 95.0 + 50.0 * Uniform else 38.0 + 30.0 * Uniform),
+                  T => (if Scooter then -0.0 else 0.0),
+                  others => <>));
+         end;
+         Next_Pass := (0.8 + 2.8 * Uniform) * (1.0 + 2.0 * P.Night) / (0.5 + P.Traffic);
       end if;
       Next_Horn := Next_Horn - Dt;
       if Next_Horn <= 0.0 then
@@ -290,8 +337,15 @@ package body Sound is
             L, R : Float := 0.0;
             S    : Float;
          begin
-            --  Distant traffic rumble and rain
-            S := Step (Rumble, Noise, 120.0) * 0.9 * City * (0.35 + 0.65 * Day);
+            --  Distant traffic: a steady low murmur of many engines far
+            --  away, no swell
+            S := Step (Rumble, Noise, 90.0) * 0.55;
+            for K in Hum_Phase'Range loop
+               Hum_Phase (K) := Hum_Phase (K) + Hum_Freq (K) / Float (Rate);
+               Hum_Phase (K) := Hum_Phase (K) - Float'Floor (Hum_Phase (K));
+               S := S + 0.012 * Hum_Gain (K) * Sin (Two_Pi * Hum_Phase (K));
+            end loop;
+            S := S * City * (0.35 + 0.65 * Day);
             L := L + S;
             R := R + S;
             if P.Rain > 0.01 then
