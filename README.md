@@ -51,7 +51,7 @@ fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 
 Debug options for screenshots: `PARIS_SHOT=file.ppm`, `PARIS_SPAWN`,
 `PARIS_CAM`, `PARIS_DRONE`, `PARIS_FLY`, `PARIS_TIME`, `PARIS_RAIN`,
-`PARIS_ZOOM`, `PARIS_TILES`, `PARIS_PROFILE` (see `src/game/game.adb`).
+`PARIS_ZOOM`, `PARIS_TILES`, `PARIS_TELEPORT`, `PARIS_PROFILE` (see `src/game/game.adb`).
 
 Map data © OpenStreetMap contributors, available under the Open Database
 License (ODbL).

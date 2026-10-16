@@ -1,3 +1,4 @@
+with Ada.Directories;
 with Ada.Environment_Variables;
 with Ada.Exceptions;
 with Ada.Streams.Stream_IO;
@@ -124,6 +125,25 @@ package body Game is
    Drone    : Boolean := False;
    Zoom     : Float := 1.0;      --  camera distance factor (wheel, +/-)
    Fixed_Camera : Boolean := False;  --  PARIS_CAM: a still camera for screenshots
+
+   type Float_List is array (1 .. 16) of Float;
+
+   --  Home (V): standing in the top-floor apartment at 76 rue Bonaparte.
+   --  The converter writes its position to tiles/home.txt.
+   type Home_Info is record
+      Known          : Boolean := False;
+      Origin         : Vec3 := (0.0, 0.0, 0.0);   --  facade, inner end
+      Along, Inward  : Vec3 := (0.0, 0.0, 0.0);
+      Length, Depth  : Float := 0.0;
+      Floor_Y        : Float := 0.0;
+      Windows        : Natural := 0;
+      Window_S       : Float_List := (others => 0.0);   --  centres, apartment coordinates
+   end record;
+   Home      : Home_Info;
+   Visiting  : Boolean := False;
+   Eye_S, Eye_D : Float := 0.0;      --  position in the apartment (m)
+   Eye_Yaw   : Float := 0.0;
+   Eye_Pitch : Float := 0.0;
 
    --  Keys held down; mapped to car or plane controls each tick
    type Key_State is record
@@ -350,6 +370,77 @@ package body Game is
       MSAA_H := H;
    end Ensure_MSAA;
 
+   procedure Load_Home (File_Name : String) is
+      F : Ada.Text_IO.File_Type;
+   begin
+      if not Ada.Directories.Exists (File_Name) then
+         return;
+      end if;
+      Ada.Text_IO.Open (F, Ada.Text_IO.In_File, File_Name);
+      while not Ada.Text_IO.End_Of_File (F) loop
+         declare
+            Line : constant String := Ada.Text_IO.Get_Line (F);
+            V    : array (1 .. 9) of Float := (others => 0.0);
+            K    : Natural := 0;
+            First : Natural := 0;
+         begin
+            if Line'Length > 7 and then Line (Line'First .. Line'First + 6) = "windows" then
+               --  "windows s1 s2 ... origin s0": centres relative to the facade
+               declare
+                  Words : array (1 .. 20) of Float := (others => 0.0);
+                  N     : Natural := 0;
+                  Start : Natural := 0;
+                  Text  : constant String := Line (Line'First + 7 .. Line'Last) & " ";
+               begin
+                  for I in Text'Range loop
+                     if Text (I) = ' ' then
+                        if Start > 0 and then N < Words'Last then
+                           if Text (Start .. I - 1) /= "origin" then
+                              N := N + 1;
+                              Words (N) := Float'Value (Text (Start .. I - 1));
+                           end if;
+                        end if;
+                        Start := 0;
+                     elsif Start = 0 then
+                        Start := I;
+                     end if;
+                  end loop;
+                  --  the last number is the origin of the apartment frame
+                  Home.Windows := Natural'Min (Float_List'Last, Natural'Max (0, N - 1));
+                  for K in 1 .. Home.Windows loop
+                     Home.Window_S (K) := Words (K) - Words (N);
+                  end loop;
+               end;
+            elsif Line'Length > 0 and then Line (Line'First) /= '#' then
+               for I in Line'First .. Line'Last + 1 loop
+                  if I > Line'Last or else Line (I) = ' ' then
+                     if First > 0 and then K < V'Last then
+                        K := K + 1;
+                        V (K) := Float'Value (Line (First .. I - 1));
+                     end if;
+                     First := 0;
+                  elsif First = 0 then
+                     First := I;
+                  end if;
+               end loop;
+               if K = 9 then
+                  Home := (Known  => True,
+                           Origin => (V (1), 0.0, V (2)),
+                           Along  => (V (3), 0.0, V (4)),
+                           Inward => (V (5), 0.0, V (6)),
+                           Length => V (7), Depth => V (8), Floor_Y => V (9),
+                           Windows => Home.Windows, Window_S => Home.Window_S);
+               end if;
+            end if;
+         end;
+      end loop;
+      Ada.Text_IO.Close (F);
+   exception
+      when others =>
+         Ada.Text_IO.Put_Line ("Could not read " & File_Name);
+         Home.Known := False;
+   end Load_Home;
+
    procedure Realize (Widget, Data : System.Address) with Convention => C;
    procedure Realize (Widget, Data : System.Address) is
       pragma Unreferenced (Widget, Data);
@@ -414,6 +505,7 @@ package body Game is
       begin
          World.Init (Dir);
          Road_Network.Load (Dir);
+         Load_Home (Dir & "/home.txt");
       end;
       Reset_Car;
       World.Load_All_Near (Player.X, Player.Z);
@@ -429,9 +521,14 @@ package body Game is
    --  Rendering
    ---------------------------------------------------------------------------
 
-   --  Where the action is: the car, or the plane in flight
+   function Eye_Position return Vec3 is
+     (Home.Origin + Eye_S * Home.Along + Eye_D * Home.Inward
+      + (0.0, Home.Floor_Y + 1.6, 0.0));
+
+   --  Where the action is: the car, the plane in flight, or home
    function Focus return Vec3 is
-     (if Mode = Flying then Aircraft.Pos else (Player.X, 0.0, Player.Z));
+     (if Visiting then (Eye_Position.X, 0.0, Eye_Position.Z)
+      elsif Mode = Flying then Aircraft.Pos else (Player.X, 0.0, Player.Z));
 
    function Focus_Heading return Float is
      (if Mode = Flying then Aircraft.Heading else Player.Heading);
@@ -767,6 +864,12 @@ package body Game is
       if Fixed_Camera then
          return;
       end if;
+      if Visiting then
+         Cam_Pos := Eye_Position;
+         Cam_Look := Cam_Pos + Vec3'(Sin (Eye_Yaw) * Cos (Eye_Pitch), Sin (Eye_Pitch),
+                                     -Cos (Eye_Yaw) * Cos (Eye_Pitch));
+         return;
+      end if;
       if Mode = Flying then
          --  Behind and a little above the plane, following its heading
          --  (and half its pitch, so loops stay readable)
@@ -822,6 +925,96 @@ package body Game is
       Street_Timer := 1.0;   --  refresh the plaque now
    end Teleport;
 
+   --  V: go home to the apartment window, or back to the car
+   procedure Toggle_Visit is
+   begin
+      if Visiting then
+         Visiting := False;
+         Pending_Load := True;
+      elsif Home.Known and then Mode = Driving then
+         Visiting := True;
+         Eye_S := Home.Length / 2.0;
+         --  the window nearest the middle of the facade
+         for K in 1 .. Home.Windows loop
+            if abs (Home.Window_S (K) - Home.Length / 2.0) < abs (Eye_S - Home.Length / 2.0)
+              or else K = 1
+            then
+               Eye_S := Home.Window_S (K);
+            end if;
+         end loop;
+         Eye_D := 0.9;
+         --  look out of the window, slightly down onto the square
+         Eye_Yaw := Arctan (-Home.Inward.X, Home.Inward.Z);
+         Eye_Pitch := -0.12;
+         Pending_Load := True;
+         Announce := Ada.Strings.Unbounded.To_Unbounded_String ("76, rue Bonaparte");
+         Announce_Timer := 1.0E9;
+         Street_Timer := 1.0;
+      end if;
+      if not Visiting then
+         Announce_Timer := 0.0;
+         Street_Timer := 1.0;
+      end if;
+   end Toggle_Visit;
+
+   --  Looking around and walking in the apartment
+   procedure Update_Visit (Dt : Float) is
+      Turn  : constant Float := 1.6 * Dt;
+      Walk  : constant Float := 1.4 * Dt;
+      Fwd_X : constant Float := Sin (Eye_Yaw);
+      Fwd_Z : constant Float := -Cos (Eye_Yaw);
+      DX, DZ : Float := 0.0;
+   begin
+      if Keys.Left then
+         Eye_Yaw := Eye_Yaw - Turn;
+      elsif Keys.Right then
+         Eye_Yaw := Eye_Yaw + Turn;
+      end if;
+      if Keys.Up then
+         Eye_Pitch := Float'Min (1.2, Eye_Pitch + Turn);
+      elsif Keys.Down then
+         Eye_Pitch := Float'Max (-1.2, Eye_Pitch - Turn);
+      end if;
+      if Keys.W then
+         DX := DX + Fwd_X * Walk;
+         DZ := DZ + Fwd_Z * Walk;
+      elsif Keys.S then
+         DX := DX - Fwd_X * Walk;
+         DZ := DZ - Fwd_Z * Walk;
+      end if;
+      if Keys.A then
+         DX := DX + Fwd_Z * Walk;
+         DZ := DZ - Fwd_X * Walk;
+      elsif Keys.D then
+         DX := DX - Fwd_Z * Walk;
+         DZ := DZ + Fwd_X * Walk;
+      end if;
+      --  move in apartment coordinates and stay inside the walls
+      declare
+         function At_Window (S : Float) return Boolean is
+         begin
+            for K in 1 .. Home.Windows loop
+               if abs (S - Home.Window_S (K)) < 0.45 then
+                  return True;
+               end if;
+            end loop;
+            return False;
+         end At_Window;
+         New_S : Float := Float'Max (0.3, Float'Min (Home.Length - 0.3,
+                   Eye_S + DX * Home.Along.X + DZ * Home.Along.Z));
+         New_D : constant Float := Eye_D + DX * Home.Inward.X + DZ * Home.Inward.Z;
+      begin
+         --  out on a balcony you stay in front of its window
+         if Eye_D < 0.25 and then not At_Window (New_S) then
+            New_S := Eye_S;
+         end if;
+         Eye_S := New_S;
+         --  through a French window you can step out onto the balcony
+         Eye_D := Float'Max ((if At_Window (New_S) then -0.75 else 0.25),
+                             Float'Min (Home.Depth - 0.3, New_D));
+      end;
+   end Update_Visit;
+
    --  F: take off from the car, or land: the car goes to the nearest road
    --  below the plane
    procedure Toggle_Flight is
@@ -876,6 +1069,12 @@ package body Game is
       Last_Frame := Now;
       Time := Time + Dt;
 
+      if Ready and then Frame_Number = 2 and then Env ("PARIS_VISIT") /= "" and then not Visiting then
+         Toggle_Visit;
+         if Env ("PARIS_VISIT") /= "1" then
+            Eye_Yaw := Eye_Yaw + Float'Value (Env ("PARIS_VISIT")) * Ada.Numerics.Pi / 180.0;
+         end if;
+      end if;
       if Ready and then Frame_Number = 30 and then Env ("PARIS_TELEPORT") /= "" then
          Teleport (Places (Integer'Value (Env ("PARIS_TELEPORT"))));
       end if;
@@ -905,7 +1104,12 @@ package body Game is
             T0 : Ada.Real_Time.Time := Clock_Now;
          begin
             Steps := Positive'Max (1, Integer (Float'Ceiling (Dt / 0.008)));
-            if Mode = Driving then
+            if Visiting then
+               Update_Visit (Dt);
+               for I in 1 .. Steps loop
+                  Car.Update (Player, (others => False), Dt / Float (Steps));
+               end loop;
+            elsif Mode = Driving then
                declare
                   Input : constant Car.Controls :=
                     (Throttle  => Keys.Up or else Keys.W,
@@ -962,8 +1166,10 @@ package body Game is
             & Clock_Image & (if Rain_Target > 0.0 then " rain" else "")
             & "   cars" & Natural'Image (Traffic.Count)
             & "  people" & Natural'Image (Pedestrians.Count) & ASCII.LF & " "
-            & (if Mode = Driving then
-                 "[arrows/WASD] drive  [space] handbrake  [C] camera"
+            & (if Visiting then
+                 "[arrows] look around  [W/S/A/D] walk  [V] back to the car"
+               elsif Mode = Driving then
+                 "[arrows/WASD] drive  [space] handbrake  [C] camera  [V] home window"
                else
                  "[W/S] throttle  [up/down] nose down/up  [left/right] bank")
             & "  [wheel/+/-] zoom  [F] "
@@ -1024,15 +1230,19 @@ package body Game is
          when 16#64#   => Keys.D := Down;
          when 16#20#   => Keys.Space := Down;
          when 16#66# =>                                       --  f
-            if Down then
+            if Down and then not Visiting then
                Toggle_Flight;
             end if;
-         when 16#30# .. 16#39# =>                             --  0 .. 9
+         when 16#76# =>                                       --  v
             if Down then
+               Toggle_Visit;
+            end if;
+         when 16#30# .. 16#39# =>                             --  0 .. 9
+            if Down and then not Visiting then
                Teleport (Places (Integer (K) - 16#30#));
             end if;
          when 16#68# =>                                       --  h: home
-            if Down then
+            if Down and then not Visiting then
                Teleport (Places (1));
             end if;
          when 16#6E# =>                                       --  n

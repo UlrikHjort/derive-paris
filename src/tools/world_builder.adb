@@ -1,4 +1,5 @@
 with Ada.Containers.Generic_Array_Sort;
+with Ada.Directories;
 with Ada.Containers.Hashed_Maps;
 with Ada.Containers.Vectors;
 with Ada.Streams.Stream_IO;
@@ -88,6 +89,10 @@ package body World_Builder is
    Mat_Signal     : constant := 28.0;   --  traffic light lamp, uv = (offset, group)
    Mat_Stone      : constant := 29.0;   --  dressed stone of monuments, uv in metres
    Mat_Lattice    : constant := 33.0;   --  wrought-iron lattice (Eiffel Tower)
+   Mat_Railing    : constant := 34.0;   --  balcony railing, uv in metres
+   Mat_Parquet    : constant := 35.0;   --  herringbone parquet, uv in metres
+   Mat_Plaster    : constant := 36.0;   --  painted plaster inside
+   Mat_Glass_Pane : constant := 16.0;   --  glass (as on the cars)
 
    Water_Level    : constant := -6.0;   --  the Seine below the quays
    Low_Level      : constant := -3.8;   --  the lower quays (bas-ports)
@@ -1784,6 +1789,249 @@ package body World_Builder is
       end;
    end Planar_Building;
 
+   ---------------------------------------------------------------------------
+   --  Home: an apartment you can visit (data/home/home.txt)
+   ---------------------------------------------------------------------------
+
+   Home_Id      : Osm_Id := -1;
+   Home_Facade  : P2 := (1.0, 0.0);     --  outward direction of the street facade
+   Home_Depth   : Long_Float := 10.0;
+   Home_North   : Boolean := True;      --  kitchen window at the north end
+   Output_Dir   : Ada.Strings.Unbounded.Unbounded_String;
+
+   procedure Read_Home (File_Name : String) is
+      F : Ada.Text_IO.File_Type;
+   begin
+      if not Ada.Directories.Exists (File_Name) then
+         return;
+      end if;
+      Ada.Text_IO.Open (F, Ada.Text_IO.In_File, File_Name);
+      while not Ada.Text_IO.End_Of_File (F) loop
+         declare
+            Line  : constant String := Ada.Strings.Fixed.Trim
+              (Ada.Text_IO.Get_Line (F), Ada.Strings.Both);
+            Space : constant Natural := Ada.Strings.Fixed.Index (Line, " ");
+         begin
+            if Line'Length > 0 and then Line (Line'First) /= '#' and then Space > 0 then
+               declare
+                  Key   : constant String := Line (Line'First .. Space - 1);
+                  Value : constant String := Ada.Strings.Fixed.Trim
+                    (Line (Space + 1 .. Line'Last), Ada.Strings.Both);
+               begin
+                  if Key = "osm_id" then
+                     Home_Id := Osm_Id'Value (Value);
+                  elsif Key = "facade" then
+                     Home_Facade := Compass (if Value = "east" then "E"
+                                             elsif Value = "west" then "W"
+                                             elsif Value = "north" then "N" else "S");
+                  elsif Key = "depth" then
+                     Home_Depth := Long_Float'Value (Value);
+                  elsif Key = "kitchen" then
+                     Home_North := Value = "north";
+                  end if;
+               end;
+            end if;
+         end;
+      end loop;
+      Ada.Text_IO.Close (F);
+   end Read_Home;
+
+   function Is_Home_Facade (A, C : P2) return Boolean is
+     (Dist (A, C) > 2.0
+      and then Edge_Out (A, C).X * Home_Facade.X + Edge_Out (A, C).Z * Home_Facade.Z > 0.85);
+
+   --  The top floor of the home building: real window openings with
+   --  balconies on the street side and the apartment behind them.
+   --  Y0 .. Y1 is the top floor band of the facade.
+   procedure Emit_Home (T : in out Tile_Builder; Outer : Ring; Y0, Y1, Floors, Seed : Long_Float) is
+      N       : constant Natural := Natural (Outer.Length);
+      Thick   : constant := 0.45;                  --  wall thickness
+      Y_Low   : constant Long_Float := Y0 + 0.25;  --  apartment floor
+      Y_High  : constant Long_Float := Y0 + 0.86 * (Y1 - Y0);
+      Y_Ceil  : constant Long_Float := Y1 - 0.2;
+      Inward  : constant P2 := (-Home_Facade.X, -Home_Facade.Z);
+      Along   : constant P2 := (-Home_Facade.Z, Home_Facade.X);
+      S_Min, S_Max : Long_Float := 0.0;
+      Line_D  : Long_Float := 0.0;                 --  facade line: dot (P, Facade)
+      Count   : Natural := 0;
+      Windows : Ada.Strings.Unbounded.Unbounded_String;   --  centres along the facade
+
+      procedure Plain (A, C : P2; Ya, Yb : Long_Float; Nrm : V3; Mat : Long_Float) is
+      begin
+         if Dist (A, C) > 0.01 and then Yb > Ya + 0.01 then
+            Solid_Quad (T, (A.X, Ya, A.Z), (C.X, Ya, C.Z), (C.X, Yb, C.Z), (A.X, Yb, A.Z),
+                        Nrm, (if Mat = Mat_Wall then -1.0 else 0.0),
+                        (if Mat = Mat_Wall then -1.0 else Dist (A, C)),
+                        (if Mat = Mat_Wall then Floors - 1.0 elsif Mat = Mat_Railing then 0.0 else Ya),
+                        (if Mat = Mat_Wall then Floors elsif Mat = Mat_Railing then 0.999 else Yb),
+                        Mat, Seed);
+         end if;
+      end Plain;
+
+      function Frame (S, D : Long_Float) return P2 is
+        (S * Along + (Line_D - D) * Home_Facade);
+   begin
+      --  The facade line and its extent along the street
+      for I in 0 .. N - 1 loop
+         declare
+            A : constant P2 := Outer (I);
+            C : constant P2 := Outer ((I + 1) mod N);
+         begin
+            if Is_Home_Facade (A, C) then
+               for P of Quad_P2'(A, C, A, C) loop
+                  declare
+                     SV : constant Long_Float := P.X * Along.X + P.Z * Along.Z;
+                  begin
+                     S_Min := (if Count = 0 then SV else Long_Float'Min (S_Min, SV));
+                     S_Max := (if Count = 0 then SV else Long_Float'Max (S_Max, SV));
+                     Line_D := Line_D + P.X * Home_Facade.X + P.Z * Home_Facade.Z;
+                     Count := Count + 1;
+                  end;
+               end loop;
+            end if;
+         end;
+      end loop;
+      if Count = 0 then
+         return;
+      end if;
+      Line_D := Line_D / Long_Float (Count);
+
+      --  Facade band with openings, reveals and balconies
+      for I in 0 .. N - 1 loop
+         declare
+            A    : constant P2 := Outer (I);
+            C    : constant P2 := Outer ((I + 1) mod N);
+            Len  : constant Long_Float := Dist (A, C);
+            Dir  : constant P2 := (1.0 / Long_Float'Max (Len, 0.01)) * (C - A);
+            Out_N : constant P2 := Edge_Out (A, C);
+            In_N : constant P2 := (-1.0) * Out_N;
+            Nrm  : constant V3 := (Out_N.X, 0.0, Out_N.Z);
+            Wins : constant Natural := Natural (Long_Float'Max (1.0, Long_Float'Rounding (Len / 3.3)));
+            Cell : constant Long_Float := Len / Long_Float (Wins);
+            Half : constant Long_Float := 0.18 * Cell;
+            Pos  : Long_Float := 0.0;
+         begin
+            if Is_Home_Facade (A, C) then
+               for K in 0 .. Wins - 1 loop
+                  declare
+                     Mid : constant Long_Float := (Long_Float (K) + 0.5) * Cell;
+                     L   : constant P2 := A + (Mid - Half) * Dir;
+                     R   : constant P2 := A + (Mid + Half) * Dir;
+                  begin
+                     --  wall from the previous opening to this one, full height
+                     Plain (A + Pos * Dir, L, Y0, Y1, Nrm, Mat_Wall);
+                     --  below and above the French window
+                     Plain (L, R, Y0, Y_Low, Nrm, Mat_Wall);
+                     Plain (L, R, Y_High, Y1, Nrm, Mat_Wall);
+                     --  reveals
+                     Plain (L, L + Thick * In_N, Y_Low, Y_High, (Dir.X, 0.0, Dir.Z), Mat_Plaster);
+                     Plain (R + Thick * In_N, R, Y_Low, Y_High, (-Dir.X, 0.0, -Dir.Z), Mat_Plaster);
+                     declare
+                        LI : constant P2 := L + Thick * In_N;
+                        RI : constant P2 := R + Thick * In_N;
+                     begin
+                        Solid_Quad (T, (L.X, Y_High, L.Z), (R.X, Y_High, R.Z),
+                                    (RI.X, Y_High, RI.Z), (LI.X, Y_High, LI.Z),
+                                    (0.0, -1.0, 0.0), 0.0, 1.0, 0.0, 1.0, Mat_Plaster, Seed);
+                        Solid_Quad (T, (L.X, Y_Low, L.Z), (R.X, Y_Low, R.Z),
+                                    (RI.X, Y_Low, RI.Z), (LI.X, Y_Low, LI.Z),
+                                    (0.0, 1.0, 0.0), 0.0, 1.0, 0.0, 1.0, Mat_Plaster, Seed);
+                     end;
+                     --  balcony: stone slab and wrought-iron railing
+                     declare
+                        BL : constant P2 := L - 0.35 * Dir;
+                        BR : constant P2 := R + 0.35 * Dir;
+                        D  : constant Long_Float := 0.7;
+                        FL : constant P2 := BL + D * Out_N;
+                        FR : constant P2 := BR + D * Out_N;
+                     begin
+                        Prism (T, Strip (BL, BR, Out_N, 0.0, D), Y_Low - 0.18, Y_Low, Mat_Quay, 0.8);
+                        Plain (FL, FR, Y_Low, Y_Low + 1.0, Nrm, Mat_Railing);
+                        Plain (BL, FL, Y_Low, Y_Low + 1.0, (-Dir.X, 0.0, -Dir.Z), Mat_Railing);
+                        Plain (FR, BR, Y_Low, Y_Low + 1.0, (Dir.X, 0.0, Dir.Z), Mat_Railing);
+                     end;
+                     Pos := Mid + Half;
+                     declare
+                        WC : constant P2 := A + Mid * Dir;
+                     begin
+                        Ada.Strings.Unbounded.Append
+                          (Windows, " " & Long_Float'Image (WC.X * Along.X + WC.Z * Along.Z));
+                     end;
+                  end;
+               end loop;
+               Plain (A + Pos * Dir, C, Y0, Y1, Nrm, Mat_Wall);
+            end if;
+         end;
+      end loop;
+
+      --  The apartment: one large room for now, waiting for the floor plan
+      declare
+         S0 : constant Long_Float := S_Min + Thick;
+         S1 : constant Long_Float := S_Max - Thick;
+         D0 : constant Long_Float := Thick;
+         D1 : constant Long_Float := Home_Depth;
+         P00 : constant P2 := Frame (S0, D0);
+         P10 : constant P2 := Frame (S1, D0);
+         P11 : constant P2 := Frame (S1, D1);
+         P01 : constant P2 := Frame (S0, D1);
+         Up  : constant V3 := (0.0, 1.0, 0.0);
+         --  The kitchen window: towards the north end of the back wall
+         North_Is_Max : constant Boolean := Along.Z < 0.0;
+         K_End : constant Long_Float :=
+           (if Home_North = North_Is_Max then S1 - 1.2 else S0 + 2.4);
+         KA : constant P2 := Frame (K_End - 1.2, D1);
+         KB : constant P2 := Frame (K_End, D1);
+         Back_N : constant V3 := (Home_Facade.X, 0.0, Home_Facade.Z);
+      begin
+         --  floor and ceiling
+         Solid_Quad (T, (P00.X, Y_Low, P00.Z), (P10.X, Y_Low, P10.Z), (P11.X, Y_Low, P11.Z),
+                     (P01.X, Y_Low, P01.Z), Up, S0, S1, D0, D1, Mat_Parquet, Seed);
+         Solid_Quad (T, (P00.X, Y_Ceil, P00.Z), (P10.X, Y_Ceil, P10.Z), (P11.X, Y_Ceil, P11.Z),
+                     (P01.X, Y_Ceil, P01.Z), (0.0, -1.0, 0.0), S0, S1, D0, D1, Mat_Plaster, Seed);
+         --  end walls
+         Plain (P00, P01, Y_Low, Y_Ceil, (Along.X, 0.0, Along.Z), Mat_Plaster);
+         Plain (P11, P10, Y_Low, Y_Ceil, (-Along.X, 0.0, -Along.Z), Mat_Plaster);
+         --  back wall with the kitchen window (glazed: the courtyard
+         --  behind is not modelled yet)
+         Plain (P01, KA, Y_Low, Y_Ceil, Back_N, Mat_Plaster);
+         Plain (KB, P11, Y_Low, Y_Ceil, Back_N, Mat_Plaster);
+         Plain (KA, KB, Y_Low, Y_Low + 1.0, Back_N, Mat_Plaster);
+         Plain (KA, KB, Y_Low + 2.2, Y_Ceil, Back_N, Mat_Plaster);
+         Solid_Quad (T, (KA.X, Y_Low + 1.0, KA.Z), (KB.X, Y_Low + 1.0, KB.Z),
+                     (KB.X, Y_Low + 2.2, KB.Z), (KA.X, Y_Low + 2.2, KA.Z),
+                     Back_N, 0.0, 1.0, 0.0, 1.0, Mat_Glass_Pane, Seed);
+         --  ceiling lights, lit at night like the street lamps
+         for Frac of Dist_Array'(0.25, 0.75) loop
+            declare
+               L : constant P2 := Frame (S0 + Frac * (S1 - S0), 0.5 * (D0 + D1));
+            begin
+               T.Lights.Append (Float (L.X));
+               T.Lights.Append (Float (Y_Ceil - 0.4));
+               T.Lights.Append (Float (L.Z));
+            end;
+         end loop;
+
+         --  Tell the game where the apartment is
+         declare
+            F : Ada.Text_IO.File_Type;
+            O : constant P2 := Frame (S0, 0.0);
+            function Img (V : Long_Float) return String is (" " & Long_Float'Image (V));
+         begin
+            Ada.Text_IO.Create (F, Ada.Text_IO.Out_File,
+                                Ada.Strings.Unbounded.To_String (Output_Dir) & "/home.txt");
+            Ada.Text_IO.Put_Line (F, "# origin_x origin_z along_x along_z in_x in_z length depth floor_y");
+            Ada.Text_IO.Put_Line
+              (F, Img (O.X) & Img (O.Z) & Img (Along.X) & Img (Along.Z) & Img (Inward.X)
+               & Img (Inward.Z) & Img (S1 - S0) & Img (D1) & Img (Y_Low));
+            Ada.Text_IO.Put_Line (F, "# window centres along the facade (same origin)");
+            Ada.Text_IO.Put_Line (F, "windows" & Ada.Strings.Unbounded.To_String (Windows)
+                                     & " origin" & Long_Float'Image (S0));
+            Ada.Text_IO.Close (F);
+            Ada.Text_IO.Put_Line ("  home apartment written");
+         end;
+      end;
+   end Emit_Home;
+
    type Roof_Kind is (Flat, Dome, Pyramid, Gabled, Hipped, Skillion, Planar_Gable);
 
    procedure Emit_Building (Index : Natural) is
@@ -1857,12 +2105,17 @@ package body World_Builder is
       Slope_Mat   : Long_Float := Mat_Mansard;
       Inset_D     : Long_Float := Mansard_Inset;
       Collides    : constant Boolean := BT /= "roof" and then not Boat;
+      Is_Home     : constant Boolean := B.Id = Home_Id and then not B.Is_Part;
+      Cut_Y       : Long_Float := 0.0;   --  home: the top floor starts here
       Eq_Radius   : constant Long_Float := Sqrt (abs Signed_Area (B.Shape.Outer) / Ada.Numerics.Pi);
    begin
       Min_H := (if Min_Tag >= 0.0 then Min_Tag
                 elsif Min_Level >= 0.0 then Min_Level * Floor_Height
                 else 0.0);
 
+      if Is_Home then
+         Roof_Lv := 0.0;   --  the apartment is the very top floor
+      end if;
       if Kind = Flat then
          if Roof_Lv < 0.0 then
             Roof_Lv := (if not Small and then not Religious and then Height < 0.0
@@ -1948,6 +2201,7 @@ package body World_Builder is
                  else Long_Float'Max (1.0, Long_Float'Rounding
                                         ((Wall_Top - Min_H) / 3.2)));
       Roof_Floors := Long_Float'Max (1.0, Long_Float'Rounding (Roof_Lv));
+      Cut_Y := Min_H + (Floors - 1.0) * (Wall_Top - Min_H) / Floors;
       Current_Roof_Colour := Parse_Colour (Tag (Tags, "roof:colour"));
 
       if Collides then
@@ -2082,7 +2336,13 @@ package body World_Builder is
                   U0   : constant Long_Float := (if Wins < 0.0 or else Blind then -1.0 else 0.0);
                begin
                   if Len > 0.01 then
-                     if Wall_Top > Min_H then
+                     if Is_Home and then Is_Outer and then Is_Home_Facade (A, C) then
+                        --  the top floor is built by Emit_Home
+                        Solid_Quad
+                          (T, (A.X, Min_H, A.Z), (C.X, Min_H, C.Z),
+                           (C.X, Cut_Y, C.Z), (A.X, Cut_Y, A.Z),
+                           Nrm, U0, Wins, 0.0, Floors - 1.0, Mat_Wall, Seed);
+                     elsif Wall_Top > Min_H then
                         Solid_Quad
                           (T, (A.X, Min_H, A.Z), (C.X, Min_H, C.Z),
                            (C.X, Wall_Top, C.Z), (A.X, Wall_Top, A.Z),
@@ -2136,6 +2396,10 @@ package body World_Builder is
          when Flat =>
             Flat_Roof (T, Inset_Outer, Inset_Holes, H, Mat_Roof, Seed);
       end case;
+
+      if Is_Home then
+         Emit_Home (T, B.Shape.Outer, Cut_Y, Wall_Top, Floors, Seed);
+      end if;
 
       --  Chimney stacks along the party walls
       if Style = Style_Haussmann and then not B.Is_Part and then Kind = Flat
@@ -3604,6 +3868,8 @@ package body World_Builder is
       Lamps      : Natural := 0;
    begin
       Model_Ref := M'Unrestricted_Access;
+      Output_Dir := Ada.Strings.Unbounded.To_Unbounded_String (Out_Dir);
+      Read_Home ("data/home/home.txt");
       DX0 := X0;
       DX1 := X1;
       DZ0 := Z0;

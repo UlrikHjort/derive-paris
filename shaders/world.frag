@@ -156,10 +156,12 @@ Surface wall(vec2 uv, float seed, vec3 N, vec3 V)
 
     vec2 fw = fwidth(uv);
 
-    if (style > 0.5) {   // monument: tall narrow windows
+    if (style > 0.5) {   // monument: tall narrow windows, floodlit at night
         float win = fpulse(0.42, 0.58, uv.x * 0.5, fw.x * 0.5)
                   * fpulse(0.15, 0.85, uv.y / 3.0, fw.y / 3.0);
         s.albedo = mix(s.albedo, toLinear(vec3(0.10, 0.10, 0.12)), win * 0.9);
+        s.emissive = toLinear(vec3(1.0, 0.85, 0.6)) * 0.3 * (1.0 - win * 0.8)
+                   * smoothstep(0.0, 1.0, 1.2 - uv.y / 12.0) * uNight;
         return s;
     }
 
@@ -506,6 +508,33 @@ void main()
         gAlpha = bars;
         vec3 iron = vec3(0.44, 0.39, 0.31) * (0.85 + 0.2 * noise(vWorld.xy * 0.3));
         s = Surface(toLinear(iron), 0.25, 30.0, toLinear(vec3(1.0, 0.72, 0.32)) * 1.6 * uNight, 0.0);
+    } else if (m == 34) {          // wrought-iron balcony railing (see-through)
+        vec2 fw = max(fwidth(vUV), vec2(1e-4));
+        float y = vUV.y - floor(vUV.y);                   // 0 .. 1 over the railing
+        float bars = fpulse(0.0, 0.18, vUV.x / 0.11, fw.x / 0.11);
+        float rails = fpulse(0.0, 0.07, y, fw.y) + fpulse(0.93, 1.0, y, fw.y)
+                    + fpulse(0.45, 0.5, y, fw.y);
+        // a band of scrolls between the lower rails
+        float scroll = step(0.08, y) * step(y, 0.44)
+                     * fpulse(0.42, 0.58, length(fract(vec2(vUV.x / 0.36, y / 0.36)) - 0.5) * 2.0, 0.05);
+        gAlpha = clamp(bars + rails + scroll, 0.0, 1.0);
+        gAlpha = mix(gAlpha, 0.55, smoothstep(0.3, 0.8, max(fw.x, fw.y) * 8.0));
+        s = Surface(toLinear(vec3(0.06, 0.06, 0.065)), 0.3, 40.0, vec3(0), 0.0);
+    } else if (m == 35) {          // herringbone parquet (point de Hongrie)
+        vec2 p = vUV;
+        vec2 q = vec2(p.x + p.y, p.x - p.y) * 0.7071;     // 45 degrees
+        float col = floor(q.x / 0.42);
+        float flip = mod(col, 2.0);
+        float along = (flip > 0.5 ? q.y : -q.y) + q.x;    // zig-zag offset
+        float plank = floor(along / 0.09);
+        float joint = max(fpulse(0.0, 0.04, q.x / 0.42, fwidth(q.x) / 0.42),
+                          fpulse(0.0, 0.08, along / 0.09, fwidth(along) / 0.09));
+        vec3 oak = mix(vec3(0.50, 0.33, 0.18), vec3(0.62, 0.43, 0.25), hash(vec2(col, plank)));
+        oak *= 0.9 + 0.15 * noise(vec2(along * 8.0, q.x * 40.0));
+        s = Surface(toLinear(mix(oak, oak * 0.55, joint * 0.7)), 0.35, 60.0, vec3(0), 0.0);
+    } else if (m == 36) {          // painted plaster
+        vec3 c = vec3(0.90, 0.87, 0.80) * (0.96 + 0.05 * noise(vWorld.xz * 2.0 + vWorld.y));
+        s = Surface(toLinear(c), 0.02, 8.0, vec3(0), 0.0);
     } else if (m == 30) {          // clothes
         s = Surface(toLinear(uCarColor), 0.0, 8.0, vec3(0), 0.2);
     } else if (m == 31) {          // skin
@@ -543,6 +572,11 @@ void main()
     float diffuse = s.wrap > 0.0 ? clamp((ndl + s.wrap) / (1.0 + s.wrap), 0.0, 1.0)
                                  : max(ndl, 0.0);
     vec3 ambient = mix(uAmbGround, uAmbSky, N.y * 0.5 + 0.5);
+    // Inside the apartment: daylight bouncing in through the windows
+    if (m == 35 || m == 36) {
+        float day = dot(uSunColor, vec3(0.3, 0.5, 0.2));
+        ambient = vec3(1.0, 0.93, 0.84) * (0.05 + 0.22 * day) + 0.3 * uAmbSky;
+    }
     // Cheap ambient occlusion: darker near the ground for walls
     float ao = (m >= 10 && m <= 11) ? 0.65 + 0.35 * smoothstep(0.0, 6.0, vWorld.y) : 1.0;
     if (m == 14) ao = 0.55 + 0.45 * clamp(N.y * 0.5 + 0.6, 0.0, 1.0);
