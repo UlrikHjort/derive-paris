@@ -42,6 +42,7 @@ package body Game is
    use Math3D;
    use Ada.Numerics.Elementary_Functions;
    use type Glib.Gint64;
+   use type Glib.Guint;
    use type Interfaces.C.unsigned;
    use type Interfaces.C.int;
    use type Gdk.Types.Gdk_Key_Type;
@@ -144,10 +145,13 @@ package body Game is
    Eye_S, Eye_D : Float := 0.0;      --  position in the apartment (m)
    Eye_Yaw   : Float := 0.0;
    Eye_Pitch : Float := 0.0;
+   Dragging  : Boolean := False;     --  mouse look: left button held
+   Drag_X, Drag_Y : Float := 0.0;
 
    --  Keys held down; mapped to car or plane controls each tick
    type Key_State is record
       Up, Down, Left, Right, W, S, A, D, Space : Boolean := False;
+      Page_Up, Page_Down : Boolean := False;
    end record;
    Keys : Key_State;
    Cam_Pos  : Vec3 := (0.0, 0.0, 0.0);
@@ -814,6 +818,10 @@ package body Game is
             & "  speed" & Integer'Image (Integer (Player.Speed * 3.6))
             & "  traffic" & Natural'Image (Traffic.Count)
             & "  people" & Natural'Image (Pedestrians.Count)
+            & (if Visiting then
+                 "  visiting at s" & Integer'Image (Integer (Eye_S * 10.0))
+                 & " d" & Integer'Image (Integer (Eye_D * 10.0)) & " (dm)"
+               else "")
             & (if Mode = Flying then
                  "  plane at" & Integer'Image (Integer (Aircraft.Pos.X))
                  & Integer'Image (Integer (Aircraft.Pos.Y))
@@ -965,20 +973,22 @@ package body Game is
       Fwd_Z : constant Float := -Cos (Eye_Yaw);
       DX, DZ : Float := 0.0;
    begin
+      --  arrows: walk and turn; A/D step sideways; PgUp/PgDn and the
+      --  mouse (drag) look up and down
       if Keys.Left then
          Eye_Yaw := Eye_Yaw - Turn;
       elsif Keys.Right then
          Eye_Yaw := Eye_Yaw + Turn;
       end if;
-      if Keys.Up then
+      if Keys.Page_Up then
          Eye_Pitch := Float'Min (1.2, Eye_Pitch + Turn);
-      elsif Keys.Down then
+      elsif Keys.Page_Down then
          Eye_Pitch := Float'Max (-1.2, Eye_Pitch - Turn);
       end if;
-      if Keys.W then
+      if Keys.W or else Keys.Up then
          DX := DX + Fwd_X * Walk;
          DZ := DZ + Fwd_Z * Walk;
-      elsif Keys.S then
+      elsif Keys.S or else Keys.Down then
          DX := DX - Fwd_X * Walk;
          DZ := DZ - Fwd_Z * Walk;
       end if;
@@ -1167,7 +1177,8 @@ package body Game is
             & "   cars" & Natural'Image (Traffic.Count)
             & "  people" & Natural'Image (Pedestrians.Count) & ASCII.LF & " "
             & (if Visiting then
-                 "[arrows] look around  [W/S/A/D] walk  [V] back to the car"
+                 "[arrows/W/S] walk and turn  [A/D] step aside  [PgUp/PgDn or mouse drag] look"
+                 & "  [V] back to the car"
                elsif Mode = Driving then
                  "[arrows/WASD] drive  [space] handbrake  [C] camera  [V] home window"
                else
@@ -1253,11 +1264,21 @@ package body Game is
             if Down then
                Rain_Target := (if Rain_Target > 0.0 then 0.0 else 1.0);
             end if;
-         when 16#2B# | 16#3D# | 16#FFAB# | 16#FF55# =>        --  + = keypad+ PgUp
+         when 16#FF55# =>                                     --  PgUp
+            Keys.Page_Up := Down;
+            if Down and then not Visiting then
+               Zoom_By (1.0 / 1.25);
+            end if;
+         when 16#FF56# =>                                     --  PgDn
+            Keys.Page_Down := Down;
+            if Down and then not Visiting then
+               Zoom_By (1.25);
+            end if;
+         when 16#2B# | 16#3D# | 16#FFAB# =>                   --  + = keypad+
             if Down then
                Zoom_By (1.0 / 1.25);
             end if;
-         when 16#2D# | 16#FFAD# | 16#FF56# =>                 --  - keypad- PgDn
+         when 16#2D# | 16#FFAD# =>                            --  - keypad-
             if Down then
                Zoom_By (1.25);
             end if;
@@ -1308,6 +1329,50 @@ package body Game is
       return True;
    end Key_Release;
 
+   --  Mouse: drag with the left button to look around in the apartment
+   function Button_Press
+     (Self  : access Gtk.Widget.Gtk_Widget_Record'Class;
+      Event : Gdk.Event.Gdk_Event_Button) return Boolean
+   is
+      pragma Unreferenced (Self);
+   begin
+      if Event.Button = 1 then
+         Dragging := True;
+         Drag_X := Float (Event.X);
+         Drag_Y := Float (Event.Y);
+      end if;
+      return True;
+   end Button_Press;
+
+   function Button_Release
+     (Self  : access Gtk.Widget.Gtk_Widget_Record'Class;
+      Event : Gdk.Event.Gdk_Event_Button) return Boolean
+   is
+      pragma Unreferenced (Self);
+   begin
+      if Event.Button = 1 then
+         Dragging := False;
+      end if;
+      return True;
+   end Button_Release;
+
+   function Motion
+     (Self  : access Gtk.Widget.Gtk_Widget_Record'Class;
+      Event : Gdk.Event.Gdk_Event_Motion) return Boolean
+   is
+      pragma Unreferenced (Self);
+      X : constant Float := Float (Event.X);
+      Y : constant Float := Float (Event.Y);
+   begin
+      if Dragging and then Visiting then
+         Eye_Yaw := Eye_Yaw - (X - Drag_X) * 0.004;
+         Eye_Pitch := Float'Max (-1.2, Float'Min (1.2, Eye_Pitch + (Y - Drag_Y) * 0.004));
+      end if;
+      Drag_X := X;
+      Drag_Y := Y;
+      return True;
+   end Motion;
+
    --  Mouse wheel: zoom the camera in and out
    function Scroll
      (Self  : access Gtk.Widget.Gtk_Widget_Record'Class;
@@ -1346,8 +1411,13 @@ package body Game is
       Window.On_Destroy (On_Destroy'Access);
       Window.On_Key_Press_Event (Key_Press'Access);
       Window.On_Key_Release_Event (Key_Release'Access);
-      Window.Add_Events (Gdk.Event.Scroll_Mask or Gdk.Event.Smooth_Scroll_Mask);
+      Window.Add_Events (Gdk.Event.Scroll_Mask or Gdk.Event.Smooth_Scroll_Mask
+                         or Gdk.Event.Button_Press_Mask or Gdk.Event.Button_Release_Mask
+                         or Gdk.Event.Button_Motion_Mask);
       Window.On_Scroll_Event (Scroll'Access);
+      Window.On_Button_Press_Event (Button_Press'Access);
+      Window.On_Button_Release_Event (Button_Release'Access);
+      Window.On_Motion_Notify_Event (Motion'Access);
 
       Gtk.Overlay.Gtk_New (Overlay);
       Window.Add (Overlay);

@@ -3462,14 +3462,39 @@ package body World_Builder is
 
    Placed_Signals : Ring;
 
+   --  True when P lies on the carriageway of any road (not the pavement)
+   function On_Carriageway (P : P2) return Boolean is
+   begin
+      for L of Lines loop
+         if L.Group = Road and then not L.Low then
+            declare
+               X0, X1, Z0, Z1 : Long_Float;
+            begin
+               Bounds (L.Pts, X0, X1, Z0, Z1);
+               if P.X > X0 - 20.0 and then P.X < X1 + 20.0
+                 and then P.Z > Z0 - 20.0 and then P.Z < Z1 + 20.0
+               then
+                  for I in L.Pts.First_Index .. L.Pts.Last_Index - 1 loop
+                     if Segment_Distance (P, L.Pts (I), L.Pts (I + 1)) < L.Width / 2.0 + 0.3 then
+                        return True;
+                     end if;
+                  end loop;
+               end if;
+            end;
+         end if;
+      end loop;
+      return False;
+   end On_Carriageway;
+
    --  A pole at the right-hand kerb for traffic moving along Travel, its
    --  three lamps facing the oncoming cars.  The lamps carry their phase
    --  offset and direction group (east-west or north-south) in uv, the
    --  shader and the traffic use the same timing.
-   procedure Signal_Pole (Node : P2; Travel : P2; Half_Width, Offset : Long_Float) is
+   procedure Signal_Pole (Node : P2; Travel : P2; Half_Width, Offset : Long_Float;
+                          Kerb : Long_Float) is
       Right  : constant P2 := (-Travel.Z, Travel.X);
       Face   : constant P2 := (-1.0) * Travel;
-      Pos    : constant P2 := Node + (Half_Width + 0.6) * Right;
+      Pos    : constant P2 := Node + (Half_Width + Kerb) * Right;
       Group  : constant Long_Float :=
         (if abs Travel.X >= abs Travel.Z then 0.0 else 1.0);
       T      : Tile_Builder renames Tile_At (Pos).all;
@@ -3527,14 +3552,32 @@ package body World_Builder is
                         for Sign of Dist_Array'(1.0, -1.0) loop
                            declare
                               Travel : constant P2 := Sign * Dir;
-                              Pos    : constant P2 :=
-                                L.Pts (I) + (Half + 0.6) * P2'(-Travel.Z, Travel.X);
+                              Right  : constant P2 := (-Travel.Z, Travel.X);
                            begin
-                              if In_Data (Pos.X, Pos.Z)
-                                and then (if Sign > 0.0 then L.Oneway >= 0 and then Kind /= 2
-                                          else L.Oneway <= 0 and then Kind /= 1)
+                              if (if Sign > 0.0 then L.Oneway >= 0 and then Kind /= 2
+                                  else L.Oneway <= 0 and then Kind /= 1)
                               then
-                                 Signal_Pole (L.Pts (I), Travel, Half, Off);
+                                 --  on the pavement: step outwards until we leave
+                                 --  every carriageway (signals tagged on a junction
+                                 --  node would otherwise stand in the crossing road)
+                                 --  (and back along the approach: a pole stands at
+                                 --  the corner before the junction)
+                                 Search :
+                                 for Back of Dist_Array'(0.0, 3.0, 6.0, 10.0) loop
+                                    for Kerb of Dist_Array'(0.6, 1.5, 2.5, 3.5) loop
+                                       declare
+                                          Base : constant P2 := L.Pts (I) - Back * Travel;
+                                          Pos  : constant P2 := Base + (Half + Kerb) * Right;
+                                       begin
+                                          if not On_Carriageway (Pos) then
+                                             if In_Data (Pos.X, Pos.Z) then
+                                                Signal_Pole (Base, Travel, Half, Off, Kerb);
+                                             end if;
+                                             exit Search;
+                                          end if;
+                                       end;
+                                    end loop;
+                                 end loop Search;
                               end if;
                            end;
                         end loop;
