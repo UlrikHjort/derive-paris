@@ -1,0 +1,11 @@
+project Tools is
+   for Source_Dirs use ("src/common", "src/tools");
+   for Object_Dir use "obj/tools";
+   for Exec_Dir use "bin";
+   for Main use ("osm2tiles.adb");
+
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2012", "-gnatwa", "-gnatwl", "-gnatyN");
+   end Compiler;
+end Tools;
