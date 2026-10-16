@@ -77,6 +77,9 @@ So far: `traffic`, `pedestrians` (1.0 = normal), `volume` (0 .. 1),
 - `shaders`: facades, windows, roofs, water and lighting are drawn
   procedurally in GLSL, there are no textures.
 
+`data/` holds a few hand-made details that `osm2tiles` adds to the
+OpenStreetMap data.
+
 Debug options for screenshots: `PARIS_SHOT=file.ppm`, `PARIS_SPAWN`,
 `PARIS_CAM`, `PARIS_DRONE`, `PARIS_FLY`, `PARIS_TIME`, `PARIS_RAIN`,
 `PARIS_ZOOM`, `PARIS_TILES`, `PARIS_TELEPORT`, `PARIS_WAV`, `PARIS_COMPASS_PNG`, `PARIS_NAV`, `PARIS_MAP_PNG`, `PARIS_PROFILE` (see `src/game/game.adb`).

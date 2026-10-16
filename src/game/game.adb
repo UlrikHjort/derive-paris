@@ -1023,7 +1023,12 @@ package body Game is
          Visiting := False;
          World.Set_Radius (3);
          Pending_Load := True;
-      elsif Home.Known and then Mode = Driving then
+      --  a hidden place: only from close by, with the car (nearly) stopped
+      elsif Home.Known and then Mode = Driving and then abs Player.Speed < 3.0
+        and then (Player.X - (Home.Origin.X + Home.Length / 2.0 * Home.Along.X)) ** 2
+                 + (Player.Z - (Home.Origin.Z + Home.Length / 2.0 * Home.Along.Z)) ** 2
+                 < 150.0 ** 2
+      then
          Visiting := True;
          Eye_S := Home.Length / 2.0;
          --  the window nearest the middle of the facade
@@ -1364,7 +1369,7 @@ package body Game is
                  "[arrows/W/S] walk and turn  [A/D] step aside  [PgUp/PgDn or mouse drag] look"
                  & "  [K] kitchen window  [V] back to the car"
                elsif Mode = Driving then
-                 "[arrows/WASD] drive  [space] handbrake  [C] camera  [V] home window"
+                 "[arrows/WASD] drive  [space] handbrake  [C] camera"
                else
                  "[W/S] throttle  [up/down] nose down/up  [left/right] bank")
             & "  [wheel/+/-] zoom  [F] "
