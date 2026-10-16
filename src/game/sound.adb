@@ -219,6 +219,9 @@ package body Sound is
    Engine_Phase, Prop_Phase : Float := 0.0;
    Rpm_Now                  : Float := 850.0;
    Rumble, Road, Wind, Rain_F, Engine_Tone, Engine_Grit : Lowpass;
+   Engine_Tone2, Road2, Wind2 : Lowpass;   --  second stages: softer roll-off
+   Wobble   : Float := 0.0;                --  slow random drift of the revs
+   Wobble_F : Lowpass;
    Rain_Hp                  : Lowpass;
    Next_Pass, Next_Horn, Next_Bird : Float := 1.0;
    Bell_Wait                : Float := 0.0;
@@ -305,28 +308,33 @@ package body Sound is
             case P.Mode is
                when Driving =>
                   --  Engine: a four-cylinder fires twice per revolution
-                  Rpm_Now := Rpm_Now + (P.Rpm - Rpm_Now) * 0.0006;
+                  --  Engine as heard from inside the car: a soft, low hum
+                  --  whose revs drift a little, never a bright buzz
+                  Rpm_Now := Rpm_Now + (P.Rpm - Rpm_Now) * 0.0004;
+                  Wobble := Step (Wobble_F, Noise, 0.7);
                   declare
-                     F0 : constant Float := Rpm_Now / 60.0 * 2.0;
+                     F0 : constant Float := Rpm_Now / 60.0 * 2.0 * (1.0 + 2.5 * Wobble);
                      Ph : Float;
                      E  : Float;
                   begin
                      Engine_Phase := Engine_Phase + F0 / Float (Rate);
                      Engine_Phase := Engine_Phase - Float'Floor (Engine_Phase);
                      Ph := Two_Pi * Engine_Phase;
-                     E := Sin (Ph) + 0.6 * Sin (2.0 * Ph + 0.4) + 0.4 * Sin (3.0 * Ph + 1.3)
-                       + 0.25 * Sin (4.0 * Ph + 2.1) + 0.15 * Sin (0.5 * Ph);
-                     E := E + Step (Engine_Grit, Noise, 300.0 + F0 * 4.0) * (1.5 + 3.0 * P.Load);
-                     E := Step (Engine_Tone, E, 250.0 + 900.0 * P.Load + F0 * 2.0);
-                     S := E * (0.07 + 0.11 * P.Load);
+                     E := Sin (Ph) + 0.4 * Sin (2.0 * Ph + 0.4) + 0.15 * Sin (3.0 * Ph + 1.3)
+                       + 0.35 * Sin (0.5 * Ph);
+                     E := E + Step (Engine_Grit, Noise, 120.0 + F0 * 1.2) * (0.5 + 0.8 * P.Load);
+                     E := Step (Engine_Tone, E, 160.0 + 260.0 * P.Load + F0 * 1.2);
+                     E := Step (Engine_Tone2, E, 220.0 + 300.0 * P.Load + F0 * 1.2);
+                     S := E * (0.06 + 0.06 * P.Load);
                      L := L + S;
                      R := R + S;
                   end;
-                  --  tyres on the road and wind
-                  S := Step (Road, Noise, 400.0) * 1.4 * Float'Min (1.0, P.Speed / 25.0);
+                  --  tyres on the road and wind, muffled by the car body
+                  S := Step (Road2, Step (Road, Noise, 260.0), 260.0) * 1.6
+                    * Float'Min (1.0, P.Speed / 25.0);
                   L := L + S;
                   R := R + S;
-                  S := Step (Wind, Noise, 2500.0) * 0.08 * (P.Speed / 40.0) ** 2;
+                  S := Step (Wind2, Step (Wind, Noise, 900.0), 900.0) * 0.07 * (P.Speed / 40.0) ** 2;
                   L := L + S;
                   R := R + S;
                when Flying =>
