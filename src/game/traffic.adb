@@ -47,6 +47,17 @@ package body Traffic is
    function Rnd return Float is (Ada.Numerics.Float_Random.Random (Gen));
 
 
+   function Nearest (X, Z : Float) return Float is
+      Best : Float := Float'Last;
+   begin
+      for A of Agents loop
+         if A.Active then
+            Best := Float'Min (Best, (A.X - X) ** 2 + (A.Z - Z) ** 2);
+         end if;
+      end loop;
+      return (if Best = Float'Last then Best else Sqrt (Best));
+   end Nearest;
+
    function Count return Natural is
       N : Natural := 0;
    begin

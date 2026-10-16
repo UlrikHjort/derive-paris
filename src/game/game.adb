@@ -24,6 +24,7 @@ with Gtk.Widget;
 with Gtk.Window;
 
 with Car;
+with Compass;
 with Geo;
 with GL;
 with GL_Area;
@@ -33,6 +34,7 @@ with Plane;
 with Rain;
 with Road_Network;
 with Shaders;
+with Sound;
 with Traffic;
 with World;
 
@@ -86,6 +88,9 @@ package body Game is
    Sign    : Gtk.Label.Gtk_Label;      --  street name, like a Paris plaque
 
    Show_Street  : Boolean := True;     --  N toggles
+   Show_Compass : Boolean := True;     --  G toggles compass and position
+   Compass_Widget : Gtk.Widget.Gtk_Widget;
+   Last_Hour    : Integer := -1;       --  church bells strike the hours
    Announce       : Ada.Strings.Unbounded.Unbounded_String;   --  shown on the
    Announce_Timer : Float := 0.0;                             --  plaque briefly
    Pending_Load   : Boolean := False;
@@ -878,6 +883,9 @@ package body Game is
         and then Frame_Number = Integer'Value (Env ("PARIS_SHOT_FRAME", "90"))
       then
          Save_Screenshot (Env ("PARIS_SHOT"), W, H);
+         if Env ("PARIS_COMPASS_PNG") /= "" then
+            Compass.Save_Png (Env ("PARIS_COMPASS_PNG"));
+         end if;
          Ada.Text_IO.Put_Line
            ("frames:" & Natural'Image (Frame_Number) & "  avg fps:"
             & Integer'Image (Integer (Float (Frame_Number) / Time))
@@ -1144,6 +1152,68 @@ package body Game is
       return HH (2 .. HH'Last) & ":" & MM (3 .. 4);
    end Clock_Image;
 
+   --  Engine revolutions from a simple five-speed gearbox
+   function Engine_Rpm (Speed_Kmh : Float; Throttle : Boolean) return Float is
+      Tops : constant array (1 .. 5) of Float := (25.0, 45.0, 70.0, 100.0, 140.0);
+      Low  : Float := 0.0;
+   begin
+      if Speed_Kmh < 2.0 then
+         return (if Throttle then 1800.0 else 850.0);
+      end if;
+      for G in Tops'Range loop
+         if Speed_Kmh < Tops (G) or else G = Tops'Last then
+            return (if G = 1 then 1000.0 else 2000.0)
+              + Float'Min (1.0, (Speed_Kmh - Low) / (Tops (G) - Low)) * 3800.0;
+         end if;
+         Low := Tops (G);
+      end loop;
+      return 850.0;
+   end Engine_Rpm;
+
+   --  Compass, position read-out and sound, once per frame
+   procedure Update_Senses is
+      Look  : constant Vec3 := Cam_Look - Cam_Pos;
+      Head  : constant Float := Arctan (Look.X, -Look.Z);
+      Where : constant Vec3 := (if Visiting then Eye_Position else Focus);
+      Lat, Lon : Long_Float;
+      Ear_Y : constant Float :=
+        (if Visiting then Home.Floor_Y + 1.6 elsif Mode = Flying then Aircraft.Pos.Y else 1.2);
+   begin
+      Geo.To_Lat_Lon (Long_Float (Where.X), Long_Float (Where.Z), Lat, Lon);
+      if Show_Compass then
+         Compass.Update (Head, Lat, Lon, (if Mode = Flying and then not Visiting
+                                           then Aircraft.Pos.Y else -1.0));
+      end if;
+
+      Sound.Set
+        ((Mode     => (if Visiting then Sound.Visiting
+                       elsif Mode = Flying then Sound.Flying else Sound.Driving),
+          Rpm      => Engine_Rpm (abs Player.Speed * 3.6, Keys.Up or else Keys.W),
+          Load     => (if Mode = Flying then Aircraft.Throttle
+                       elsif Keys.Up or else Keys.W then 1.0 else 0.15),
+          Speed    => (if Mode = Flying then Aircraft.Speed else abs Player.Speed),
+          Altitude => Ear_Y,
+          Rain     => Rain_Amount,
+          Night    => Night,
+          Traffic  => Float'Max (0.0, 1.0 - Traffic.Nearest (Where.X, Where.Z) / 60.0)));
+
+      --  The hour strikes (from Saint-Sulpice, louder the nearer you are)
+      declare
+         H : constant Integer := Integer (Float'Floor (Hour));
+         SX, SZ : Long_Float;
+      begin
+         if Last_Hour >= 0 and then H /= Last_Hour and then Night < 0.9 then
+            Geo.To_Local (48.85100, 2.33480, SX, SZ);
+            declare
+               D : constant Float := Sqrt ((Where.X - Float (SX)) ** 2 + (Where.Z - Float (SZ)) ** 2);
+            begin
+               Sound.Bells ((if H mod 12 = 0 then 12 else H mod 12), 1.0 / (1.0 + D / 250.0));
+            end;
+         end if;
+         Last_Hour := H;
+      end;
+   end Update_Senses;
+
    function Tick
      (Widget      : not null access Gtk.Widget.Gtk_Widget_Record'Class;
       Frame_Clock : not null access Gdk.Frame_Clock.Gdk_Frame_Clock_Record'Class)
@@ -1279,7 +1349,7 @@ package body Game is
                  "[W/S] throttle  [up/down] nose down/up  [left/right] bank")
             & "  [wheel/+/-] zoom  [F] "
             & (if Mode = Driving then "fly" else "land and drive")
-            & "  [T] +1 hour  [P] rain  [N] street names  [1-0] places  [H] home  [R] reset </span>");
+            & "  [T] +1 hour  [P] rain  [N] street names  [G] compass  [M] sound  [1-0] places  [H] home  [R] reset </span>");
       end if;
 
       --  Street name sign: a few times a second, and only touch the label
@@ -1308,6 +1378,10 @@ package body Game is
                end if;
             end if;
          end;
+      end if;
+
+      if Ready then
+         Update_Senses;
       end if;
 
       Area.Queue_Render;
@@ -1353,6 +1427,19 @@ package body Game is
          when 16#68# =>                                       --  h: home
             if Down and then not Visiting then
                Teleport (Places (1));
+            end if;
+         when 16#67# =>                                       --  g
+            if Down then
+               Show_Compass := not Show_Compass;
+               if Show_Compass then
+                  Compass_Widget.Show_All;
+               else
+                  Compass_Widget.Hide;
+               end if;
+            end if;
+         when 16#6D# =>                                       --  m
+            if Down then
+               Sound.Toggle_Mute;
             end if;
          when 16#6E# =>                                       --  n
             if Down then
@@ -1557,6 +1644,9 @@ package body Game is
       end;
       Overlay.Add_Overlay (Sign);
 
+      Compass_Widget := Compass.Create;
+      Overlay.Add_Overlay (Compass_Widget);
+
       Gtk.Label.Gtk_New (Credit);
       Credit.Set_Markup
         ("<span size='small' foreground='white' background='#00000088'>"
@@ -1571,7 +1661,12 @@ package body Game is
       pragma Unreferenced (Id);
 
       Window.Show_All;
+      --  no sound when making screenshots, unless asked for
+      if Env ("PARIS_SHOT") = "" or else Env ("PARIS_SOUND") /= "" then
+         Sound.Start;
+      end if;
       Gtk.Main.Main;
+      Sound.Stop;
    end Run;
 
 end Game;

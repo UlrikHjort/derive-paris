@@ -9,8 +9,8 @@ and pedestrians, day and night, and rain.
 
 ## Building
 
-Needs GNAT with gprbuild, GtkAda (GTK 3), libepoxy, curl and an OpenGL 3.3
-graphics card.
+Needs GNAT with gprbuild, GtkAda (GTK 3), libepoxy, zlib, PulseAudio
+(libpulse-simple), curl and an OpenGL 3.3 graphics card.
 
     make            # build the converter (bin/osm2tiles) and the game (bin/paris)
     make tiles      # download the OSM data if needed, build tiles/
@@ -37,6 +37,8 @@ fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 | T | one hour later |
 | P | rain |
 | N | street names |
+| G | compass and position (lat/lon, heading, altitude in flight) |
+| M | sound on/off |
 | 1 .. 9, 0 | jump to Saint-Sulpice, Notre-Dame, Louvre, Tour Eiffel, Arc de Triomphe, Sacré-Cœur, Panthéon, Concorde, Opéra, Bastille |
 | H | home: Place Saint-Sulpice (also where the game starts) |
 | R | reset |
@@ -51,7 +53,7 @@ fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 
 Debug options for screenshots: `PARIS_SHOT=file.ppm`, `PARIS_SPAWN`,
 `PARIS_CAM`, `PARIS_DRONE`, `PARIS_FLY`, `PARIS_TIME`, `PARIS_RAIN`,
-`PARIS_ZOOM`, `PARIS_TILES`, `PARIS_TELEPORT`, `PARIS_PROFILE` (see `src/game/game.adb`).
+`PARIS_ZOOM`, `PARIS_TILES`, `PARIS_TELEPORT`, `PARIS_WAV`, `PARIS_COMPASS_PNG`, `PARIS_PROFILE` (see `src/game/game.adb`).
 
 Map data © OpenStreetMap contributors, available under the Open Database
 License (ODbL).
