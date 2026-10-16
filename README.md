@@ -7,6 +7,21 @@ real outlines, heights and roofs, streets with markings and traffic
 lights, the Seine with its quays and bridges, trees, street lamps, traffic
 and pedestrians, day and night, and rain.
 
+## Written entirely by prompting
+
+This project started as a test of what Claude Code can do.  Every line of
+code, shader, script and documentation here was written by Claude (the
+Claude Opus 5.5 model, `claude-opus-5-5`, in Claude Code) from the author's
+prompts; the author has not written or edited a single line of code by
+hand.  The idea is to see how far one can get by describing, looking and
+giving feedback only: "drive me around Saint-Sulpice", "the traffic lights
+stand in the middle of the road", "the bells should be a little deeper",
+"the background sounds like ocean waves".
+
+The work happened in conversation: Claude wrote and built the code, checked
+the result with screenshots and recordings it made itself, and the author
+played the game and said what to change next.
+
 ## Building
 
 Needs GNAT with gprbuild, GtkAda (GTK 3), libepoxy, zlib, PulseAudio
