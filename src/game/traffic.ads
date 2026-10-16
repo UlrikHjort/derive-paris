@@ -28,6 +28,9 @@ package Traffic is
 
    function Count return Natural;
 
+   procedure Reset;
+   --  Remove all traffic; new cars arrive gradually, out of sight
+
    function Nearest (X, Z : Float) return Float;
    --  Distance to the nearest traffic car (m), Float'Last if none
 

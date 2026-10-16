@@ -1368,7 +1368,7 @@ package body Game is
                  "[W/S] throttle  [up/down] nose down/up  [left/right] bank")
             & "  [wheel/+/-] zoom  [F] "
             & (if Mode = Driving then "fly" else "land and drive")
-            & "  [T] +1 hour  [P] rain  [N] street names  [G] compass+map  [M] sound  [1-0] places  [Shift+1-0] navigate  [X] stop  [H] home  [R] reset </span>");
+            & "  [T] +1 hour  [P] rain  [N] street names  [G] compass+map  [M] sound  [1-0] places  [Shift+1-0] navigate  [X] stop  [J] clear traffic  [H] home  [R] reset </span>");
       end if;
 
       --  Street name sign: a few times a second, and only touch the label
@@ -1460,6 +1460,13 @@ package body Game is
          when 16#6D# =>                                       --  m
             if Down then
                Sound.Toggle_Mute;
+            end if;
+         when 16#6A# =>                                       --  j: clear traffic jams
+            if Down then
+               Traffic.Reset;
+               Announce := Ada.Strings.Unbounded.To_Unbounded_String ("Traffic cleared");
+               Announce_Timer := 1.5;
+               Street_Timer := 1.0;
             end if;
          when 16#78# =>                                       --  x: stop navigating
             if Down then

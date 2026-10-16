@@ -40,6 +40,7 @@ fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 | G | compass, position (lat/lon, heading, altitude) and minimap |
 | Shift + 1 .. 0 | GPS: navigate to that place (route through the real streets, turn-by-turn with street names) |
 | X | stop navigating |
+| J | clear the traffic around you (new cars arrive gradually) |
 | M | sound on/off |
 | 1 .. 9, 0 | jump to Saint-Sulpice, Notre-Dame, Louvre, Tour Eiffel, Arc de Triomphe, Sacré-Cœur, Panthéon, Concorde, Opéra, Bastille |
 | H | home: Place Saint-Sulpice (also where the game starts) |

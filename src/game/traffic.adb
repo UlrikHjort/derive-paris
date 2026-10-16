@@ -37,6 +37,7 @@ package body Traffic is
       Stuck    : Float := 0.0;
       Ghost    : Float := 0.0;      --  ignore others for a moment (deadlocks)
       Waiting  : Boolean := False;  --  stopped at a red light
+      Jammed   : Float := 0.0;      --  seconds without real progress
    end record;
 
    Agents : array (1 .. Max_Cars) of Agent;
@@ -64,6 +65,13 @@ package body Traffic is
       end loop;
       return (if Best = Float'Last then Best else Sqrt (Best));
    end Nearest;
+
+   procedure Reset is
+   begin
+      for A of Agents loop
+         A.Active := False;
+      end loop;
+   end Reset;
 
    function Count return Natural is
       N : Natural := 0;
@@ -328,12 +336,22 @@ package body Traffic is
 
       if A.Speed < 0.3 and then not A.Waiting then
          A.Stuck := A.Stuck + Dt;
+         A.Jammed := A.Jammed + Dt;
          if A.Stuck > 7.0 then
             A.Ghost := 2.5;
             A.Stuck := 0.0;
          end if;
+         --  hopelessly stuck (gridlock): leave the game, a new car will
+         --  come from elsewhere
+         if A.Jammed > 30.0 then
+            A.Active := False;
+            return;
+         end if;
       else
          A.Stuck := 0.0;
+         if A.Speed > 2.0 then
+            A.Jammed := 0.0;
+         end if;
       end if;
 
       --  Advance along the network
