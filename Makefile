@@ -17,10 +17,10 @@ BBOX  := 48.8360 2.3150 48.8660 2.3600
 all: tools game
 
 tools:
-	gprbuild -P tools.gpr -j0
+	gprbuild -p -P tools.gpr -j0
 
 game:
-	gprbuild -P paris.gpr -j0
+	gprbuild -p -P paris.gpr -j0
 
 $(OSM):
 	./scripts/download_osm.sh $(OSM) $(BBOX)
