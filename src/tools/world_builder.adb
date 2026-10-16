@@ -1543,14 +1543,17 @@ package body World_Builder is
       P0    : constant P2 := A + S0 * Dir;
       P1    : constant P2 := A + S1 * Dir;
       Top   : constant Long_Float := Y + 0.7 + 0.7 * H2;
-      Stack : constant Quad_P2 := Strip (P0, P1, Inward, -0.33, 0.66);
-      Pots  : constant Quad_P2 := Strip (P0 + 0.12 * Dir, P1 - 0.12 * Dir, Inward, -0.15, 0.30);
+      --  fully on the owner's side, so it never hangs over a lower neighbour
+      Stack : constant Quad_P2 := Strip (P0, P1, Inward, 0.02, 0.66);
+      Pots  : constant Quad_P2 := Strip (P0 + 0.12 * Dir, P1 - 0.12 * Dir, Inward, 0.2, 0.30);
       Seed  : constant Long_Float := Hash01 (Id, 300 + K);
    begin
       if S1 - S0 < 0.6 then
          return;
       end if;
-      Prism (T, Stack, Y - 0.3, Top, Mat_Chimney, Seed);
+      --  the stack rises out of the wall below, so it never floats over a
+      --  lower roof next to it
+      Prism (T, Stack, Y - 3.0, Top, Mat_Chimney, Seed);
       Prism (T, Pots, Top, Top + 0.42, Mat_Pots, Seed);
    end Chimney;
 
@@ -1797,6 +1800,9 @@ package body World_Builder is
    Home_Facade  : P2 := (1.0, 0.0);     --  outward direction of the street facade
    Home_Depth   : Long_Float := 10.0;
    Home_Height  : Long_Float := -1.0;   --  wall height of the building, if given
+   Rear_From    : Long_Float := -1.0;   --  depth where a lower rear wing starts
+   Rear_Height  : Long_Float := -1.0;   --  height of that rear wing
+   Kitchen_Off  : Long_Float := 1.8;    --  kitchen window centre from that end
    Home_North   : Boolean := True;      --  kitchen window at the north end
    Output_Dir   : Ada.Strings.Unbounded.Unbounded_String;
 
@@ -1829,6 +1835,12 @@ package body World_Builder is
                      Home_Depth := Long_Float'Value (Value);
                   elsif Key = "height" then
                      Home_Height := Long_Float'Value (Value);
+                  elsif Key = "rear_from" then
+                     Rear_From := Long_Float'Value (Value);
+                  elsif Key = "kitchen_offset" then
+                     Kitchen_Off := Long_Float'Value (Value);
+                  elsif Key = "rear_height" then
+                     Rear_Height := Long_Float'Value (Value);
                   elsif Key = "kitchen" then
                      Home_North := Value = "north";
                   end if;
@@ -1842,6 +1854,82 @@ package body World_Builder is
    function Is_Home_Facade (A, C : P2) return Boolean is
      (Dist (A, C) > 2.0
       and then Edge_Out (A, C).X * Home_Facade.X + Edge_Out (A, C).Z * Home_Facade.Z > 0.85);
+
+   function Faces_Inward (A, C : P2) return Boolean is
+     (Dist (A, C) > 1.0
+      and then Edge_Out (A, C).X * (-Home_Facade.X) + Edge_Out (A, C).Z * (-Home_Facade.Z) > 0.8);
+
+   --  Depth reference of the home facade: dot (P, Facade) along the street
+   function Facade_Line (Outer : Ring) return Long_Float is
+      N     : constant Natural := Natural (Outer.Length);
+      Sum   : Long_Float := 0.0;
+      Count : Natural := 0;
+   begin
+      for I in 0 .. N - 1 loop
+         declare
+            A : constant P2 := Outer (I);
+            C : constant P2 := Outer ((I + 1) mod N);
+         begin
+            if Is_Home_Facade (A, C) then
+               Sum := Sum + A.X * Home_Facade.X + A.Z * Home_Facade.Z
+                 + C.X * Home_Facade.X + C.Z * Home_Facade.Z;
+               Count := Count + 2;
+            end if;
+         end;
+      end loop;
+      return (if Count = 0 then 0.0 else Sum / Long_Float (Count));
+   end Facade_Line;
+
+   --  With rear_from / rear_height in home.txt, the home building is cut in
+   --  two: the street block (with the apartment) keeps its height, the
+   --  courtyard wing behind it becomes a separate, lower building.
+   procedure Split_Home is
+   begin
+      if Home_Id < 0 or else Rear_From <= 0.0 or else Rear_Height <= 0.0 then
+         return;
+      end if;
+      for I in Buildings.First_Index .. Buildings.Last_Index loop
+         if Buildings (I).Id = Home_Id and then not Buildings (I).Is_Part then
+            declare
+               B      : constant Building := Buildings (I);
+               Line_D : constant Long_Float := Facade_Line (B.Shape.Outer);
+               Inward : constant P2 := (-Home_Facade.X, -Home_Facade.Z);
+               Cut    : constant P2 := (Line_D - Rear_From) * Home_Facade;
+               Front, Rear : Building := B;
+            begin
+               Front.Shape.Outer := Clip_Half (B.Shape.Outer, Cut, Inward, -1.0);
+               Rear.Shape.Outer := Clip_Half (B.Shape.Outer, Cut, Inward, 1.0);
+               Front.Shape.Holes.Clear;
+               Rear.Shape.Holes.Clear;
+               for H of B.Shape.Holes loop
+                  declare
+                     M : constant P2 := Centroid (H);
+                  begin
+                     if (M.X - Cut.X) * Inward.X + (M.Z - Cut.Z) * Inward.Z > 0.0 then
+                        Rear.Shape.Holes.Append (H);
+                     else
+                        Front.Shape.Holes.Append (H);
+                     end if;
+                  end;
+               end loop;
+               if Front.Shape.Outer.Length >= 3 and then Rear.Shape.Outer.Length >= 3 then
+                  Front.Center := Centroid (Front.Shape.Outer);
+                  Bounds (Front.Shape.Outer, Front.X0, Front.X1, Front.Z0, Front.Z1);
+                  Rear.Id := B.Id + 1_000_000_000_000;
+                  Rear.Center := Centroid (Rear.Shape.Outer);
+                  Bounds (Rear.Shape.Outer, Rear.X0, Rear.X1, Rear.Z0, Rear.Z1);
+                  Rear.Tags.Include ("height", Long_Float'Image (Rear_Height));
+                  Rear.Tags.Exclude ("building:levels");
+                  Buildings.Replace_Element (I, Front);
+                  Buildings.Append (Rear);
+                  Ada.Text_IO.Put_Line ("  home: rear wing split off, height"
+                                        & Integer'Image (Integer (Rear_Height)) & " m");
+               end if;
+            end;
+            exit;
+         end if;
+      end loop;
+   end Split_Home;
 
    --  The top floor of the home building: real window openings with
    --  balconies on the street side and the apartment behind them.
@@ -1981,17 +2069,32 @@ package body World_Builder is
          D0 : constant Long_Float := Thick;
          North_Is_Max : constant Boolean := Along.Z < 0.0;
          Kitchen_S : constant Long_Float :=
-           (if Home_North = North_Is_Max then S1 - 1.8 else S0 + 1.8);
+           (if Home_North = North_Is_Max then S1 - Kitchen_Off else S0 + Kitchen_Off);
          --  the courtyard wall the kitchen looks through
          Well_Found : Boolean := False;
          WA, WB     : P2 := (0.0, 0.0);
          Best       : Long_Float := Long_Float'Last;
+         --  walls the apartment can look out of at the back: every wall of
+         --  a light well, and the outer back wall (over a lower rear wing);
+         --  stored as point pairs
+         Back : Ring;
       begin
          for H of Holes loop
             for I in 0 .. Natural (H.Length) - 1 loop
+               Back.Append (H (I));
+               Back.Append (H ((I + 1) mod Natural (H.Length)));
+            end loop;
+         end loop;
+         for I in 0 .. N - 1 loop
+            if Faces_Inward (Outer (I), Outer ((I + 1) mod N)) then
+               Back.Append (Outer (I));
+               Back.Append (Outer ((I + 1) mod N));
+            end if;
+         end loop;
+         for E in 0 .. Natural (Back.Length) / 2 - 1 loop
                declare
-                  A : constant P2 := H (I);
-                  C : constant P2 := H ((I + 1) mod Natural (H.Length));
+                  A : constant P2 := Back (2 * E);
+                  C : constant P2 := Back (2 * E + 1);
                   O : constant P2 := Edge_Out (A, C);
                   M : constant P2 := 0.5 * (A + C);
                   Score : constant Long_Float := abs (S_Of (M) - Kitchen_S) + D_Of (M);
@@ -2005,7 +2108,6 @@ package body World_Builder is
                      WB := C;
                   end if;
                end;
-            end loop;
          end loop;
 
          declare
@@ -2055,12 +2157,11 @@ package body World_Builder is
                Solid_Quad (T, (KA.X, Head, KA.Z), (KB.X, Head, KB.Z), (OB.X, Head, OB.Z),
                            (OA.X, Head, OA.Z), (0.0, -1.0, 0.0), 0.0, 1.0, 0.0, 1.0,
                            Mat_Plaster, Seed);
-               --  the well's walls at the top floor, the kitchen one with the opening
-               for H of Holes loop
-                  for I in 0 .. Natural (H.Length) - 1 loop
+               --  the back walls at the top floor, the kitchen one with the opening
+               for E in 0 .. Natural (Back.Length) / 2 - 1 loop
                      declare
-                        A : constant P2 := H (I);
-                        C : constant P2 := H ((I + 1) mod Natural (H.Length));
+                        A : constant P2 := Back (2 * E);
+                        C : constant P2 := Back (2 * E + 1);
                         O : constant P2 := Edge_Out (A, C);
                         N : constant V3 := (O.X, 0.0, O.Z);
                      begin
@@ -2079,7 +2180,6 @@ package body World_Builder is
                            Plain (A, C, Y0, Y1, N, Mat_Wall);
                         end if;
                      end;
-                  end loop;
                end loop;
             else
                Solid_Quad (T, (KA.X, Sill, KA.Z), (KB.X, Sill, KB.Z),
@@ -2434,7 +2534,9 @@ package body World_Builder is
                   U0   : constant Long_Float := (if Wins < 0.0 or else Blind then -1.0 else 0.0);
                begin
                   if Len > 0.01 then
-                     if Is_Home and then (not Is_Outer or else Is_Home_Facade (A, C)) then
+                     if Is_Home and then (not Is_Outer or else Is_Home_Facade (A, C)
+                                          or else Faces_Inward (A, C))
+                     then
                         --  the top floor is built by Emit_Home
                         Solid_Quad
                           (T, (A.X, Min_H, A.Z), (C.X, Min_H, C.Z),
@@ -4223,6 +4325,7 @@ package body World_Builder is
       Build_Sphere;
 
       Collect_Features;
+      Split_Home;
       Index_Buildings;
       Count_Node_Use;
       for R of River_Polys loop

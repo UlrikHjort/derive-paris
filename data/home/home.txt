@@ -6,10 +6,20 @@
 # depth        depth of the apartment behind the street facade, metres
 # kitchen      end of the back wall with the kitchen window (towards the
 #              courtyard): north or south
+# kitchen_offset  distance of the kitchen window from that end, metres
+#              (the apartment is about 24.7 m long: 12 is the middle)
 # height       height of the building up to the roof, metres (the top
 #              floor is the apartment; OSM only says 8 storeys)
+# rear_from    depth behind the street facade where the courtyard wing
+#              starts, metres; the kitchen window looks out over it
+# rear_height  height of that courtyard wing (lower than the street block:
+#              from the kitchen you looked over the roofs, towards the
+#              Tour Montparnasse being built, photo from about 1973)
 osm_id   976403
 facade   east
 depth    10.0
 kitchen  north
+kitchen_offset  1.8
 height   29.5
+rear_from    8.0
+rear_height  19.0

@@ -1050,9 +1050,14 @@ package body Game is
             New_S := Eye_S;
          end if;
          Eye_S := New_S;
-         --  through a French window you can step out onto the balcony
+         --  through a French window you can step out onto the balcony, and
+         --  at the kitchen window you can lean out
          Eye_D := Float'Max ((if At_Window (New_S) then -0.75 else 0.25),
-                             Float'Min (Home.Depth - 0.3, New_D));
+                             Float'Min ((if Home.Kitchen_S >= 0.0
+                                           and then abs (New_S - Home.Kitchen_S) < 0.45
+                                         then Home.Kitchen_D + 0.6
+                                         else Home.Depth - 0.3),
+                                        New_D));
       end;
    end Update_Visit;
 
