@@ -12,6 +12,9 @@ with Car;
 
 package Traffic is
 
+   procedure Create_Meshes;
+   --  Scooter and motorbike meshes (GL context current)
+
    procedure Update (Dt, Time : Float; Focus_X, Focus_Z, Focus_Heading : Float;
                      Player : Car.State);
    --  Time drives the traffic lights (the shader's uTime)

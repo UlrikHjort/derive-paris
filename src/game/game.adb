@@ -570,6 +570,7 @@ package body Game is
       Create_Shadow_Map;
       Car.Create_Mesh;
       Plane.Create_Mesh;
+      Traffic.Create_Meshes;
       Pedestrians.Create_Mesh;
       Rain.Create;
 
