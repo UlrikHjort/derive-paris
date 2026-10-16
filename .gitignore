@@ -4,3 +4,5 @@ tiles/*.bin
 tiles/world.txt
 data/osm/
 tiles/.log_*
+tiles.new/
+tiles.old/
