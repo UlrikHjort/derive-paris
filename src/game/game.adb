@@ -138,6 +138,8 @@ package body Game is
       Length, Depth  : Float := 0.0;
       Floor_Y        : Float := 0.0;
       Windows        : Natural := 0;
+      Kitchen_S      : Float := -1.0;    --  kitchen window, apartment coordinates
+      Kitchen_D      : Float := 0.0;
       Window_S       : Float_List := (others => 0.0);   --  centres, apartment coordinates
    end record;
    Home      : Home_Info;
@@ -388,7 +390,21 @@ package body Game is
             K    : Natural := 0;
             First : Natural := 0;
          begin
-            if Line'Length > 7 and then Line (Line'First .. Line'First + 6) = "windows" then
+            if Line'Length > 8 and then Line (Line'First .. Line'First + 7) = "kitchen " then
+               declare
+                  Rest  : constant String := Line (Line'First + 8 .. Line'Last);
+                  Space : Natural := Rest'First;
+               begin
+                  while Space <= Rest'Last and then Rest (Space) = ' ' loop
+                     Space := Space + 1;
+                  end loop;
+                  while Space <= Rest'Last and then Rest (Space) /= ' ' loop
+                     Space := Space + 1;
+                  end loop;
+                  Home.Kitchen_S := Float'Value (Rest (Rest'First .. Space - 1));
+                  Home.Kitchen_D := Float'Value (Rest (Space .. Rest'Last));
+               end;
+            elsif Line'Length > 7 and then Line (Line'First .. Line'First + 6) = "windows" then
                --  "windows s1 s2 ... origin s0": centres relative to the facade
                declare
                   Words : array (1 .. 20) of Float := (others => 0.0);
@@ -433,7 +449,8 @@ package body Game is
                            Along  => (V (3), 0.0, V (4)),
                            Inward => (V (5), 0.0, V (6)),
                            Length => V (7), Depth => V (8), Floor_Y => V (9),
-                           Windows => Home.Windows, Window_S => Home.Window_S);
+                           Windows => Home.Windows, Window_S => Home.Window_S,
+                           Kitchen_S => Home.Kitchen_S, Kitchen_D => Home.Kitchen_D);
                end if;
             end if;
          end;
@@ -968,6 +985,17 @@ package body Game is
       end if;
    end Toggle_Visit;
 
+   --  K: to the kitchen window, looking out into the courtyard
+   procedure Go_To_Kitchen is
+   begin
+      if Visiting and then Home.Kitchen_S >= 0.0 then
+         Eye_S := Home.Kitchen_S;
+         Eye_D := Home.Kitchen_D - 0.45;
+         Eye_Yaw := Arctan (Home.Inward.X, -Home.Inward.Z);
+         Eye_Pitch := 0.0;
+      end if;
+   end Go_To_Kitchen;
+
    --  Looking around and walking in the apartment
    procedure Update_Visit (Dt : Float) is
       Turn  : constant Float := 1.6 * Dt;
@@ -1084,6 +1112,10 @@ package body Game is
 
       if Ready and then Frame_Number = 2 and then Env ("PARIS_VISIT") /= "" and then not Visiting then
          Toggle_Visit;
+         if Env ("PARIS_KITCHEN") /= "" then
+            Go_To_Kitchen;
+            Eye_Pitch := Float'Value (Env ("PARIS_KITCHEN")) * Ada.Numerics.Pi / 180.0;
+         end if;
          if Env ("PARIS_VISIT_D") /= "" then
             Eye_D := Float'Value (Env ("PARIS_VISIT_D"));
          end if;
@@ -1184,7 +1216,7 @@ package body Game is
             & "  people" & Natural'Image (Pedestrians.Count) & ASCII.LF & " "
             & (if Visiting then
                  "[arrows/W/S] walk and turn  [A/D] step aside  [PgUp/PgDn or mouse drag] look"
-                 & "  [V] back to the car"
+                 & "  [K] kitchen window  [V] back to the car"
                elsif Mode = Driving then
                  "[arrows/WASD] drive  [space] handbrake  [C] camera  [V] home window"
                else
@@ -1249,6 +1281,10 @@ package body Game is
          when 16#66# =>                                       --  f
             if Down and then not Visiting then
                Toggle_Flight;
+            end if;
+         when 16#6B# =>                                       --  k
+            if Down then
+               Go_To_Kitchen;
             end if;
          when 16#76# =>                                       --  v
             if Down then

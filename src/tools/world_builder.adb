@@ -1846,7 +1846,8 @@ package body World_Builder is
    --  The top floor of the home building: real window openings with
    --  balconies on the street side and the apartment behind them.
    --  Y0 .. Y1 is the top floor band of the facade.
-   procedure Emit_Home (T : in out Tile_Builder; Outer : Ring; Y0, Y1, Floors, Seed : Long_Float) is
+   procedure Emit_Home (T : in out Tile_Builder; Outer : Ring; Holes : Ring_Vectors.Vector;
+                        Y0, Y1, Floors, Seed : Long_Float) is
       N       : constant Natural := Natural (Outer.Length);
       Thick   : constant := 0.45;                  --  wall thickness
       Y_Low   : constant Long_Float := Y0 + 0.25;  --  apartment floor
@@ -1858,6 +1859,7 @@ package body World_Builder is
       Line_D  : Long_Float := 0.0;                 --  facade line: dot (P, Facade)
       Count   : Natural := 0;
       Windows : Ada.Strings.Unbounded.Unbounded_String;   --  centres along the facade
+      Kitchen_Info : Ada.Strings.Unbounded.Unbounded_String;
 
       procedure Plain (A, C : P2; Ya, Yb : Long_Float; Nrm : V3; Mat : Long_Float) is
       begin
@@ -1967,42 +1969,128 @@ package body World_Builder is
          end;
       end loop;
 
-      --  The apartment: one large room for now, waiting for the floor plan
+      --  The apartment: one large room for now, waiting for the floor plan.
+      --  Its back wall stands against the courtyard (a light well in OSM)
+      --  nearest the kitchen end, where the kitchen window opens.
       declare
+         function S_Of (P : P2) return Long_Float is (P.X * Along.X + P.Z * Along.Z);
+         function D_Of (P : P2) return Long_Float is
+           (Line_D - (P.X * Home_Facade.X + P.Z * Home_Facade.Z));
          S0 : constant Long_Float := S_Min + Thick;
          S1 : constant Long_Float := S_Max - Thick;
          D0 : constant Long_Float := Thick;
-         D1 : constant Long_Float := Home_Depth;
-         P00 : constant P2 := Frame (S0, D0);
-         P10 : constant P2 := Frame (S1, D0);
-         P11 : constant P2 := Frame (S1, D1);
-         P01 : constant P2 := Frame (S0, D1);
-         Up  : constant V3 := (0.0, 1.0, 0.0);
-         --  The kitchen window: towards the north end of the back wall
          North_Is_Max : constant Boolean := Along.Z < 0.0;
-         K_End : constant Long_Float :=
-           (if Home_North = North_Is_Max then S1 - 1.2 else S0 + 2.4);
-         KA : constant P2 := Frame (K_End - 1.2, D1);
-         KB : constant P2 := Frame (K_End, D1);
-         Back_N : constant V3 := (Home_Facade.X, 0.0, Home_Facade.Z);
+         Kitchen_S : constant Long_Float :=
+           (if Home_North = North_Is_Max then S1 - 1.8 else S0 + 1.8);
+         --  the courtyard wall the kitchen looks through
+         Well_Found : Boolean := False;
+         WA, WB     : P2 := (0.0, 0.0);
+         Best       : Long_Float := Long_Float'Last;
       begin
-         --  floor and ceiling
-         Solid_Quad (T, (P00.X, Y_Low, P00.Z), (P10.X, Y_Low, P10.Z), (P11.X, Y_Low, P11.Z),
-                     (P01.X, Y_Low, P01.Z), Up, S0, S1, D0, D1, Mat_Parquet, Seed);
-         Solid_Quad (T, (P00.X, Y_Ceil, P00.Z), (P10.X, Y_Ceil, P10.Z), (P11.X, Y_Ceil, P11.Z),
-                     (P01.X, Y_Ceil, P01.Z), (0.0, -1.0, 0.0), S0, S1, D0, D1, Mat_Plaster, Seed);
-         --  end walls
-         Plain (P00, P01, Y_Low, Y_Ceil, (Along.X, 0.0, Along.Z), Mat_Plaster);
-         Plain (P11, P10, Y_Low, Y_Ceil, (-Along.X, 0.0, -Along.Z), Mat_Plaster);
-         --  back wall with the kitchen window (glazed: the courtyard
-         --  behind is not modelled yet)
-         Plain (P01, KA, Y_Low, Y_Ceil, Back_N, Mat_Plaster);
-         Plain (KB, P11, Y_Low, Y_Ceil, Back_N, Mat_Plaster);
-         Plain (KA, KB, Y_Low, Y_Low + 1.0, Back_N, Mat_Plaster);
-         Plain (KA, KB, Y_Low + 2.2, Y_Ceil, Back_N, Mat_Plaster);
-         Solid_Quad (T, (KA.X, Y_Low + 1.0, KA.Z), (KB.X, Y_Low + 1.0, KB.Z),
-                     (KB.X, Y_Low + 2.2, KB.Z), (KA.X, Y_Low + 2.2, KA.Z),
-                     Back_N, 0.0, 1.0, 0.0, 1.0, Mat_Glass_Pane, Seed);
+         for H of Holes loop
+            for I in 0 .. Natural (H.Length) - 1 loop
+               declare
+                  A : constant P2 := H (I);
+                  C : constant P2 := H ((I + 1) mod Natural (H.Length));
+                  O : constant P2 := Edge_Out (A, C);
+                  M : constant P2 := 0.5 * (A + C);
+                  Score : constant Long_Float := abs (S_Of (M) - Kitchen_S) + D_Of (M);
+               begin
+                  if Dist (A, C) >= 1.5 and then O.X * Inward.X + O.Z * Inward.Z > 0.8
+                    and then D_Of (M) > 4.0 and then D_Of (M) < 16.0 and then Score < Best
+                  then
+                     Best := Score;
+                     Well_Found := True;
+                     WA := A;
+                     WB := C;
+                  end if;
+               end;
+            end loop;
+         end loop;
+
+         declare
+            D_Back : constant Long_Float :=
+              (if Well_Found then 0.5 * (D_Of (WA) + D_Of (WB)) else Home_Depth);
+            D1  : constant Long_Float := D_Back - 0.3;   --  inside of the back wall
+            P00 : constant P2 := Frame (S0, D0);
+            P10 : constant P2 := Frame (S1, D0);
+            P11 : constant P2 := Frame (S1, D1);
+            P01 : constant P2 := Frame (S0, D1);
+            Up  : constant V3 := (0.0, 1.0, 0.0);
+            --  kitchen window centre: on the well wall, as near the kitchen end as fits
+            K_Lo : constant Long_Float :=
+              (if Well_Found then Long_Float'Min (S_Of (WA), S_Of (WB)) + 0.7 else Kitchen_S);
+            K_Hi : constant Long_Float :=
+              (if Well_Found then Long_Float'Max (S_Of (WA), S_Of (WB)) - 0.7 else Kitchen_S);
+            K_S  : constant Long_Float := Long_Float'Max (K_Lo, Long_Float'Min (K_Hi, Kitchen_S));
+            K_W  : constant Long_Float :=
+              (if Well_Found then Long_Float'Min (0.6, 0.5 * (K_Hi - K_Lo) + 0.4) else 0.6);
+            KA : constant P2 := Frame (K_S - K_W, D1);
+            KB : constant P2 := Frame (K_S + K_W, D1);
+            OA : constant P2 := Frame (K_S - K_W, D_Back);
+            OB : constant P2 := Frame (K_S + K_W, D_Back);
+            Back_N : constant V3 := (Home_Facade.X, 0.0, Home_Facade.Z);
+            Sill : constant Long_Float := Y_Low + 0.95;
+            Head : constant Long_Float := Y_Low + 2.25;
+         begin
+            --  floor and ceiling
+            Solid_Quad (T, (P00.X, Y_Low, P00.Z), (P10.X, Y_Low, P10.Z), (P11.X, Y_Low, P11.Z),
+                        (P01.X, Y_Low, P01.Z), Up, S0, S1, D0, D1, Mat_Parquet, Seed);
+            Solid_Quad (T, (P00.X, Y_Ceil, P00.Z), (P10.X, Y_Ceil, P10.Z), (P11.X, Y_Ceil, P11.Z),
+                        (P01.X, Y_Ceil, P01.Z), (0.0, -1.0, 0.0), S0, S1, D0, D1, Mat_Plaster, Seed);
+            --  end walls
+            Plain (P00, P01, Y_Low, Y_Ceil, (Along.X, 0.0, Along.Z), Mat_Plaster);
+            Plain (P11, P10, Y_Low, Y_Ceil, (-Along.X, 0.0, -Along.Z), Mat_Plaster);
+            --  back wall with the kitchen window
+            Plain (P01, KA, Y_Low, Y_Ceil, Back_N, Mat_Plaster);
+            Plain (KB, P11, Y_Low, Y_Ceil, Back_N, Mat_Plaster);
+            Plain (KA, KB, Y_Low, Sill, Back_N, Mat_Plaster);
+            Plain (KA, KB, Head, Y_Ceil, Back_N, Mat_Plaster);
+            if Well_Found then
+               --  an open window: reveals through the wall to the light well
+               Plain (KA, OA, Sill, Head, (Along.X, 0.0, Along.Z), Mat_Plaster);
+               Plain (OB, KB, Sill, Head, (-Along.X, 0.0, -Along.Z), Mat_Plaster);
+               Solid_Quad (T, (KA.X, Sill, KA.Z), (KB.X, Sill, KB.Z), (OB.X, Sill, OB.Z),
+                           (OA.X, Sill, OA.Z), Up, 0.0, 1.0, 0.0, 1.0, Mat_Stone, Seed);
+               Solid_Quad (T, (KA.X, Head, KA.Z), (KB.X, Head, KB.Z), (OB.X, Head, OB.Z),
+                           (OA.X, Head, OA.Z), (0.0, -1.0, 0.0), 0.0, 1.0, 0.0, 1.0,
+                           Mat_Plaster, Seed);
+               --  the well's walls at the top floor, the kitchen one with the opening
+               for H of Holes loop
+                  for I in 0 .. Natural (H.Length) - 1 loop
+                     declare
+                        A : constant P2 := H (I);
+                        C : constant P2 := H ((I + 1) mod Natural (H.Length));
+                        O : constant P2 := Edge_Out (A, C);
+                        N : constant V3 := (O.X, 0.0, O.Z);
+                     begin
+                        if A = WA and then C = WB then
+                           declare
+                              --  OA/OB ordered like A -> C
+                              First : constant P2 := (if Dist (A, OA) < Dist (A, OB) then OA else OB);
+                              Last  : constant P2 := (if Dist (A, OA) < Dist (A, OB) then OB else OA);
+                           begin
+                              Plain (A, First, Y0, Y1, N, Mat_Wall);
+                              Plain (Last, C, Y0, Y1, N, Mat_Wall);
+                              Plain (First, Last, Y0, Sill, N, Mat_Wall);
+                              Plain (First, Last, Head, Y1, N, Mat_Wall);
+                           end;
+                        else
+                           Plain (A, C, Y0, Y1, N, Mat_Wall);
+                        end if;
+                     end;
+                  end loop;
+               end loop;
+            else
+               Solid_Quad (T, (KA.X, Sill, KA.Z), (KB.X, Sill, KB.Z),
+                           (KB.X, Head, KB.Z), (KA.X, Head, KA.Z),
+                           Back_N, 0.0, 1.0, 0.0, 1.0, Mat_Glass_Pane, Seed);
+            end if;
+            Ada.Text_IO.Put_Line ("  home: courtyard " & (if Well_Found then "found" else "not found")
+                                  & ", depth" & Integer'Image (Integer (D_Back * 10.0)) & " dm");
+
+            Kitchen_Info := Ada.Strings.Unbounded.To_Unbounded_String
+              ("kitchen " & Long_Float'Image (K_S - S0) & " " & Long_Float'Image (D1));
          --  ceiling lights, lit at night like the street lamps
          for Frac of Dist_Array'(0.25, 0.75) loop
             declare
@@ -2029,8 +2117,10 @@ package body World_Builder is
             Ada.Text_IO.Put_Line (F, "# window centres along the facade (same origin)");
             Ada.Text_IO.Put_Line (F, "windows" & Ada.Strings.Unbounded.To_String (Windows)
                                      & " origin" & Long_Float'Image (S0));
+            Ada.Text_IO.Put_Line (F, Ada.Strings.Unbounded.To_String (Kitchen_Info));
             Ada.Text_IO.Close (F);
             Ada.Text_IO.Put_Line ("  home apartment written");
+         end;
          end;
       end;
    end Emit_Home;
@@ -2344,7 +2434,7 @@ package body World_Builder is
                   U0   : constant Long_Float := (if Wins < 0.0 or else Blind then -1.0 else 0.0);
                begin
                   if Len > 0.01 then
-                     if Is_Home and then Is_Outer and then Is_Home_Facade (A, C) then
+                     if Is_Home and then (not Is_Outer or else Is_Home_Facade (A, C)) then
                         --  the top floor is built by Emit_Home
                         Solid_Quad
                           (T, (A.X, Min_H, A.Z), (C.X, Min_H, C.Z),
@@ -2406,7 +2496,7 @@ package body World_Builder is
       end case;
 
       if Is_Home then
-         Emit_Home (T, B.Shape.Outer, Cut_Y, Wall_Top, Floors, Seed);
+         Emit_Home (T, B.Shape.Outer, B.Shape.Holes, Cut_Y, Wall_Top, Floors, Seed);
       end if;
 
       --  Chimney stacks along the party walls
@@ -2711,6 +2801,206 @@ package body World_Builder is
          end;
       end;
    end Triumphal_Arch_Model;
+
+   ---------------------------------------------------------------------------
+   --  Hand-placed landmarks (data/landmarks.txt)
+   ---------------------------------------------------------------------------
+
+   --  The Fontaine Saint-Sulpice: three stacked octagonal basins, a square
+   --  pavilion with the four seated bishops between pilasters, a cupola,
+   --  and four lions on pedestals in the lower basin.
+   procedure Fountain_Saint_Sulpice (C : P2; Rot_Deg, R0 : Long_Float) is
+      T    : Tile_Builder renames Tile_At (C).all;
+      A    : constant Long_Float := Rot_Deg * Ada.Numerics.Pi / 180.0;
+      U    : constant P2 := (Cos (A), Sin (A));          --  faces one side
+      V    : constant P2 := (-Sin (A), Cos (A));
+      Seed : constant Long_Float := 0.45;
+
+      function Corner (R : Long_Float; K : Natural) return P2 is
+        (C + R * P2'(Cos (A + Ada.Numerics.Pi / 8.0 + Long_Float (K) * Ada.Numerics.Pi / 4.0),
+                     Sin (A + Ada.Numerics.Pi / 8.0 + Long_Float (K) * Ada.Numerics.Pi / 4.0)));
+
+      --  vertical octagon walls of circumradius R from Y0 to Y1, facing out
+      --  (or in)
+      procedure Oct_Wall (R, Y0, Y1 : Long_Float; Outward : Boolean) is
+      begin
+         for K in 0 .. 7 loop
+            declare
+               P : constant P2 := Corner (R, K);
+               Q : constant P2 := Corner (R, K + 1);
+               N : P2 := Edge_Out (Q, P);   --  corners run anticlockwise
+            begin
+               if N.X * (P.X - C.X) + N.Z * (P.Z - C.Z) < 0.0 then
+                  N := (-1.0) * N;
+               end if;
+               if not Outward then
+                  N := (-1.0) * N;
+               end if;
+               Solid_Quad (T, (P.X, Y0, P.Z), (Q.X, Y0, Q.Z), (Q.X, Y1, Q.Z), (P.X, Y1, P.Z),
+                           (N.X, 0.0, N.Z), 0.0, Dist (P, Q), Y0, Y1, Mat_Stone, Seed);
+            end;
+         end loop;
+      end Oct_Wall;
+
+      --  flat octagonal ring between R_In and R_Out at height Y (R_In = 0:
+      --  a full octagon); Mat_Water for the basins
+      procedure Oct_Flat (R_In, R_Out, Y, Mat : Long_Float) is
+      begin
+         for K in 0 .. 7 loop
+            declare
+               P0 : constant P2 := Corner (R_Out, K);
+               P1 : constant P2 := Corner (R_Out, K + 1);
+               Q0 : constant P2 := Corner (R_In, K);
+               Q1 : constant P2 := Corner (R_In, K + 1);
+            begin
+               Solid_Quad (T, (Q0.X, Y, Q0.Z), (P0.X, Y, P0.Z), (P1.X, Y, P1.Z), (Q1.X, Y, Q1.Z),
+                           (0.0, 1.0, 0.0), Q0.X, P1.X, Q0.Z, P1.Z, Mat, Seed);
+            end;
+         end loop;
+      end Oct_Flat;
+
+      procedure Basin (R, Y0, Y_Rim, Y_Water : Long_Float) is
+      begin
+         Oct_Wall (R, Y0, Y_Rim, True);
+         Oct_Wall (R - 0.45, Y_Water, Y_Rim, False);
+         Oct_Flat (R - 0.45, R, Y_Rim, Mat_Stone);
+         Oct_Flat (0.0, R - 0.45, Y_Water, Mat_Water);
+      end Basin;
+
+      procedure Block (Ctr : P2; DU, DV : P2; HU, HV, Y0, Y1 : Long_Float) is
+      begin
+         Frustum (T, DU, DV, Ctr, HU, HV, Y0, Ctr, HU, HV, Y1, Mat_Stone, Seed, True);
+      end Block;
+
+      Half : constant Long_Float := 1.7;   --  the pavilion
+   begin
+      --  Lower, middle and upper basins
+      Basin (R0, 0.0, 0.6, 0.35);
+      Basin (0.52 * R0, 0.35, 1.9, 1.7);
+      Basin (0.33 * R0, 1.7, 3.15, 2.95);
+      for K in 0 .. 7 loop
+         Add_Edge (Corner (R0, K), Corner (R0, K + 1), 0.0, 12.0);
+      end loop;
+
+      --  The pavilion: socle, body with corner pilasters, entablature, attic
+      Block (C, U, V, Half + 0.3, Half + 0.3, 2.95, 3.7);
+      Block (C, U, V, Half, Half, 3.7, 9.0);
+      for SU in -1 .. 1 loop
+         for SV in -1 .. 1 loop
+            if SU /= 0 and then SV /= 0 then
+               Block (C + (Long_Float (SU) * (Half - 0.1)) * U + (Long_Float (SV) * (Half - 0.1)) * V,
+                      U, V, 0.3, 0.3, 3.7, 8.9);
+            end if;
+         end loop;
+      end loop;
+      Block (C, U, V, Half + 0.3, Half + 0.3, 8.9, 9.6);
+      Block (C, U, V, Half - 0.05, Half - 0.05, 9.6, 10.4);
+      --  cupola and finial
+      declare
+         Circle : Ring;
+      begin
+         for K in 0 .. 15 loop
+            declare
+               B : constant Long_Float := Long_Float (K) * Ada.Numerics.Pi / 8.0;
+            begin
+               Circle.Append (C + (Half - 0.15) * P2'(Cos (B), Sin (B)));
+            end;
+         end loop;
+         Dome_Roof (T, Circle, 10.4, 1.4, Mat_Dome, Seed);
+      end;
+      Frustum (T, U, V, C, 0.22, 0.22, 11.75, C, 0.05, 0.05, 12.6, Mat_Dome, Seed);
+
+      --  The four bishops, seated in front of each face, and the lions
+      --  on pedestals in the lower basin, facing out
+      for Side in 0 .. 3 loop
+         declare
+            Rd : constant P2 := (case Side is when 0 => U, when 1 => V,
+                                 when 2 => (-1.0) * U, when others => (-1.0) * V);
+            Td : constant P2 := (-Rd.Z, Rd.X);
+            Face : constant P2 := C + (Half + 0.05) * Rd;
+         begin
+            --  bishop: pedestal, seated body, shoulders and head
+            Block (Face + 0.35 * Rd, Rd, Td, 0.4, 0.55, 4.2, 4.8);
+            Block (Face + 0.35 * Rd, Rd, Td, 0.35, 0.45, 4.8, 6.1);
+            Block (Face + 0.3 * Rd, Rd, Td, 0.25, 0.32, 6.1, 6.6);
+            Block (Face + 0.3 * Rd, Rd, Td, 0.14, 0.13, 6.6, 6.95);
+            --  lion couchant on its pedestal, head outwards
+            declare
+               P : constant P2 := C + (0.66 * R0) * Rd;
+            begin
+               Block (P, Rd, Td, 1.25, 0.65, 0.35, 1.35);
+               Block (P, Rd, Td, 0.95, 0.38, 1.35, 1.95);
+               Block (P + 0.85 * Rd, Rd, Td, 0.38, 0.42, 1.55, 2.45);   --  mane
+               Block (P + 1.2 * Rd, Rd, Td, 0.18, 0.2, 1.7, 2.15);     --  muzzle
+               Add_Edge (P - 1.25 * Rd - 0.65 * Td, P + 1.25 * Rd - 0.65 * Td, 0.0, 2.0);
+            end;
+         end;
+      end loop;
+
+      --  Water falling from the upper basin into the middle one, on the
+      --  diagonals
+      for K in 0 .. 3 loop
+         declare
+            B   : constant Long_Float := A + Ada.Numerics.Pi / 4.0 + Long_Float (K) * Ada.Numerics.Pi / 2.0;
+            Rd  : constant P2 := (Cos (B), Sin (B));
+            Td  : constant P2 := (-Rd.Z, Rd.X);
+            Ap  : constant Long_Float := 0.33 * R0 * Cos (Ada.Numerics.Pi / 8.0) + 0.08;
+            P   : constant P2 := C + Ap * Rd - 0.7 * Td;
+            Q   : constant P2 := C + Ap * Rd + 0.7 * Td;
+            P2b : constant P2 := C + (Ap + 0.5) * Rd - 0.8 * Td;
+            Q2b : constant P2 := C + (Ap + 0.5) * Rd + 0.8 * Td;
+         begin
+            Solid_Quad (T, (P2b.X, 1.7, P2b.Z), (Q2b.X, 1.7, Q2b.Z), (Q.X, 3.15, Q.Z), (P.X, 3.15, P.Z),
+                        (Rd.X, 0.3, Rd.Z), 0.0, 1.0, 0.0, 1.0, Mat_Water, Seed);
+         end;
+      end loop;
+   end Fountain_Saint_Sulpice;
+
+   procedure Emit_Hand_Landmarks (File_Name : String) is
+      F : Ada.Text_IO.File_Type;
+   begin
+      if not Ada.Directories.Exists (File_Name) then
+         return;
+      end if;
+      Ada.Text_IO.Open (F, Ada.Text_IO.In_File, File_Name);
+      while not Ada.Text_IO.End_Of_File (F) loop
+         declare
+            Line : constant String := Ada.Text_IO.Get_Line (F) & " ";
+            Words : array (1 .. 5) of Ada.Strings.Unbounded.Unbounded_String;
+            N     : Natural := 0;
+            Start : Natural := 0;
+         begin
+            if Line (Line'First) /= '#' then
+               for I in Line'Range loop
+                  if Line (I) = ' ' then
+                     if Start > 0 and then N < Words'Last then
+                        N := N + 1;
+                        Words (N) := Ada.Strings.Unbounded.To_Unbounded_String (Line (Start .. I - 1));
+                     end if;
+                     Start := 0;
+                  elsif Start = 0 then
+                     Start := I;
+                  end if;
+               end loop;
+            end if;
+            if N = 5 then
+               declare
+                  use Ada.Strings.Unbounded;
+                  X, Z : Long_Float;
+               begin
+                  Geo.To_Local (Long_Float'Value (To_String (Words (2))),
+                                Long_Float'Value (To_String (Words (3))), X, Z);
+                  if In_Data (X, Z) and then To_String (Words (1)) = "fountain_saint_sulpice" then
+                     Fountain_Saint_Sulpice ((X, Z), Long_Float'Value (To_String (Words (4))),
+                                             Long_Float'Value (To_String (Words (5))));
+                     Ada.Text_IO.Put_Line ("  landmark: " & To_String (Words (1)));
+                  end if;
+               end;
+            end if;
+         end;
+      end loop;
+      Ada.Text_IO.Close (F);
+   end Emit_Hand_Landmarks;
 
    procedure Emit_Landmark (B : Building) is
       T : Tile_Builder renames Tile (Geo.Tile_Of (B.Center.X), Geo.Tile_Of (B.Center.Z)).all;
@@ -4054,6 +4344,7 @@ package body World_Builder is
          end if;
       end loop;
       Ada.Text_IO.Put_Line ("  buildings done");
+      Emit_Hand_Landmarks ("data/landmarks.txt");
 
       for P of Model_Ref.Points loop
          declare

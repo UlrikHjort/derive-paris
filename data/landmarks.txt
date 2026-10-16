@@ -1,0 +1,8 @@
+# Landmarks modelled by hand in osm2tiles (in addition to the ones it
+# recognises in OSM, like the Eiffel Tower).  One per line:
+#   kind  lat  lon  rotation_deg  size_m
+#
+# Fontaine Saint-Sulpice (Visconti, 1848), Place Saint-Sulpice.  From the
+# OSM outline (way 40068036): an octagon of 11.95 m circumradius, turned so
+# that its sides face -8.5 degrees from east.
+fountain_saint_sulpice  48.850870  2.333282  -8.5  11.95

@@ -12,6 +12,7 @@
   wr["leisure"]({{bbox}});
   wr["landuse"]({{bbox}});
   wr["amenity"="parking"]({{bbox}});
+  wr["amenity"="fountain"]({{bbox}});
   wr["place"="square"]({{bbox}});
   wr["man_made"="bridge"]({{bbox}});
   node["natural"="tree"]({{bbox}});
