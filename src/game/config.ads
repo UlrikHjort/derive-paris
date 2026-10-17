@@ -11,5 +11,6 @@ package Config is
 
    function Get (Name : String; Default : Float) return Float;
    function Get (Name : String; Default : Boolean) return Boolean;
+   function Get (Name : String; Default : String) return String;
 
 end Config;

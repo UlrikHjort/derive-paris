@@ -16,7 +16,7 @@ package body Rain is
 
    Program : GLuint := 0;
    VAO, VBO : aliased GLuint := 0;
-   U_View_Proj, U_Cam, U_Time, U_Amount, U_Color : GLint;
+   U_View_Proj, U_Cam, U_Time, U_Amount, U_Color, U_Snow, U_Scale : GLint;
 
    procedure Create is
       Gen  : Ada.Numerics.Float_Random.Generator;
@@ -28,6 +28,8 @@ package body Rain is
       U_Time := Shaders.Location (Program, "uTime");
       U_Amount := Shaders.Location (Program, "uAmount");
       U_Color := Shaders.Location (Program, "uColor");
+      U_Snow := Shaders.Location (Program, "uSnow");
+      U_Scale := Shaders.Location (Program, "uPointScale");
 
       Ada.Numerics.Float_Random.Reset (Gen, 42);
       for D in 0 .. Drops - 1 loop
@@ -52,7 +54,8 @@ package body Rain is
    end Create;
 
    procedure Draw (VP : Math3D.Mat4; Cam : Math3D.Vec3;
-                   Time, Amount : Float; Color : Math3D.Vec3)
+                   Time, Amount : Float; Snow : Boolean; Pixels_Per_Metre : Float;
+                   Color : Math3D.Vec3)
    is
    begin
       if Amount <= 0.01 then
@@ -63,12 +66,22 @@ package body Rain is
       Shaders.Set (U_Cam, Cam);
       Shaders.Set (U_Time, Time);
       Shaders.Set (U_Amount, Amount);
-      Shaders.Set (U_Color, Color);
+      Shaders.Set (U_Color, (if Snow then Math3D."*" (0.3 + 0.7 * Color.X / 0.75,
+                                                       Math3D.Vec3'(0.9, 0.92, 0.95))
+                             else Color));
+      Shaders.Set (U_Snow, (if Snow then 1 else 0));
+      Shaders.Set (U_Scale, Pixels_Per_Metre);
       glEnable (GL_BLEND);
       glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
       glDepthMask (GL_FALSE);
       glBindVertexArray (VAO);
-      glDrawArrays (GL_LINES, 0, GLsizei (Drops * 2));
+      if Snow then
+         glEnable (GL_PROGRAM_POINT_SIZE);
+         glDrawArrays (GL_POINTS, 0, GLsizei (Drops * 2));
+         glDisable (GL_PROGRAM_POINT_SIZE);
+      else
+         glDrawArrays (GL_LINES, 0, GLsizei (Drops * 2));
+      end if;
       glBindVertexArray (0);
       glDepthMask (GL_TRUE);
       glDisable (GL_BLEND);

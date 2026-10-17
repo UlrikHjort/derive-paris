@@ -28,7 +28,8 @@ package Car is
       Gear        : Integer range -1 .. 6 := 0;
       Need_Clutch : Boolean := True;
 
-      Wet : Float := 0.0;   --  0 .. 1: less grip in the rain
+      Wet  : Float := 0.0;   --  0 .. 1: less grip in the rain
+      Snow : Float := 0.0;   --  0 .. 1: much less on snow
    end record;
 
    type State is record
@@ -44,6 +45,7 @@ package Car is
       Gear     : Integer range -1 .. 6 := 0;   --  engaged gear
       Grinding : Boolean := False;  --  shifter in gear, gear not in
       Kerb_Jolt : Float := 0.0;     --  kerb hit this step (for the wheel)
+      Hit_NX, Hit_NZ : Float := 0.0;  --  last bump: away from what was hit
       Spin     : Float := 0.0;      --  m/s the driven wheels spin faster than the car
       Skid     : Float := 0.0;      --  0 .. 1: tyres sliding (locked, cornering, handbrake)
       Engaged  : Float := 0.0;      --  clutch engagement last step

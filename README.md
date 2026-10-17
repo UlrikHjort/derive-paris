@@ -78,7 +78,7 @@ fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 | F | take off in a plane / land and drive again |
 | W / S, arrows (in the air) | throttle, pitch (up = nose down) and bank |
 | T | one hour later |
-| P | rain |
+| P | weather: rain, snow, dry again |
 | N | street names |
 | G | compass, position (lat/lon, heading, altitude) and minimap |
 | Shift + 1 .. 0 | GPS: navigate to that place (route through the real streets, turn-by-turn with street names) |
@@ -111,7 +111,7 @@ you go and kicks over kerbs and in crashes.
 | square | camera |
 | triangle | compass and minimap |
 | circle | street names |
-| R2 / L2 | one hour later / rain |
+| R2 / L2 | one hour later / weather |
 | share | clear the traffic |
 | options | sound on/off |
 | PS | home |
@@ -130,13 +130,21 @@ forgets it.  They are kept in `~/.derive_places`, one per line as
 `latitude longitude name`, so the names can be changed there.  Saved
 places show as green diamonds on the minimap.
 
+### The calendar
+
+The game runs on today's date (or the `date` in `~/.deriverc`): the sun
+rises and sets as it does in Paris in that season, the moon shows its
+real phase, and from December to Epiphany the city is decorated for
+Christmas.  Keep an eye on the night sky; Paris has a few surprises.
+
 ## Settings
 
 `~/.deriverc` holds settings as `name = value` lines (`#` starts a
 comment); the game writes a commented starter file on its first run.
 So far: `traffic`, `pedestrians` (1.0 = normal), `volume` (0 .. 1),
 `start_hour`, `time_speed` (game minutes per real second), `compass`,
-`street_names` and `instruments` (yes/no), and for the wheel `manual_gearbox` (no:
+`street_names` and `instruments` (yes/no), `date` (`today` or e.g.
+`2026-12-24`), `christmas` (auto/yes/no), and for the wheel `manual_gearbox` (no:
 automatic), `clutch` (no: change gear without the clutch) and
 `force_feedback` (0 .. 1), `steering` (sensitivity) and `wheel_centre`
 (degrees).

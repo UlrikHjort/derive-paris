@@ -78,6 +78,12 @@ package body Sound is
       function Capture_Open return Boolean;
       procedure Set_Playing;
       procedure Click;
+      procedure Put_Peal (Seconds : Float);
+      procedure Take_Peal (Seconds : out Float);
+      procedure Set_Pealing (On : Boolean);
+      function Is_Pealing return Boolean;
+      procedure Put_Boom (Delay_S, Loudness : Float; Big : Boolean);
+      procedure Take_Boom (Any : out Boolean; Delay_S, Loudness : out Float; Big : out Boolean);
       procedure Take_Click (Any : out Boolean);
       function Is_Playing return Boolean;
       function Volume return Float;
@@ -91,6 +97,11 @@ package body Sound is
       Cap_Open  : Boolean := False;
       Play_On   : Boolean := False;
       Clicks    : Natural := 0;
+      Peal_Ask  : Float := 0.0;
+      Peal_On   : Boolean := False;
+      Boom_Wait : Boolean := False;
+      Boom_Delay, Boom_Loud : Float := 0.0;
+      Boom_Big  : Boolean := False;
       Master    : Float := 0.8;
    end Shared;
 
@@ -136,6 +147,37 @@ package body Sound is
          Play_On := True;
       end Set_Playing;
       function Is_Playing return Boolean is (Play_On);
+      procedure Put_Boom (Delay_S, Loudness : Float; Big : Boolean) is
+      begin
+         Boom_Wait := True;
+         Boom_Delay := Delay_S;
+         Boom_Loud := Float'Max (Boom_Loud, Loudness);
+         Boom_Big := Big;
+      end Put_Boom;
+      procedure Take_Boom (Any : out Boolean; Delay_S, Loudness : out Float; Big : out Boolean) is
+      begin
+         Any := Boom_Wait;
+         Delay_S := Boom_Delay;
+         Loudness := Boom_Loud;
+         Big := Boom_Big;
+         Boom_Wait := False;
+         Boom_Loud := 0.0;
+      end Take_Boom;
+      procedure Put_Peal (Seconds : Float) is
+      begin
+         Peal_Ask := Seconds;
+         Peal_On := True;
+      end Put_Peal;
+      procedure Take_Peal (Seconds : out Float) is
+      begin
+         Seconds := Peal_Ask;
+         Peal_Ask := 0.0;
+      end Take_Peal;
+      procedure Set_Pealing (On : Boolean) is
+      begin
+         Peal_On := On;
+      end Set_Pealing;
+      function Is_Pealing return Boolean is (Peal_On);
       procedure Click is
       begin
          Clicks := Clicks + 1;
@@ -201,7 +243,7 @@ package body Sound is
    end Step;
 
    --  A sound event with an envelope: passing car, horn, bird, bell stroke
-   type Event_Kind is (None, Passing, Horn, Bird, Bell, Click);
+   type Event_Kind is (None, Passing, Horn, Bird, Bell, Click, Boom, Crackle);
 
    type Event is record
       Kind     : Event_Kind := None;
@@ -218,7 +260,7 @@ package body Sound is
       Filter2, Filter3 : Lowpass;
    end record;
 
-   Events : array (1 .. 24) of Event;
+   Events : array (1 .. 48) of Event;
 
    procedure Add (E : Event) is
    begin
@@ -287,11 +329,26 @@ package body Sound is
             S := Sin (Two_Pi * E.Phase);
          when Bell =>
             Env := 1.0;
+            --  big (low) bells ring on longer than small ones; the hum
+            --  under the note is quieter and fades with it, so the tail
+            --  stays clear instead of sinking into a drone
             for K in Bell_Partials'Range loop
                S := S + Sin (Two_Pi * E.Freq * Bell_Partials (K) * E.T)
-                 * Exp (-E.T * (0.35 + 0.45 * Float (K))) / Float (K);
+                 * Exp (-E.T * (0.35 + 0.45 * Float (Integer'Max (K, 2)))
+                        * Float'Max (0.6, E.Freq / 440.0))
+                 * (if K = 1 then 0.35 else 1.0 / Float (K - 1));
             end loop;
             S := S * (if E.T < 0.005 then E.T / 0.005 else 1.0);
+         when Boom =>
+            --  a deep thump that rolls away
+            Env := Exp (-E.T * (if E.Freq > 0.0 then 5.0 else 9.0))
+              * (if E.T < 0.004 then E.T / 0.004 else 1.0);
+            S := Step (E.Filter2, Step (E.Filter, Noise, 160.0), 120.0) * 6.0;
+         when Crackle =>
+            --  glittering pops after a big burst
+            Env := (1.0 - E.T / E.Dur);
+            S := (if Uniform < 0.004 then 3.0 * Noise else 0.0);
+            S := S - Step (E.Filter, S, 1500.0);
          when Click =>
             --  a shutter: a short bright tick
             Env := Exp (-E.T * 160.0);
@@ -303,6 +360,61 @@ package body Sound is
       L := L + S * (1.0 - 0.6 * E.Pan);
       R := R + S * (1.0 + 0.6 * E.Pan);
    end Play;
+
+   ---------------------------------------------------------------------------
+   --  Reverb for the bells: the stone of the church and the houses on the
+   --  square (four combs and two all-passes, a little different left and
+   --  right)
+   ---------------------------------------------------------------------------
+
+   type Buffer is array (Natural range <>) of Float;
+   type Comb is record
+      Data   : Buffer (0 .. 4095) := (others => 0.0);
+      Length : Positive;
+      Pos    : Natural := 0;
+      Damp   : Float := 0.0;
+   end record;
+   type Comb_Set is array (1 .. 4) of Comb;
+
+   Combs_L : Comb_Set :=
+     ((Length => 3437, others => <>), (Length => 3571, others => <>),
+      (Length => 3299, others => <>), (Length => 3137, others => <>));
+   Combs_R : Comb_Set :=
+     ((Length => 3469, others => <>), (Length => 3613, others => <>),
+      (Length => 3331, others => <>), (Length => 3181, others => <>));
+   Passes_L : Comb_Set :=
+     ((Length => 556, others => <>), (Length => 441, others => <>),
+      (Length => 341, others => <>), (Length => 225, others => <>));
+   Passes_R : Comb_Set :=
+     ((Length => 579, others => <>), (Length => 464, others => <>),
+      (Length => 364, others => <>), (Length => 248, others => <>));
+
+   Reverb_Hp : Lowpass;
+
+   function Reverb (X : Float; Combs, Passes : in out Comb_Set) return Float is
+      Y : Float := 0.0;
+      A : Float;
+   begin
+      for C of Combs loop
+         declare
+            Out_S : constant Float := C.Data (C.Pos);
+         begin
+            --  a long tail, the highs dying first
+            C.Damp := Out_S * 0.55 + C.Damp * 0.45;
+            C.Data (C.Pos) := X + C.Damp * 0.88;
+            C.Pos := (C.Pos + 1) mod C.Length;
+            Y := Y + Out_S;
+         end;
+      end loop;
+      Y := Y * 0.25;
+      for P of Passes (1 .. 2) loop
+         A := P.Data (P.Pos);
+         P.Data (P.Pos) := Y + A * 0.5;
+         P.Pos := (P.Pos + 1) mod P.Length;
+         Y := A - Y * 0.5;
+      end loop;
+      return Y;
+   end Reverb;
 
    --  Continuous sounds
    Engine_Phase, Prop_Phase : Float := 0.0;
@@ -320,6 +432,15 @@ package body Sound is
    Bell_Wait                : Float := 0.0;
    Bells_Left               : Natural := 0;
    Bell_Volume              : Float := 0.0;
+
+   --  A full peal: the bells swing, each at its own pace, and strike on
+   --  every swing, harder one way than the other.  They start one after
+   --  the other and stop the same way.
+   Peal_Left  : Float := 0.0;
+   Peal_Pitch : constant array (1 .. 4) of Float := (165.0, 196.0, 220.0, 262.0);
+   Peal_Swing : constant array (1 .. 4) of Float := (2.5, 2.05, 1.75, 1.5);
+   Peal_Next  : array (1 .. 4) of Float := (others => 0.0);
+   Peal_Side  : array (1 .. 4) of Boolean := (others => False);
 
    ---------------------------------------------------------------------------
    --  The traffic around you: every nearby vehicle has its own engine,
@@ -476,6 +597,11 @@ package body Sound is
    Squeal_Level, Squeal_Phase : Float := 0.0;
    Squeal_Drift, Squeal_Hp, Squeal_Lp : Lowpass;
 
+   --  Leaves the sound alone up to 0.6, then bends smoothly towards 1
+   function Limit (X : Float) return Float is
+     (if abs X <= 0.6 then X
+      else (if X > 0.0 then 1.0 else -1.0) * (0.6 + 0.4 * Tanh ((abs X - 0.6) / 0.4)));
+
    procedure Mix (Buffer : out Sample_Array) is
       P     : constant Params := Shared.Get;
       Dt    : constant Float := Float (Frames) / Float (Rate);
@@ -488,6 +614,21 @@ package body Sound is
    begin
       --  Schedule events for this buffer
       Match_Voices (P.Voices);
+      declare
+         Any  : Boolean;
+         Wait, Loud : Float;
+         Big  : Boolean;
+      begin
+         Shared.Take_Boom (Any, Wait, Loud, Big);
+         if Any then
+            Add ((Kind => Boom, Dur => 1.2, T => -Wait, Volume => 0.5 * Loud,
+                  Freq => (if Big then 1.0 else 0.0), Pan => 0.4 * Noise, others => <>));
+            if Big then
+               Add ((Kind => Crackle, Dur => 1.5, T => -Wait - 0.4, Volume => 0.25 * Loud,
+                     Pan => 0.4 * Noise, others => <>));
+            end if;
+         end if;
+      end;
       declare
          Any : Boolean;
       begin
@@ -527,11 +668,42 @@ package body Sound is
             Bell_Wait := 0.0;
          end if;
       end;
+      declare
+         Ask : Float;
+      begin
+         Shared.Take_Peal (Ask);
+         if Ask > 0.0 then
+            Peal_Left := Ask;
+            for B in Peal_Next'Range loop
+               Peal_Next (B) := 2.5 * Float (Peal_Next'Last - B);   --  small bells first
+            end loop;
+         end if;
+      end;
+      if Peal_Left > 0.0 then
+         Peal_Left := Peal_Left - Dt;
+         for B in Peal_Next'Range loop
+            Peal_Next (B) := Peal_Next (B) - Dt;
+            --  the bells stop one by one at the end, the big one last
+            if Peal_Next (B) <= 0.0
+              and then Peal_Left > 2.0 * Float (Peal_Next'Last - B)
+            then
+               Peal_Side (B) := not Peal_Side (B);
+               Add ((Kind => Bell, Dur => 9.0,
+                     Volume => P.Church * (0.065 + 0.025 * Float (5 - B))
+                               * (if Peal_Side (B) then 1.0 else 0.7),
+                     Pan => 0.3 - 0.15 * Float (B), Freq => Peal_Pitch (B), others => <>));
+               Peal_Next (B) := Peal_Swing (B) * (0.97 + 0.06 * Uniform);
+            end if;
+         end loop;
+         if Peal_Left <= 0.0 then
+            Shared.Set_Pealing (False);
+         end if;
+      end if;
       if Bells_Left > 0 then
          Bell_Wait := Bell_Wait - Dt;
          if Bell_Wait <= 0.0 then
-            Add ((Kind => Bell, Dur => 6.0, Volume => 0.22 * Bell_Volume,
-                  Pan => 0.2, Freq => 440.0, others => <>));
+            Add ((Kind => Bell, Dur => 9.0, Volume => 0.26 * Bell_Volume,
+                  Pan => 0.2, Freq => 294.0, others => <>));
             Bells_Left := Bells_Left - 1;
             Bell_Wait := 2.4;
          end if;
@@ -654,19 +826,34 @@ package body Sound is
                end;
             end if;
 
-            for E of Events loop
-               if E.Kind /= None then
-                  if E.T < 0.0 then
-                     E.T := E.T + 1.0 / Float (Rate);   --  delayed start
-                  else
-                     Play (E, L, R);
+            declare
+               BL, BR : Float := 0.0;   --  the bells, before the reverb
+            begin
+               for E of Events loop
+                  if E.Kind /= None then
+                     if E.T < 0.0 then
+                        E.T := E.T + 1.0 / Float (Rate);   --  delayed start
+                     elsif E.Kind = Bell then
+                        Play (E, BL, BR);
+                     else
+                        Play (E, L, R);
+                     end if;
                   end if;
-               end if;
-            end loop;
+               end loop;
+               --  only the bright part goes into the reverb: the deep
+               --  tones would make it muddy
+               declare
+                  Mono   : constant Float := 0.5 * (BL + BR);
+                  Bright : constant Float := Mono - Step (Reverb_Hp, Mono, 300.0);
+               begin
+                  L := L + 0.75 * BL + 0.9 * Reverb (Bright, Combs_L, Passes_L);
+                  R := R + 0.75 * BR + 0.9 * Reverb (Bright, Combs_R, Passes_R);
+               end;
+            end;
 
-            --  soft clip and convert
-            L := 0.8 * Gain * L / (1.0 + abs L);
-            R := 0.8 * Gain * R / (1.0 + abs R);
+            --  limit only the real peaks (clean below that) and convert
+            L := 0.8 * Gain * Limit (L);
+            R := 0.8 * Gain * Limit (R);
             Buffer (2 * I) := Integer_16 (L * 32000.0);
             Buffer (2 * I + 1) := Integer_16 (R * 32000.0);
          end;
@@ -813,6 +1000,18 @@ package body Sound is
    end Stop_Capture;
 
    function Playing return Boolean is (Shared.Is_Playing);
+
+   procedure Peal (Seconds : Float) is
+   begin
+      Shared.Put_Peal (Seconds);
+   end Peal;
+
+   function Pealing return Boolean is (Shared.Is_Pealing);
+
+   procedure Boom (Delay_S, Loudness : Float; Big : Boolean) is
+   begin
+      Shared.Put_Boom (Delay_S, Loudness, Big);
+   end Boom;
 
    procedure Shutter is
    begin

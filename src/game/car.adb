@@ -75,7 +75,8 @@ package body Car is
    --  Engine rpm per m/s of wheel speed in a gear
    function Ratio (G : Integer) return Float is (Red_Line * 3.6 / Gear_Top (G));
 
-   function Grip (C : Controls) return Float is (7.5 - 3.5 * C.Wet);
+   function Grip (C : Controls) return Float is
+     (Float'Max (2.2, 7.5 - 3.5 * C.Wet - 4.5 * C.Snow));
 
    procedure Drive (S : in out State; C : Controls; Dt : Float) is
       Throttle_In : constant Float :=
@@ -311,6 +312,8 @@ package body Car is
                S.X := CX - FX;
                S.Z := CZ - FZ;
                S.Bumped := True;
+               S.Hit_NX := NX;
+               S.Hit_NZ := NZ;
                --  Remove the velocity component going into the wall
                declare
                   VX : constant Float := Sin (S.Heading) * S.Speed;

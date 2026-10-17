@@ -2,6 +2,7 @@
 --  Copyright (c) 2026 Ulrik Hørlyk Hjort
 --  SPDX-License-Identifier: MIT
 --
+with Ada.Calendar;
 with Ada.Directories;
 with Ada.Environment_Variables;
 with Ada.Exceptions;
@@ -32,6 +33,7 @@ with Gtk.Widget;
 with Gtk.Window;
 
 with Beacon;
+with Almanac;
 with Car;
 with Compass;
 with Config;
@@ -49,11 +51,13 @@ with Recorder;
 with Road_Network;
 with Saved_Places;
 with Shaders;
+with Sky_Life;
 with Sound;
 with Traffic;
 with Tyre_Effects;
 with Wheel;
 with World;
+with Xmas;
 
 package body Game is
 
@@ -87,6 +91,14 @@ package body Game is
    Rain_Target  : Float := 0.0;
    Rain_Amount  : Float := 0.0;
    Wetness      : Float := 0.0;
+   Snow_Target  : Float := 0.0;   --  snowing (P cycles dry, rain, snow)
+   Snow_Amount  : Float := 0.0;
+   Snow_Cover   : Float := 0.0;   --  snow lying on the ground and roofs
+
+   --  Christmas decorations: in the season, or as ~/.deriverc says
+   Xmas_Setting : Character := 'a';   --  a(uto), y(es), n(o)
+   function Christmas return Boolean is
+     (Xmas_Setting = 'y' or else (Xmas_Setting = 'a' and then Almanac.Christmas));
 
    --  Time of day (hours) and the lighting derived from it
    Hour         : Float := 18.0;
@@ -126,6 +138,9 @@ package body Game is
    Last_Steering  : Float := 0.0;
    Jolt           : Float := 0.0;       --  kerb or crash kick, decays
    Jolt_Time      : Float := 0.0;
+   Jolt_Side      : Float := 0.0;       --  crash: > 0 hit on the right
+   Jolt_Length    : Float := 0.25;
+   Scrape         : Float := 0.0;       --  rubbing along a wall, decays
    Announce_Timer : Float := 0.0;                             --  plaque briefly
    Pending_Load   : Boolean := False;
    --  Load the tiles around the focus at the next frame.  GL objects can
@@ -220,11 +235,14 @@ package body Game is
       Sky_Zenith, Sky_Horizon, Fog_Density, Time, Car_Color,
       Shadow_Map, Shadows, Amb_Sky, Amb_Ground, Night, Lights, Light_Count,
       Head_Pos, Head_Dir, Head_On, Extra_Color, Extra_Color2, Wet,
-      Tower_Lights, Sparkle : GLint;
+      Tower_Lights, Sparkle, Snow_Cover, Xmas_On : GLint;
    end record;
    WU : World_Uniforms;
 
-   Sky_Inv_VP, Sky_Cam, Sky_Sun, Sky_Zen, Sky_Hor, Sky_Night, Sky_Clouds : GLint;
+   Sky_Inv_VP, Sky_Cam, Sky_Sun, Sky_Zen, Sky_Hor, Sky_Night, Sky_Clouds,
+   Sky_Sun_True, Sky_Moon, Sky_Moon_Age : GLint;
+   Sun_True : Vec3 := (0.0, 1.0, 0.0);    --  the sun, also at night
+   Moon_Dir : Vec3 := (0.0, 1.0, 0.0);
    Sh_Light_VP, Sh_Model : GLint;
 
    function Index_Of (S : String; C : Character; From : Positive) return Natural is
@@ -258,9 +276,15 @@ package body Game is
          Hour := Float'Value (Ada.Environment_Variables.Value ("PARIS_TIME"));
       end if;
       if Ada.Environment_Variables.Exists ("PARIS_RAIN") then
-         Rain_Target := 1.0;
-         Rain_Amount := 1.0;
-         Wetness := 1.0;
+         if Ada.Environment_Variables.Value ("PARIS_RAIN") = "snow" then
+            Snow_Target := 1.0;
+            Snow_Amount := 1.0;
+            Snow_Cover := 1.0;
+         else
+            Rain_Target := 1.0;
+            Rain_Amount := 1.0;
+            Wetness := 1.0;
+         end if;
       end if;
       if Ada.Environment_Variables.Exists ("PARIS_ZOOM") then
          Zoom := Float'Value (Ada.Environment_Variables.Value ("PARIS_ZOOM"));
@@ -586,6 +610,8 @@ package body Game is
              Night         => Location (World_Prog, "uNight"),
              Tower_Lights  => Location (World_Prog, "uTowerLights"),
              Sparkle       => Location (World_Prog, "uSparkle"),
+             Snow_Cover    => Location (World_Prog, "uSnowCover"),
+             Xmas_On       => Location (World_Prog, "uXmas"),
              Lights        => Location (World_Prog, "uLights"),
              Light_Count   => Location (World_Prog, "uLightCount"),
              Head_Pos      => Location (World_Prog, "uHeadPos"),
@@ -597,6 +623,9 @@ package body Game is
       Sky_Inv_VP := Location (Sky_Prog, "uInvViewProj");
       Sky_Cam := Location (Sky_Prog, "uCamPos");
       Sky_Sun := Location (Sky_Prog, "uSunDir");
+      Sky_Sun_True := Location (Sky_Prog, "uSunTrue");
+      Sky_Moon := Location (Sky_Prog, "uMoonDir");
+      Sky_Moon_Age := Location (Sky_Prog, "uMoonAge");
       Sky_Zen := Location (Sky_Prog, "uSkyZenith");
       Sky_Hor := Location (Sky_Prog, "uSkyHorizon");
       Sky_Night := Location (Sky_Prog, "uNight");
@@ -613,6 +642,8 @@ package body Game is
       Rain.Create;
       Tyre_Effects.Create;
       Beacon.Create;
+      Sky_Life.Create;
+      Xmas.Create;
 
       Profiling := Ada.Environment_Variables.Exists ("PARIS_PROFILE");
       declare
@@ -668,9 +699,10 @@ package body Game is
    --  Sun path (a Paris summer day: sunrise about 6:00, sunset about
    --  22:00), sky colours and ambient light for the current hour
    procedure Compute_Lighting is
-      A    : constant Float := (Hour - 6.0) / 16.0 * Ada.Numerics.Pi;
-      Sun  : constant Vec3 := Normalize ((Cos (A), Sin (A) * 0.95, 0.35 + 0.25 * Sin (A)));
-      Moon : constant Vec3 := Normalize ((0.45, 0.75, -0.40));
+      Sun  : constant Vec3 := Almanac.Sun (Hour);
+      Moon : constant Vec3 := Almanac.Moon (Hour);
+      --  how much of the moon is lit: full moon nights are brighter
+      Lit  : constant Float := 0.5 - 0.5 * Cos (2.0 * Ada.Numerics.Pi * Almanac.Moon_Age);
       Day  : constant Float := Smoothstep (-0.10, 0.18, Sun.Y);
       Low  : constant Float := 1.0 - Smoothstep (0.02, 0.38, Sun.Y);
       Day_Zen : constant Vec3 := Mix ((0.30, 0.50, 0.82), (0.24, 0.33, 0.58), Low);
@@ -683,17 +715,24 @@ package body Game is
          Sun_Dir := Sun;
          Sun_Color := Smoothstep (-0.03, 0.12, Sun.Y)
            * Mix ((2.6, 1.3, 0.6), (3.0, 2.75, 2.35), Smoothstep (0.0, 0.45, Sun.Y));
-      else
+      elsif Moon.Y > 0.05 then
          Sun_Dir := Moon;
-         Sun_Color := Smoothstep (-0.03, -0.2, Sun.Y) * Vec3'(0.07, 0.09, 0.16);
+         Sun_Color := Smoothstep (-0.03, -0.2, Sun.Y) * Smoothstep (0.05, 0.2, Moon.Y)
+           * (0.3 + 0.7 * Lit) * Vec3'(0.07, 0.09, 0.16);
+      else
+         --  no moon: only the glow of the city
+         Sun_Dir := Normalize ((0.2, 1.0, 0.1));
+         Sun_Color := Smoothstep (-0.03, -0.2, Sun.Y) * Vec3'(0.015, 0.018, 0.03);
       end if;
+      Sun_True := Sun;
+      Moon_Dir := Moon;
       Amb_Sky := Mix ((0.010, 0.013, 0.026), Mix (Vec3'(0.26, 0.33, 0.46), 0.55 * To_Linear (Day_Hor), Low * 0.5), Day);
       Amb_Ground := Mix ((0.020, 0.015, 0.011), (0.11, 0.09, 0.06), Day);
 
       --  Overcast when it rains: weak sun, grey sky, softer and hazier
-      if Rain_Amount > 0.0 then
+      if Rain_Amount > 0.0 or else Snow_Amount > 0.0 then
          declare
-            R : constant Float := Rain_Amount;
+            R : constant Float := Float'Max (Rain_Amount, Snow_Amount);
             function Grey (C : Vec3; Tint : Vec3) return Vec3 is
               ((0.3 * C.X + 0.55 * C.Y + 0.15 * C.Z) * Tint);
          begin
@@ -703,7 +742,7 @@ package body Game is
             Amb_Sky := Mix (Amb_Sky, 1.1 * Grey (Amb_Sky, (0.95, 1.0, 1.08)), R);
          end;
       end if;
-      Fog_Density := Fog_Base * (if Visiting then 0.4 else 1.0) * (1.0 + 2.5 * Rain_Amount);
+      Fog_Density := Fog_Base * (if Visiting then 0.4 else 1.0) * (1.0 + 2.5 * Rain_Amount + 3.5 * Snow_Amount);
    end Compute_Lighting;
 
    function Light_View_Proj return Mat4 is
@@ -913,7 +952,10 @@ package body Game is
          Set (Sky_Zen, Sky_Zenith);
          Set (Sky_Hor, Sky_Horizon);
          Set (Sky_Night, Night);
-         Set (Sky_Clouds, Rain_Amount);
+         Set (Sky_Clouds, Float'Max (Rain_Amount, Snow_Amount));
+         Set (Sky_Sun_True, Sun_True);
+         Set (Sky_Moon, Moon_Dir);
+         Set (Sky_Moon_Age, Almanac.Moon_Age);
          glBindVertexArray (Empty_VAO);
          glDrawArrays (GL_TRIANGLES, 0, 3);
 
@@ -929,6 +971,8 @@ package body Game is
          Set (WU.Sky_Horizon, Sky_Horizon);
          Set (WU.Fog_Density, Fog_Density);
          Set (WU.Wet, Wetness);
+         Set (WU.Snow_Cover, Snow_Cover);
+         Set (WU.Xmas_On, (if Christmas then 1.0 else 0.0));
          Set (WU.Time, Time);
          Set (WU.Car_Color, Car_Color);
          Set (WU.Shadow_Map, 0);
@@ -970,6 +1014,10 @@ package body Game is
          Set (WU.Car_Color, Car_Color);
          Car.Draw;
          Traffic.Draw (WU.Model, WU.Car_Color);
+         if Christmas then
+            Set (WU.Model, Identity);
+            Xmas.Draw;
+         end if;
          Pedestrians.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2,
                            Cam_Pos.X, Cam_Pos.Z, 130.0);
          if Mode = Flying then
@@ -982,7 +1030,9 @@ package body Game is
          World.Draw_Ground;
          Tyre_Effects.Draw_Marks (VP, Cam_Pos);
          Beacon.Draw (VP, Cam_Pos, Time, Hour, Night, Rain_Amount);
-         Rain.Draw (VP, Cam_Pos, Time, Rain_Amount,
+         Sky_Life.Draw (VP, Float (H) / (2.0 * Tan (0.525)), Night);
+         Rain.Draw (VP, Cam_Pos, Time, Float'Max (Rain_Amount, Snow_Amount),
+                    Snow_Amount > Rain_Amount, Float (H) / (2.0 * Tan (0.525)),
                     Mix (Vec3'(0.30, 0.32, 0.36), Vec3'(0.75, 0.78, 0.82), 1.0 - Night));
          Tyre_Effects.Draw_Smoke (VP, Cam_Pos, Float (H) / (2.0 * Tan (0.525)), 1.0 - Night);
          End_Pass (P_Ground);
@@ -1160,6 +1210,8 @@ package body Game is
       Street_Timer := 1.0;   --  refresh the plaque now
    end Teleport;
 
+   Welcomed : Boolean := False;
+
    --  V: go home to the apartment window, or back to the car
    procedure Toggle_Visit is
    begin
@@ -1174,6 +1226,11 @@ package body Game is
                  < 150.0 ** 2
       then
          Visiting := True;
+         --  the first time home, by day, the bells of Saint-Sulpice ring
+         if not Welcomed and then Hour > 8.0 and then Hour < 21.0 and then not Sound.Pealing then
+            Welcomed := True;
+            Sound.Peal (120.0);
+         end if;
          Eye_S := Home.Length / 2.0;
          --  the window nearest the middle of the facade
          for K in 1 .. Home.Windows loop
@@ -1357,7 +1414,7 @@ package body Game is
         & "  J                clear the traffic around you" & LF & LF
         & Head ("Time and weather")
         & "  T                one hour later" & LF
-        & "  P                rain" & LF
+        & "  P                weather: rain, snow, dry" & LF
         & "  M                sound on / off" & LF
         & "  F9               record a video (again: stop)" & LF
         & "  F12              take a photo" & LF
@@ -1369,7 +1426,7 @@ package body Game is
              & "  square           camera" & LF
              & "  triangle         compass and minimap" & LF
              & "  circle           street names" & LF
-             & "  R2 / L2          one hour later / rain" & LF
+             & "  R2 / L2          one hour later / weather" & LF
              & "  share / options  clear traffic / sound" & LF
              & "  PS               home" & LF
              & "  L3 / R3          stop navigating / reset" & LF
@@ -1622,8 +1679,22 @@ package body Game is
          F := F + 0.06 * Float'Min (1.0, V / 10.0) * Sin (Force_Time * 70.0);
       end if;
       if Jolt_Time > 0.0 then
-         F := F + Jolt * Sin (Jolt_Time * 45.0) * (Jolt_Time / 0.25);
+         declare
+            Since : constant Float := Jolt_Length - Jolt_Time;   --  seconds since the hit
+            Fade  : constant Float := Jolt_Time / Jolt_Length;
+         begin
+            --  first a push to the side that was hit, then it shakes out
+            if Since < 0.07 then
+               F := F + Jolt * Jolt_Side;
+            end if;
+            F := F + Jolt * (1.0 - 0.5 * abs Jolt_Side) * Sin (Since * 45.0 * Ada.Numerics.Pi / 3.0) * Fade;
+         end;
          Jolt_Time := Float'Max (0.0, Jolt_Time - Dt);
+      end if;
+      --  rubbing along a wall: a fine rumble
+      if Scrape > 0.01 then
+         F := F + 0.07 * Scrape * Sin (Force_Time * 95.0);
+         Scrape := Float'Max (0.0, Scrape - 6.0 * Dt);
       end if;
       Wheel.Set_Force (Float'Max (-0.9, Float'Min (0.9, F)));
    end Wheel_Force;
@@ -1659,6 +1730,19 @@ package body Game is
       return List;
    end Hear_Traffic;
 
+   --  Saint-Sulpice: how loud its bells are where you are
+   function Church_Near return Float is
+      SX, SZ : Long_Float;
+      Where  : constant Vec3 := (if Visiting then Eye_Position else Focus);
+   begin
+      Geo.To_Local (48.85100, 2.33480, SX, SZ);
+      return 1.0 / (1.0 + Sqrt ((Where.X - Float (SX)) ** 2 + (Where.Z - Float (SZ)) ** 2) / 250.0);
+   end Church_Near;
+
+   Last_Clock : Float := -1.0;
+   --  a wedding on some Saturdays
+   Wedding : constant Boolean := Integer (Ada.Calendar.Seconds (Ada.Calendar.Clock)) mod 2 = 0;
+
    --  Compass, position read-out and sound, once per frame
    procedure Update_Senses is
       Look  : constant Vec3 := Cam_Look - Cam_Pos;
@@ -1691,6 +1775,7 @@ package body Game is
           Night    => Night,
           Traffic  => Float'Max (0.0, 1.0 - Traffic.Nearest (Where.X, Where.Z) / 60.0),
           Horn     => Keys.B or else Wheel.Held (Wheel.Enter),
+          Church   => Church_Near,
           Squeal   => (if Mode = Driving and then not Visiting
                        then Float'Min (1.0, Float'Max (Player.Skid * Float'Min (1.0, abs Player.Speed / 6.0),
                                                        Player.Spin / 4.0))
@@ -1698,20 +1783,32 @@ package body Game is
                        else 0.0),
           Voices   => Hear_Traffic (Where.X, Where.Z, Ear_Y, Head)));
 
-      --  The hour strikes (from Saint-Sulpice, louder the nearer you are)
+      --  The hour strikes (from Saint-Sulpice, louder the nearer you are),
+      --  and on the days for it all the bells ring out
       declare
          H : constant Integer := Integer (Float'Floor (Hour));
-         SX, SZ : Long_Float;
+         function Crossed (T : Float) return Boolean is
+           (Last_Clock >= 0.0 and then Last_Clock < T and then Hour >= T
+            and then Hour - Last_Clock < 1.0);
       begin
-         if Last_Hour >= 0 and then H /= Last_Hour and then Night < 0.9 then
-            Geo.To_Local (48.85100, 2.33480, SX, SZ);
-            declare
-               D : constant Float := Sqrt ((Where.X - Float (SX)) ** 2 + (Where.Z - Float (SZ)) ** 2);
-            begin
-               Sound.Bells ((if H mod 12 = 0 then 12 else H mod 12), 1.0 / (1.0 + D / 250.0));
-            end;
+         if Last_Hour >= 0 and then H /= Last_Hour and then Night < 0.9
+           and then not Sound.Pealing
+         then
+            Sound.Bells ((if H mod 12 = 0 then 12 else H mod 12), Church_Near);
+         end if;
+         if not Sound.Pealing then
+            if (Almanac.Sunday and then Crossed (10.75))            --  before Sunday mass
+              or else (Almanac.Easter_Sunday and then Crossed (11.9))
+              or else (Almanac.Christmas_Eve and then Crossed (23.7))  --  midnight mass
+              or else (Almanac.Month = 1 and then Almanac.Day = 1 and then Last_Clock > 23.0
+                       and then Hour < 0.5)                         --  New Year
+              or else (Almanac.Saturday and then Crossed (15.5) and then Wedding)
+            then
+               Sound.Peal (240.0);
+            end if;
          end if;
          Last_Hour := H;
+         Last_Clock := Hour;
       end;
    end Update_Senses;
 
@@ -1775,6 +1872,9 @@ package body Game is
       if Ready and then Frame_Number = 30 and then Env ("PARIS_TELEPORT") /= "" then
          Teleport (Places (Integer'Value (Env ("PARIS_TELEPORT"))));
       end if;
+      if Ready and then Frame_Number = 30 and then Env ("PARIS_PEAL") /= "" then
+         Sound.Peal (Float'Value (Env ("PARIS_PEAL")));
+      end if;
       if Ready and then Env ("PARIS_AUTODRIVE") /= "" then
          Keys.W := True;
       end if;
@@ -1800,6 +1900,17 @@ package body Game is
       else
          Rain_Amount := Float'Max (Rain_Target, Rain_Amount - Dt / 10.0);
       end if;
+      if Snow_Amount < Snow_Target then
+         Snow_Amount := Float'Min (Snow_Target, Snow_Amount + Dt / 10.0);
+      else
+         Snow_Amount := Float'Max (Snow_Target, Snow_Amount - Dt / 10.0);
+      end if;
+      --  snow settles in a minute and a half, and melts slowly
+      if Snow_Amount > 0.05 then
+         Snow_Cover := Float'Min (1.0, Snow_Cover + Snow_Amount * Dt / 90.0);
+      else
+         Snow_Cover := Float'Max (0.0, Snow_Cover - Dt / (if Rain_Amount > 0.1 then 60.0 else 400.0));
+      end if;
       if Wetness < Rain_Amount then
          Wetness := Float'Min (Rain_Amount, Wetness + Dt / 15.0);
       else
@@ -1808,6 +1919,7 @@ package body Game is
       Hour := Hour + Dt * Clock_Rate;
       if Hour >= 24.0 then
          Hour := Hour - 24.0;
+         Almanac.Next_Day;
       end if;
       Compute_Lighting;
 
@@ -1846,20 +1958,37 @@ package body Game is
                      Manual         => Analog and then Manual_Gearbox,
                      Gear           => Integer (W.Shifter),
                      Need_Clutch    => Need_Clutch,
-                     Wet            => Wetness);
+                     Wet            => Wetness,
+                     Snow           => Snow_Cover);
                   Was_Grinding : constant Boolean := Player.Grinding;
                   Was_Gear     : constant Integer := Player.Gear;
                begin
                   for I in 1 .. Steps loop
-                     Car.Update (Player, Input, Dt / Float (Steps));
-                     Traffic.Collide_Player (Player);
-                     if Player.Kerb_Jolt /= 0.0 then
-                        Jolt := Player.Kerb_Jolt;
-                        Jolt_Time := 0.25;
-                     elsif Player.Bumped and then abs Player.Speed > 3.0 and then Jolt_Time = 0.0 then
-                        Jolt := 0.6;
-                        Jolt_Time := 0.25;
-                     end if;
+                     declare
+                        Before : constant Float := abs Player.Speed;
+                        Loss   : Float;
+                     begin
+                        Car.Update (Player, Input, Dt / Float (Steps));
+                        Traffic.Collide_Player (Player);
+                        Loss := Before - abs Player.Speed;
+                        if Player.Kerb_Jolt /= 0.0 then
+                           Jolt := Player.Kerb_Jolt;
+                           Jolt_Side := 0.0;
+                           Jolt_Time := 0.25;
+                           Jolt_Length := 0.25;
+                        elsif Player.Bumped and then Loss > 0.6 and then Jolt_Time < 0.1 then
+                           --  a crash: the harder, the bigger the kick (gently
+                           --  capped), and the wheel is pushed towards the side
+                           --  that hit
+                           Jolt := Float'Min (0.5, 0.12 + Loss / 14.0);
+                           Jolt_Side := -(Player.Hit_NX * Cos (Player.Heading)
+                                          + Player.Hit_NZ * Sin (Player.Heading));
+                           Jolt_Time := 0.35;
+                           Jolt_Length := 0.35;
+                        elsif Player.Bumped and then Before > 1.0 then
+                           Scrape := Float'Min (1.0, Before / 8.0);
+                        end if;
+                     end;
                   end loop;
                   Tyre_Effects.Update (Player, Wetness, Dt);
                   if Player.Grinding and then not Was_Grinding then
@@ -1925,7 +2054,8 @@ package body Game is
                  & Integer'Image (Integer (Aircraft.Pos.Y)) & " m  throttle"
                  & Integer'Image (Integer (Aircraft.Throttle * 100.0)) & "%   ")
             & Integer'Image (Integer (Fps)) & " fps   "
-            & Clock_Image & (if Rain_Target > 0.0 then " rain" else "")
+            & Clock_Image & "  " & Almanac.Image
+            & (if Rain_Target > 0.0 then " rain" elsif Snow_Target > 0.0 then " snow" else "")
             & "   cars" & Natural'Image (Traffic.Count)
             & "  people" & Natural'Image (Pedestrians.Count)
             & "   F1 keys </span>");
@@ -1983,6 +2113,11 @@ package body Game is
       end;
 
       if Ready then
+         Sky_Life.Update (Dt, Hour, Night, Cam_Pos);
+         if Frame_Number = 30 and then Env ("PARIS_FIREWORKS") /= "" then
+            Sky_Life.Start_Show (Vec3'(Player.X, 0.0, Player.Z) + 500.0 * Car.Forward (Player),
+                                 Big => Env ("PARIS_FIREWORKS") = "big");
+         end if;
          Update_Senses;
          if Wheel.Present then
             Wheel_Force (Dt);
@@ -2089,7 +2224,15 @@ package body Game is
             end if;
          when 16#70# =>                                       --  p
             if Down then
-               Rain_Target := (if Rain_Target > 0.0 then 0.0 else 1.0);
+               --  dry, rain, snow, dry
+               if Rain_Target > 0.0 then
+                  Rain_Target := 0.0;
+                  Snow_Target := 1.0;
+               elsif Snow_Target > 0.0 then
+                  Snow_Target := 0.0;
+               else
+                  Rain_Target := 1.0;
+               end if;
             end if;
          when 16#FF55# =>                                     --  PgUp
             Keys.Page_Up := Down;
@@ -2118,6 +2261,7 @@ package body Game is
                Hour := Hour + 1.0;
                if Hour >= 24.0 then
                   Hour := Hour - 24.0;
+                  Almanac.Next_Day;
                end if;
             end if;
          when 16#72# =>                                       --  r
@@ -2279,10 +2423,36 @@ package body Game is
       Gtk.Main.Init;
       Config.Load;
       Hour := Config.Get ("start_hour", 18.0);
+      declare
+         D : constant String := Config.Get ("date", "today");
+      begin
+         if D'Length = 10 and then D (D'First + 4) = '-' then
+            Almanac.Set_Date (Integer'Value (D (D'First .. D'First + 3)),
+                              Integer'Value (D (D'First + 5 .. D'First + 6)),
+                              Integer'Value (D (D'First + 8 .. D'First + 9)));
+         end if;
+      exception
+         when Constraint_Error =>
+            Ada.Text_IO.Put_Line ("~/.deriverc: date should look like 2026-12-24");
+      end;
+      if Env ("PARIS_DATE") /= "" then
+         declare
+            D : constant String := Env ("PARIS_DATE");
+         begin
+            Almanac.Set_Date (Integer'Value (D (D'First .. D'First + 3)),
+                              Integer'Value (D (D'First + 5 .. D'First + 6)),
+                              Integer'Value (D (D'First + 8 .. D'First + 9)));
+         end;
+      end if;
       Clock_Rate := Config.Get ("time_speed", 1.0) / 60.0;
       Show_Compass := Config.Get ("compass", True);
       Show_Street := Config.Get ("street_names", True);
       Show_Panel := Config.Get ("instruments", True);
+      declare
+         X : constant String := Config.Get ("christmas", "auto");
+      begin
+         Xmas_Setting := (if X = "yes" then 'y' elsif X = "no" then 'n' else 'a');
+      end;
       Traffic.Set_Density (Config.Get ("traffic", 1.0));
       Pedestrians.Set_Density (Config.Get ("pedestrians", 1.0));
       Sound.Set_Volume (Config.Get ("volume", 0.8));

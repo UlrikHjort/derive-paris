@@ -35,6 +35,11 @@ package body Config is
      & "# Time of day at the start (hours, 0 .. 24) and how fast time passes" & ASCII.LF
      & "# (game minutes per real second; 0 stops the clock)." & ASCII.LF
      & "start_hour = 18.0" & ASCII.LF
+     & "# The date: today, or a day like 2026-12-24 (the season, the moon," & ASCII.LF
+     & "# and what Paris celebrates)." & ASCII.LF
+     & "date = today" & ASCII.LF
+     & "# Christmas decorations: auto (December to Epiphany), yes or no." & ASCII.LF
+     & "christmas = auto" & ASCII.LF
      & "time_speed = 1.0" & ASCII.LF
      & ASCII.LF
      & "# Shown at the start: compass and minimap, street name plaque," & ASCII.LF
@@ -134,5 +139,8 @@ package body Config is
       end if;
       return Default;
    end Get;
+
+   function Get (Name : String; Default : String) return String is
+     (if Values.Contains (Name) then Values.Element (Name) else Default);
 
 end Config;

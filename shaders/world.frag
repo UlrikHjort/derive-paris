@@ -26,6 +26,8 @@ uniform vec3 uAmbGround;     // ambient bounced from the ground
 uniform float uNight;        // 0 day .. 1 night: lit windows and lamps
 uniform float uTowerLights;  // the Eiffel Tower lit (0 after 23:45)
 uniform float uSparkle;      // 0 .. 1: the tower sparkles
+uniform float uSnowCover;    // 0 .. 1: snow lying on the ground, roofs and trees
+uniform float uXmas;         // 1 in the Christmas season: lights in the trees
 uniform vec4 uLights[64];    // street lamps: xyz position, w intensity
 uniform int uLightCount;
 uniform vec3 uHeadPos;       // player's headlights
@@ -455,6 +457,36 @@ void main()
         float n = noise(vWorld.xy * 1.3 + vWorld.zy * 0.9);
         leaf *= 0.65 + 0.6 * n;
         s = Surface(toLinear(leaf), 0.0, 8.0, vec3(0), 0.45);
+        // Christmas: strings of little lights in the street trees
+        if (uXmas > 0.5 && uNight > 0.05) {
+            vec3 q = floor(vWorld / 0.55);
+            float h = hash(vec2(dot(q, vec3(1.0, 31.0, 97.0)) * 0.017, 3.7));
+            vec3 f = fract(vWorld / 0.55) - 0.5;
+            if (h > 0.74 && length(f) < 0.24) {
+                float tw = 0.65 + 0.35 * sin(uTime * 1.7 + h * 60.0);
+                s.emissive = toLinear(vec3(1.0, 0.85, 0.55)) * 3.0 * tw * uNight;
+            }
+        }
+    } else if (m == 37) {          // Christmas tree: fir, baubles by day, lights at night
+        vec3 fir = vec3(0.07, 0.20, 0.10) * (0.7 + 0.5 * noise(vWorld.xz * 3.0 + vWorld.y * 2.0));
+        s = Surface(toLinear(fir), 0.05, 10.0, vec3(0), 0.4);
+        vec3 q = floor(vWorld / 0.6);
+        float h = hash(vec2(dot(q, vec3(1.0, 31.0, 97.0)) * 0.013, 9.1));
+        vec3 f = fract(vWorld / 0.6) - 0.5;
+        float dotMask = step(length(f), 0.24);
+        if (h > 0.6 && dotMask > 0.0) {
+            float k = fract(h * 13.0);
+            vec3 c = k < 0.4 ? vec3(1.0, 0.82, 0.45) : k < 0.6 ? vec3(1.0, 0.15, 0.1)
+                   : k < 0.8 ? vec3(0.95, 0.75, 0.2) : vec3(0.3, 0.5, 1.0);
+            float tw = 0.55 + 0.45 * sin(uTime * 2.3 + h * 80.0);
+            s.albedo = toLinear(c) * 0.6;          // baubles
+            s.spec = 0.8;
+            s.gloss = 60.0;
+            s.emissive = toLinear(c) * 3.5 * tw * uNight;
+        }
+    } else if (m == 38) {          // the star on top
+        s = Surface(toLinear(vec3(1.0, 0.85, 0.35)), 0.8, 40.0,
+                    toLinear(vec3(1.0, 0.85, 0.4)) * (0.6 + 4.0 * uNight), 0.0);
     } else if (m == 15) {
         s = Surface(toLinear(uCarColor), 0.8, 90.0, vec3(0), 0.0);
     } else if (m == 16) {
@@ -585,6 +617,22 @@ void main()
     }
     if (uWet > 0.01 && (m == 10 || m == 11)) {
         s.albedo *= 1.0 - 0.25 * uWet;   // rain-darkened stone and zinc
+    }
+
+    // Snow settles on everything that faces up; the traffic keeps the
+    // roads to a grey slush
+    if (uSnowCover > 0.01 && m != 6 && !(m >= 15 && m <= 19) && !(m >= 26 && m <= 28)
+        && !(m >= 30 && m <= 36)) {
+        float up = smoothstep(0.35, 0.8, N.y);
+        bool road = (m == 1 || m == 21 || m == 9);
+        float amount = uSnowCover * (road ? 0.45 : 1.0);
+        float patch = fbm(vWorld.xz * 0.35 + 11.0);
+        float cover = up * smoothstep(0.0, 0.25, amount * 1.3 - 0.5 * patch + 0.1);
+        vec3 snow = road ? toLinear(vec3(0.55, 0.56, 0.58)) : toLinear(vec3(0.93, 0.95, 0.99));
+        s.albedo = mix(s.albedo, snow, cover);
+        s.spec = mix(s.spec, 0.15, cover);
+        s.gloss = mix(s.gloss, 20.0, cover);
+        s.wrap = mix(s.wrap, 0.2, cover);
     }
 
     float shadow = shadowFactor(N, L);

@@ -33,6 +33,7 @@ package Sound is
       Traffic  : Float := 0.0;     --  0 .. 1, how close the nearest car is
       Horn     : Boolean := False; --  the player's horn
       Squeal   : Float := 0.0;     --  0 .. 1: tyres sliding or spinning
+      Church   : Float := 0.0;     --  0 .. 1: how near Saint-Sulpice is
       Voices   : Voice_List;       --  the traffic around you
    end record;
 
@@ -49,6 +50,14 @@ package Sound is
 
    procedure Set_Volume (V : Float);
    --  Master volume 0 .. 1
+
+   procedure Peal (Seconds : Float);
+   --  Saint-Sulpice rings all its bells (swinging, out of step)
+
+   function Pealing return Boolean;
+
+   procedure Boom (Delay_S, Loudness : Float; Big : Boolean);
+   --  A firework bursting: heard Delay_S seconds from now (sound is slow)
 
    procedure Shutter;
    --  A camera click (a photo was taken)

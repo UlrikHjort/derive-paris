@@ -516,6 +516,8 @@ package body Traffic is
                            if VN < 0.0 then
                               Player.Speed := Player.Speed * 0.6;
                               Player.Bumped := True;
+                              Player.Hit_NX := DX / D;
+                              Player.Hit_NZ := DZ / D;
                            end if;
                         end;
                         A.Speed := 0.0;
