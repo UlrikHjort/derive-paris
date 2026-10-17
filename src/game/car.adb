@@ -5,6 +5,7 @@
 with Ada.Numerics.Elementary_Functions;
 
 with Meshes;
+with Terrain;
 with World;
 
 package body Car is
@@ -24,9 +25,11 @@ package body Car is
      ((Sin (S.Heading), 0.0, -Cos (S.Heading)));
 
    function Wheel_At (S : State; Side, Along : Float) return Vec3 is
-     ((S.X + Cos (S.Heading) * Side + Sin (S.Heading) * Along,
-       S.Lift,
-       S.Z + Sin (S.Heading) * Side - Cos (S.Heading) * Along));
+      X : constant Float := S.X + Cos (S.Heading) * Side + Sin (S.Heading) * Along;
+      Z : constant Float := S.Z + Sin (S.Heading) * Side - Cos (S.Heading) * Along;
+   begin
+      return (X, Terrain.Height (X, Z) + S.Lift, Z);
+   end Wheel_At;
 
    function Rear_Wheel (S : State; Right : Boolean) return Vec3 is
      (Wheel_At (S, (if Right then 0.82 else -0.82), -1.3));
@@ -34,7 +37,32 @@ package body Car is
      (Wheel_At (S, (if Right then 0.82 else -0.82), 1.35));
 
    function Model_Matrix (S : State) return Mat4 is
-     (Translation ((S.X, S.Lift, S.Z)) * Rotation_Y (-S.Heading));
+     (Translation ((S.X, S.Ground + S.Lift, S.Z)) * Rotation_Y (-S.Heading)
+      * Rotation_X (S.Pitch) * Rotation_Z (S.Roll));
+
+   --  How the ground lies under the car: height, pitch, roll, and the grade
+   --  along the heading (rise per metre)
+   procedure Settle (S : in out State; Grade : out Float) is
+      FX : constant Float := Sin (S.Heading);
+      FZ : constant Float := -Cos (S.Heading);
+      Front : constant Float := Terrain.Height (S.X + 1.4 * FX, S.Z + 1.4 * FZ);
+      Back  : constant Float := Terrain.Height (S.X - 1.4 * FX, S.Z - 1.4 * FZ);
+      Right : constant Float := Terrain.Height (S.X - 0.8 * FZ, S.Z + 0.8 * FX);
+      Left  : constant Float := Terrain.Height (S.X + 0.8 * FZ, S.Z - 0.8 * FX);
+   begin
+      Grade := (Front - Back) / 2.8;
+      S.Ground := Terrain.Height (S.X, S.Z);
+      S.Pitch := Arctan (Grade);
+      S.Roll := Arctan ((Right - Left) / 1.6);
+   end Settle;
+
+   function On_Ground (X, Z, Heading : Float) return State is
+      S : State := (X => X, Z => Z, Heading => Heading, others => <>);
+      Grade : Float;
+   begin
+      Settle (S, Grade);
+      return S;
+   end On_Ground;
 
    Kerb_Height : constant := 0.14;
 
@@ -117,8 +145,10 @@ package body Car is
            and then Throttle_In > 0.02 and then S.Speed > -0.5
          then
             S.Gear := 1;
+         --  (the brake key always works, whatever the wheel's shifter says)
          elsif S.Gear >= 0 and then Brake_In > 0.02 and then Throttle_In < 0.02
-           and then S.Speed < 0.3 and then not (C.Analog and then C.Gear > 0)
+           and then S.Speed < 0.3
+           and then (C.Brake or else not (C.Analog and then C.Gear > 0))
          then
             S.Gear := -1;
          elsif S.Gear = 0 then
@@ -260,6 +290,17 @@ package body Car is
       --  Longitudinal
       S.Skid := 0.0;
       Drive (S, C, Dt);
+      --  Hills: gravity pulls the car down the slope (the brakes hold it)
+      declare
+         Grade : Float;
+         Holding : constant Boolean :=
+           C.Handbrake or else (if C.Analog then C.Brake_Pedal > 0.3 else C.Brake);
+      begin
+         Settle (S, Grade);
+         if not (Holding and then abs S.Speed < 0.5) then
+            S.Speed := S.Speed - 9.81 * Grade / Sqrt (1.0 + Grade * Grade) * Dt;
+         end if;
+      end;
       if C.Handbrake then
          Approach (S.Speed, 0.0, 9.0 * Dt);
          if abs S.Speed > 3.0 then

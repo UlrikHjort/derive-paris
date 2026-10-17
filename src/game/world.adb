@@ -10,6 +10,7 @@ with System.Storage_Elements;
 
 with GL;
 with Geo;
+with Terrain;
 with Tile_IO;
 
 package body World is
@@ -338,6 +339,7 @@ package body World is
       Normal_Z  : out Float)
    is
       Sum_X, Sum_Z : Float := 0.0;
+      Ground_Here  : constant Float := Terrain.Height (X, Z);
    begin
       Hit := False;
       for Iteration in 1 .. 4 loop
@@ -364,7 +366,8 @@ package body World is
                                  BZ : constant Float := E (I + 3);
                               begin
                                  --  only what stands on the ground stops a car
-                                 if E (I + 4) < 2.0 and then E (I + 5) > 0.2
+                                 --  (edges carry absolute heights: hills)
+                                 if E (I + 4) < Ground_Here + 2.0 and then E (I + 5) > Ground_Here + 0.2
                                    and then X + Radius >= Float'Min (AX, BX)
                                    and then X - Radius <= Float'Max (AX, BX)
                                    and then Z + Radius >= Float'Min (AZ, BZ)

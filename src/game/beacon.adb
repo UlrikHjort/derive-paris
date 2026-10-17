@@ -8,6 +8,7 @@ with System.Storage_Elements;
 
 with Geo;
 with GL;
+with Terrain;
 with Shaders;
 
 package body Beacon is
@@ -39,7 +40,7 @@ package body Beacon is
       U_Color := Shaders.Location (Program, "uColor");
       U_Strength := Shaders.Location (Program, "uStrength");
       Geo.To_Local (Tower_Lat, Tower_Lon, X, Z);
-      Lamp := (Float (X), Lamp_Y, Float (Z));
+      Lamp := (Float (X), Lamp_Y + Terrain.Height (Float (X), Float (Z)), Float (Z));
       glGenVertexArrays (1, VAO'Address);
       glBindVertexArray (VAO);
       glGenBuffers (1, VBO'Address);

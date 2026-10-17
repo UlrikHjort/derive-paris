@@ -41,6 +41,7 @@ with Config;
 with Geo;
 with Halloween;
 with Instruments;
+with Landscape;
 with GL;
 with GL_Area;
 with Math3D;
@@ -57,6 +58,7 @@ with Sky_Life;
 with Sleigh;
 with Sound;
 with Storm;
+with Terrain;
 with Surprises;
 with Traffic;
 with Tyre_Effects;
@@ -329,9 +331,11 @@ package body Game is
          end if;
       end if;
       World.Set_Radius ((if Mode = Flying then 4 else 3));
-      Cam_Pos := (Player.X, 0.0, Player.Z) - (if Drone then Drone_Back else 8.5) * Car.Forward (Player)
+      Cam_Pos := (Player.X, Terrain.Height (Player.X, Player.Z), Player.Z)
+        - (if Drone then Drone_Back else 8.5) * Car.Forward (Player)
         + (0.0, (if Drone then Drone_Up else 3.2), 0.0);
-      Cam_Look := (Player.X, 1.2, Player.Z) + (if Drone then 6.0 else 3.0) * Car.Forward (Player);
+      Cam_Look := (Player.X, 1.2 + Terrain.Height (Player.X, Player.Z), Player.Z)
+        + (if Drone then 6.0 else 3.0) * Car.Forward (Player);
       --  PARIS_CAM="lat lon height heading_deg pitch_deg_down"
       if Ada.Environment_Variables.Exists ("PARIS_CAM") then
          declare
@@ -355,7 +359,9 @@ package body Game is
                H : constant Float := Float (Fields (4)) * Ada.Numerics.Pi / 180.0;
                P : constant Float := Float (Fields (5)) * Ada.Numerics.Pi / 180.0;
             begin
-               Cam_Pos := (Float (CX), Float (Fields (3)), Float (CZ));
+               --  the height is above the ground there
+               Cam_Pos := (Float (CX), Float (Fields (3)) + Terrain.Height (Float (CX), Float (CZ)),
+                           Float (CZ));
                Cam_Look := Cam_Pos + 100.0 * Vec3'(Sin (H) * Cos (P), -Sin (P), -Cos (H) * Cos (P));
                Player.X := Float (CX);
                Player.Z := Float (CZ);
@@ -662,6 +668,7 @@ package body Game is
       Pedestrians.Create_Mesh;
       Rain.Create;
       Tyre_Effects.Create;
+      Landscape.Create;
       Beacon.Create;
       Storm.Create;
       Sky_Life.Create;
@@ -717,7 +724,7 @@ package body Game is
    --  Where the action is: the car, the plane in flight, or home
    function Focus return Vec3 is
      (if Visiting then (Eye_Position.X, 0.0, Eye_Position.Z)
-      elsif Mode = Flying then Aircraft.Pos else (Player.X, 0.0, Player.Z));
+      elsif Mode = Flying then Aircraft.Pos else (Player.X, Player.Ground, Player.Z));
 
    function Focus_Heading return Float is
      (if Mode = Flying then Aircraft.Heading else Player.Heading);
@@ -797,7 +804,8 @@ package body Game is
 
    function Light_View_Proj return Mat4 is
       Center : constant Vec3 :=
-        (Focus.X + 120.0 * Focus_Forward.X * (if Mode = Flying then 1.0 else 0.0), 0.0,
+        (Focus.X + 120.0 * Focus_Forward.X * (if Mode = Flying then 1.0 else 0.0),
+         Terrain.Height (Focus.X, Focus.Z),
          Focus.Z + 120.0 * Focus_Forward.Z * (if Mode = Flying then 1.0 else 0.0));
       View   : constant Mat4 :=
         Look_At (Center + 600.0 * Sun_Dir, Center, (0.0, 1.0, 0.0));
@@ -1059,7 +1067,7 @@ package body Game is
             if N > 0 then
                glUniform4fv (WU.Lights, GLsizei (N), Lights'Address);
             end if;
-            Set (WU.Head_Pos, Vec3'(Player.X, 0.75, Player.Z) + 2.2 * Fwd);
+            Set (WU.Head_Pos, Vec3'(Player.X, Player.Ground + 0.75, Player.Z) + 2.2 * Fwd);
             Set (WU.Head_Dir, Normalize (Fwd + (0.0, -0.06, 0.0)));
             Set (WU.Head_On, (if Mode = Driving then Smoothstep (0.2, 0.6, Night) else 0.0));
          end;
@@ -1073,6 +1081,7 @@ package body Game is
          glEnable (GL_SAMPLE_ALPHA_TO_COVERAGE);
          World.Draw_Solid;
          glDisable (GL_SAMPLE_ALPHA_TO_COVERAGE);
+         Landscape.Draw;   --  the hills beyond the loaded tiles
          Set (WU.Model, Car_M);
          Set (WU.Car_Color, Car_Color);
          Car.Draw;
@@ -1238,8 +1247,8 @@ package body Game is
             D  : constant Float := Float'Value (S (P1 + 1 .. P2 - 1));
             H  : constant Float := Float'Value (S (P2 + 1 .. S'Last - 1));
          begin
-            Cam_Pos := (Player.X + D * Sin (A), H, Player.Z - D * Cos (A));
-            Cam_Look := (Player.X, 0.8, Player.Z);
+            Cam_Pos := (Player.X + D * Sin (A), H + Player.Ground, Player.Z - D * Cos (A));
+            Cam_Look := (Player.X, 0.8 + Player.Ground, Player.Z);
             return;
          end;
       end if;
@@ -1263,7 +1272,7 @@ package body Game is
       else
          declare
             Fwd     : constant Vec3 := Car.Forward (Player);
-            Car_Pos : constant Vec3 := (Player.X, 0.0, Player.Z);
+            Car_Pos : constant Vec3 := (Player.X, Player.Ground, Player.Z);
             Back    : constant Float := Zoom * (if Drone then Drone_Back else 8.5);
             Up      : constant Float := Zoom * (if Drone then Drone_Up else 3.2);
          begin
@@ -1273,9 +1282,14 @@ package body Game is
       end if;
       Cam_Pos := Lerp (Cam_Pos, Desired, K);
       Cam_Look := Lerp (Cam_Look, Look, 1.0 - Exp (-Dt * 12.0));
-      if Cam_Pos.Y < 1.0 then
-         Cam_Pos.Y := 1.0;
-      end if;
+      --  never below the ground (hills, the plane low over Montmartre)
+      declare
+         G : constant Float := Terrain.Height (Cam_Pos.X, Cam_Pos.Z) + 1.0;
+      begin
+         if Cam_Pos.Y < G then
+            Cam_Pos.Y := G;
+         end if;
+      end;
    end Update_Camera;
 
    --  Jump to a place: the car onto the nearest road, the plane above it
@@ -1295,8 +1309,9 @@ package body Game is
             H := Player.Heading;
          end if;
          Player := (X => RX, Z => RZ, Heading => H, others => <>);
-         Cam_Pos := (RX, 6.0, RZ) - 10.0 * Car.Forward (Player);
-         Cam_Look := (RX, 1.2, RZ);
+         Player.Ground := Terrain.Height (RX, RZ);
+         Cam_Pos := (RX, 6.0 + Player.Ground, RZ) - 10.0 * Car.Forward (Player);
+         Cam_Look := (RX, 1.2 + Player.Ground, RZ);
       end if;
       Pending_Load := True;
       Announce := P.Name;
@@ -1447,7 +1462,8 @@ package body Game is
          end;
          Mode := Driving;
          World.Set_Radius (3);
-         Cam_Pos := (Player.X, 30.0, Player.Z) - 20.0 * Car.Forward (Player);
+         Player.Ground := Terrain.Height (Player.X, Player.Z);
+         Cam_Pos := (Player.X, 30.0 + Player.Ground, Player.Z) - 20.0 * Car.Forward (Player);
       end if;
    end Toggle_Flight;
 
@@ -1523,7 +1539,7 @@ package body Game is
              & "  R2 / L2          one hour later / weather" & LF
              & "  share / options  clear traffic / sound" & LF
              & "  PS               home" & LF
-             & "  L3 / R3          stop navigating / reset" & LF
+             & "  L3               stop navigating" & LF
              & "  d-pad right/left save place / saved places" & LF
            else "")
         & LF & "  F1 or Esc        close" & LF
@@ -1602,7 +1618,7 @@ package body Game is
    procedure Save_Here is
       Where : constant Vec3 :=
         (if Visiting then Eye_Position
-         elsif Mode = Flying then Aircraft.Pos else (Player.X, 0.0, Player.Z));
+         elsif Mode = Flying then Aircraft.Pos else (Player.X, Player.Ground, Player.Z));
       Lat, Lon : Long_Float;
       Street : constant String := Road_Network.Street_At (Where.X, Where.Z, 40.0);
       Count  : Natural := 0;
@@ -1740,7 +1756,6 @@ package body Game is
             when Wheel.Options  => Tap (16#6D#);    --  m: sound
             when Wheel.PS       => Tap (16#68#);    --  h: home
             when Wheel.L3       => Tap (16#78#);    --  x: stop navigating
-            when Wheel.R3       => Tap (16#72#);    --  r: reset
             when Wheel.Plus | Wheel.Dial_Right => Zoom_By (1.0 / 1.15);
             when Wheel.Minus | Wheel.Dial_Left => Zoom_By (1.15);
             when others => null;
@@ -1830,7 +1845,9 @@ package body Game is
       Where  : constant Vec3 := (if Visiting then Eye_Position else Focus);
    begin
       Geo.To_Local (48.85100, 2.33480, SX, SZ);
-      return 1.0 / (1.0 + Sqrt ((Where.X - Float (SX)) ** 2 + (Where.Z - Float (SZ)) ** 2) / 250.0);
+      --  close by they are loud; a few streets away much softer
+      return 1.0 / (1.0 + (Sqrt ((Where.X - Float (SX)) ** 2 + (Where.Z - Float (SZ)) ** 2)
+                           / 150.0) ** 1.6);
    end Church_Near;
 
    Last_Clock : Float := -1.0;
@@ -1844,7 +1861,9 @@ package body Game is
       Where : constant Vec3 := (if Visiting then Eye_Position else Focus);
       Lat, Lon : Long_Float;
       Ear_Y : constant Float :=
-        (if Visiting then Home.Floor_Y + 1.6 elsif Mode = Flying then Aircraft.Pos.Y else 1.2);
+        (if Visiting then Home.Floor_Y + 1.6 - Terrain.Height (Home.Origin.X, Home.Origin.Z)
+         elsif Mode = Flying then Aircraft.Pos.Y - Terrain.Height (Aircraft.Pos.X, Aircraft.Pos.Z)
+         else 1.2);
    begin
       Geo.To_Lat_Lon (Long_Float (Where.X), Long_Float (Where.Z), Lat, Lon);
       Sleigh.Set_Listener_Heading (Head);
@@ -2257,7 +2276,7 @@ package body Game is
             Surprises.Update
               ((Dt => Dt, Hour => Hour, Night => Night, Rain => Rain_Amount,
                 Snow => Snow_Cover, Listener => Cam_Pos, Heading => Arctan (Look.X, -Look.Z),
-                Car_Pos => (Player.X, 0.0, Player.Z), Car_Speed => abs Player.Speed,
+                Car_Pos => (Player.X, Player.Ground, Player.Z), Car_Speed => abs Player.Speed,
                 Driving => Mode = Driving and then not Visiting, Visiting => Visiting));
          end;
          if Frame_Number = 100 and then Env ("PARIS_SURPRISE") /= "" then
@@ -2293,7 +2312,7 @@ package body Game is
          declare
             Look : constant Vec3 := Cam_Look - Cam_Pos;
          begin
-            Halloween.Update (Dt, Spooky, Night, Cam_Pos, (Player.X, 0.0, Player.Z),
+            Halloween.Update (Dt, Spooky, Night, Cam_Pos, (Player.X, Player.Ground, Player.Z),
                               Arctan (Look.X, -Look.Z));
          end;
          if Frame_Number = 40 and then Env ("PARIS_GHOST") /= "" then
@@ -2643,6 +2662,7 @@ package body Game is
    begin
       Gtk.Main.Init;
       Config.Load;
+      Terrain.Load;
       Hour := Config.Get ("start_hour", 18.0);
       declare
          D : constant String := Config.Get ("date", "today");

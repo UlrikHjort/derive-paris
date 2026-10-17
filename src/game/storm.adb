@@ -9,6 +9,7 @@ with System.Storage_Elements;
 
 with Geo;
 with GL;
+with Terrain;
 with Shaders;
 with Sound;
 
@@ -112,7 +113,8 @@ package body Storm is
       Ground : Vec3 := (Listener.X + D * Cos (A), 0.0, Listener.Z + D * Sin (A));
    begin
       --  the Eiffel Tower is struck often: it is the highest point around
-      if Length (Ground - Vec3'(Eiffel.X, 0.0, Eiffel.Z)) < 2500.0 and then Rnd < 0.3 then
+      Ground.Y := Terrain.Height (Ground.X, Ground.Z);
+      if Length (Ground - Vec3'(Eiffel.X, Ground.Y, Eiffel.Z)) < 2500.0 and then Rnd < 0.3 then
          Ground := Eiffel;
       end if;
       Bolt (Ground, Listener);

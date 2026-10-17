@@ -10,6 +10,7 @@ with System.Storage_Elements;
 with Almanac;
 with Geo;
 with GL;
+with Terrain;
 with Shaders;
 with Sound;
 
@@ -182,7 +183,7 @@ package body Sky_Life is
                             (if Show_Big then 120.0 else 15.0) * Sym);
    begin
       Add ((Kind => Rocket, Alive => True,
-            Pos => Base + Vec3'(0.0, 2.0, 0.0),
+            Pos => (Base.X, Terrain.Height (Base.X, Base.Z) + 2.0, Base.Z),
             Vel => ((if Show_Big then 12.0 else 5.0) * Sym,
                     (if Show_Big then 58.0 else 36.0) + 14.0 * Rnd,
                     (if Show_Big then 12.0 else 5.0) * Sym),

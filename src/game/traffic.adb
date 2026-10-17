@@ -633,8 +633,7 @@ package body Traffic is
    begin
       for A of Agents loop
          if A.Active then
-            Shaders.Set (Model_Loc, Car.Model_Matrix
-                           ((X => A.X, Z => A.Z, Heading => A.Heading, others => <>))
+            Shaders.Set (Model_Loc, Car.Model_Matrix (Car.On_Ground (A.X, A.Z, A.Heading))
                          * Rotation_Z (-A.Lean));
             if Color_Loc >= 0 then
                Shaders.Set (Color_Loc, A.Color);

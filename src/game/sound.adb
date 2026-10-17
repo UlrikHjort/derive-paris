@@ -1085,7 +1085,7 @@ package body Sound is
             then
                Peal_Side (B) := not Peal_Side (B);
                Add ((Kind => Bell, Dur => 9.0,
-                     Volume => P.Church * (0.065 + 0.025 * Float (5 - B))
+                     Volume => P.Church * (0.05 + 0.019 * Float (5 - B))
                                * (if Peal_Side (B) then 1.0 else 0.7),
                      Pan => 0.3 - 0.15 * Float (B), Freq => Peal_Pitch (B), others => <>));
                Peal_Next (B) := Peal_Swing (B) * (0.97 + 0.06 * Uniform);
@@ -1098,7 +1098,7 @@ package body Sound is
       if Bells_Left > 0 then
          Bell_Wait := Bell_Wait - Dt;
          if Bell_Wait <= 0.0 then
-            Add ((Kind => Bell, Dur => 9.0, Volume => 0.26 * Bell_Volume,
+            Add ((Kind => Bell, Dur => 9.0, Volume => 0.19 * Bell_Volume,
                   Pan => 0.2, Freq => 294.0, others => <>));
             Bells_Left := Bells_Left - 1;
             Bell_Wait := 2.4;

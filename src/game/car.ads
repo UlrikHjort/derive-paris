@@ -52,6 +52,9 @@ package Car is
       Shift_Wait : Float := 0.0;    --  automatic: seconds until the next shift
       Power_Brake : Boolean := False;  --  automatic: throttle against the brake
       Last_Lever  : Integer := 99;     --  shifter position last step (99: just placed)
+      Ground   : Float := 0.0;      --  height of the ground under the car
+      Pitch    : Float := 0.0;      --  nose up, radians (hills)
+      Roll     : Float := 0.0;      --  right side up, radians
    end record;
 
    function Rear_Wheel (S : State; Right : Boolean) return Math3D.Vec3;
@@ -62,6 +65,9 @@ package Car is
    --  Advance physics and resolve collisions with the world
 
    function Forward (S : State) return Math3D.Vec3;
+
+   function On_Ground (X, Z, Heading : Float) return State;
+   --  A car standing there, settled on the ground (height, pitch, roll)
    function Model_Matrix (S : State) return Math3D.Mat4;
 
    procedure Create_Mesh;

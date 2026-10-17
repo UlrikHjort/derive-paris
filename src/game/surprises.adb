@@ -17,6 +17,7 @@ with Meshes;
 with Road_Network;
 with Shaders;
 with Sound;
+with Terrain;
 with Traffic;
 with Tyre_Effects;
 with World;
@@ -69,6 +70,9 @@ package body Surprises is
       end if;
       return M;
    end Place;
+
+   --  on the ground there (the hills)
+   function On_Ground (P : Vec3) return Vec3 is (P.X, P.Y + Terrain.Height (P.X, P.Z), P.Z);
 
    function Dist2 (A, B : Vec3) return Float is ((A.X - B.X) ** 2 + (A.Z - B.Z) ** 2);
 
@@ -490,7 +494,7 @@ package body Surprises is
       World.Nearest_Lights (Now.Listener.X, Now.Listener.Z, Data, N);
       Lamp_Count := N;
       for I in 0 .. N - 1 loop
-         Lamps (I + 1) := ((Data (4 * I), 0.14, Data (4 * I + 2)),
+         Lamps (I + 1) := ((Data (4 * I), Data (4 * I + 1) - 0.3 + 0.14, Data (4 * I + 2)),
                            Hash (Data (4 * I), Data (4 * I + 2)));
       end loop;
    end Refresh_Lamps;
@@ -558,7 +562,7 @@ package body Surprises is
    Phantom_T        : Float := 0.0;
    Balloon_Y        : Float := 0.0;
 
-   function Balloon_Pos return Vec3 is (Local (48.84133, 2.27427, Balloon_Y + 14.0));
+   function Balloon_Pos return Vec3 is (On_Ground (Local (48.84133, 2.27427, Balloon_Y + 14.0)));
 
    function Asteroid_Pos return Vec3 is
       Az : constant Float := 0.8 + Clock * 0.0025;
@@ -567,7 +571,7 @@ package body Surprises is
       return Now.Listener + 1500.0 * Vec3'(Cos (El) * Sin (Az), Sin (El), -Cos (El) * Cos (Az));
    end Asteroid_Pos;
 
-   function Opera_Mask return Vec3 is (Local (48.87131, 2.33173, 22.0));
+   function Opera_Mask return Vec3 is (On_Ground (Local (48.87131, 2.33173, 22.0)));
 
    type Boat_State is record
       S, Dir : Float := 0.0;
@@ -580,7 +584,7 @@ package body Surprises is
    begin
       At_Distance (Seine, B.S, C, D);
       D := B.Dir * D;
-      P := C + 16.0 * Right_Of (D);
+      P := On_Ground (C + 16.0 * Right_Of (D));
    end Boat_At;
 
    ---------------------------------------------------------------------------
@@ -942,7 +946,7 @@ package body Surprises is
                declare
                   S0 : constant Float := Float (U) * 45.0 + Clock * 1.6;
                   S  : constant Float := S0 - L * Float'Floor (S0 / L);
-                  P  : constant Vec3 := Arc + S * D;
+                  P  : constant Vec3 := On_Ground (Arc + S * D);
                begin
                   if Near (P, 320.0) then
                      case U mod 6 is
@@ -1020,8 +1024,8 @@ package body Surprises is
                   U  : constant Float := U0 - 2.0 * L * Float'Floor (U0 / (2.0 * L));
                   Lane : constant Float := 6.0 + Float ((I - 4) mod 6) * 1.1
                     + 0.5 * Sin (Clock * 0.7 + Float (I));
-                  P  : constant Vec3 := (if U < L then Arc + U * D + Lane * R
-                                         else Concorde - (U - L) * D - Lane * R);
+                  P  : constant Vec3 := On_Ground (if U < L then Arc + U * D + Lane * R
+                                                   else Concorde - (U - L) * D - Lane * R);
                   H  : constant Float := Heading_Of ((if U < L then D else (-1.0) * D));
                   Jersey : constant Vec3 :=
                     (if I = 4 then (1.0, 0.85, 0.1)          --  the yellow jersey
@@ -1152,7 +1156,7 @@ package body Surprises is
          Meshes.Draw (Balloon_M);
          if Balloon_Y > 0.5 then
             declare
-               M : Mat4 := Translation ((Balloon_Pos.X, 0.0, Balloon_Pos.Z));
+               M : Mat4 := Translation ((Balloon_Pos.X, Balloon_Pos.Y - Balloon_Y - 14.0, Balloon_Pos.Z));
             begin
                M (5) := Balloon_Y + 1.0;
                Shaders.Set (Model, M);

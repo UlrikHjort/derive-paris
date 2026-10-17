@@ -33,7 +33,7 @@ run: game
 	./bin/derive
 
 download: tools
-	rm -rf data/osm/chunks
+	rm -rf data/osm/chunks data/elevation
 	./scripts/build_city.sh $(BBOX)
 
 clean:

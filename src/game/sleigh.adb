@@ -7,6 +7,7 @@ with Ada.Numerics.Elementary_Functions;
 with Ada.Numerics.Float_Random;
 
 with Meshes;
+with Terrain;
 with Shaders;
 
 package body Sleigh is
@@ -125,10 +126,10 @@ package body Sleigh is
    begin
       if Down_Street then
          Pos := Listener - 750.0 * Dir + (6.0 * (2.0 * Rnd - 1.0)) * Across;
-         Pos.Y := 38.0 + 6.0 * Rnd;
+         Pos.Y := 38.0 + 6.0 * Rnd + Terrain.Height (Listener.X, Listener.Z);
       else
          Pos := Listener - 1400.0 * Dir + Miss * Across;
-         Pos.Y := 55.0 + 50.0 * Rnd;
+         Pos.Y := 55.0 + 50.0 * Rnd + Terrain.Height (Listener.X, Listener.Z);
       end if;
       Vel := 22.0 * Dir;
       Flying := True;

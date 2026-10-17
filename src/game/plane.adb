@@ -7,6 +7,7 @@ with Ada.Numerics.Elementary_Functions;
 
 with Meshes;
 with Shaders;
+with Terrain;
 with World;
 
 package body Plane is
@@ -23,7 +24,7 @@ package body Plane is
 
    procedure Start (S : out State; X, Z, Heading : Float) is
    begin
-      S := (Pos => (X, Start_Alt, Z), Heading => Heading, others => <>);
+      S := (Pos => (X, Start_Alt + Terrain.Height (X, Z), Z), Heading => Heading, others => <>);
    end Start;
 
    function Forward (S : State) return Vec3 is
@@ -92,13 +93,17 @@ package body Plane is
       S.Pos := S.Pos + (S.Speed * Dt) * Forward (S);
 
       --  Ground and buildings
-      if S.Pos.Y < 1.0 or else World.Obstacle_At (S.Pos.X, S.Pos.Y, S.Pos.Z, 3.0) then
-         S.Crashed := 2.0;
-         S.Speed := 0.0;
-         if S.Pos.Y < 1.0 then
-            S.Pos.Y := 1.0;
+      declare
+         G : constant Float := Terrain.Height (S.Pos.X, S.Pos.Z) + 1.0;
+      begin
+         if S.Pos.Y < G or else World.Obstacle_At (S.Pos.X, S.Pos.Y, S.Pos.Z, 3.0) then
+            S.Crashed := 2.0;
+            S.Speed := 0.0;
+            if S.Pos.Y < G then
+               S.Pos.Y := G;
+            end if;
          end if;
-      end if;
+      end;
       if S.Pos.Y > 1500.0 then
          S.Pos.Y := 1500.0;
          S.Pitch := Float'Min (S.Pitch, 0.0);

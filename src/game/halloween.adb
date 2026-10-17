@@ -11,6 +11,7 @@ with Ada.Environment_Variables;
 with Ada.Strings.Fixed;
 with Ada.Text_IO;
 with Meshes;
+with Terrain;
 with Road_Network;
 with Shaders;
 with Sound;
@@ -179,25 +180,26 @@ package body Halloween is
                   H : constant Float := Hash (X, Z);
                   K : constant Float := Hash (Z + 7.0, X - 3.0);
                   M : constant Float := (if K < 0.2 then Mat_Dark else Mat_Stone);
+                  G : constant Float := Terrain.Height (X, Z);   --  the hills
                begin
                   if Col mod 9 /= 0 and then Row mod 7 /= 0 and then H < 0.7
                     and then Inside (C, X, Z)
                   then
                      if K > (if C.Pere_Lachaise then 0.72 else 0.93) then
                         --  a family chapel with a pointed roof and a door
-                        Box (X - 0.9, X + 0.9, 0.0, 2.6, Z - 1.3, Z + 1.3, Mat_Stone);
-                        Box (X - 0.95, X + 0.95, 2.6, 3.5, Z - 1.35, Z + 1.35, Mat_Stone,
+                        Box (X - 0.9, X + 0.9, G + 0.0, G + 2.6, Z - 1.3, Z + 1.3, Mat_Stone);
+                        Box (X - 0.95, X + 0.95, G + 2.6, G + 3.5, Z - 1.35, Z + 1.35, Mat_Stone,
                              Top_Inset_X => 0.9);
-                        Box (X - 0.4, X + 0.4, 0.0, 1.9, Z - 1.33, Z - 1.29, Mat_Dark);
+                        Box (X - 0.4, X + 0.4, G + 0.0, G + 1.9, Z - 1.33, Z - 1.29, Mat_Dark);
                      else
                         --  a flat slab, and a headstone or a cross at its head
-                        Box (X - 0.45, X + 0.45, 0.0, 0.25, Z - 0.9, Z + 1.0, M);
+                        Box (X - 0.45, X + 0.45, G + 0.0, G + 0.25, Z - 0.9, Z + 1.0, M);
                         if H < 0.5 then
-                           Box (X - 0.4, X + 0.4, 0.0, 0.8 + 0.4 * K, Z - 1.05, Z - 0.88, M,
+                           Box (X - 0.4, X + 0.4, G + 0.0, G + 0.8 + 0.4 * K, Z - 1.05, Z - 0.88, M,
                                 Top_Inset_X => 0.05);
                         else
-                           Box (X - 0.06, X + 0.06, 0.0, 1.3, Z - 1.0, Z - 0.9, Mat_Stone);
-                           Box (X - 0.3, X + 0.3, 0.85, 0.97, Z - 1.0, Z - 0.9, Mat_Stone);
+                           Box (X - 0.06, X + 0.06, G + 0.0, G + 1.3, Z - 1.0, Z - 0.9, Mat_Stone);
+                           Box (X - 0.3, X + 0.3, G + 0.85, G + 0.97, Z - 1.0, Z - 0.9, Mat_Stone);
                         end if;
                      end if;
                   end if;
@@ -278,7 +280,9 @@ package body Halloween is
       D : constant Float := 30.0 + 50.0 * Rnd;
    begin
       G := (Alive => True,
-            Pos   => (Near.X + D * Cos (A), 2.0 + 2.0 * Rnd, Near.Z + D * Sin (A)),
+            Pos   => (Near.X + D * Cos (A),
+                      2.0 + 2.0 * Rnd + Terrain.Height (Near.X + D * Cos (A), Near.Z + D * Sin (A)),
+                      Near.Z + D * Sin (A)),
             Vel   => (1.5 * Sym, 0.0, 1.5 * Sym),
             Phase => 6.3 * Rnd, Swoop => 0.0, Wooed => False);
    end Spawn_Ghost;
@@ -333,7 +337,7 @@ package body Halloween is
                         Road_Network.Nearest_Road (PX, PZ, Found, RX, RZ, RH);
                         Pumpkin_Count := Pumpkin_Count + 1;
                         Pumpkins (Pumpkin_Count) :=
-                          (Pos  => (PX, 0.14, PZ),
+                          (Pos  => (PX, 0.14 + Terrain.Height (PX, PZ), PZ),
                            --  the face (-Z) towards the street, a little askew
                            Yaw  => (if Found and then abs (RX - PX) + abs (RZ - PZ) > 0.1
                                     then -Arctan (RX - PX, -(RZ - PZ)) + 0.5 * (H - 0.17)
@@ -366,8 +370,9 @@ package body Halloween is
                   P : Vec3;
                begin
                   for Try in 1 .. 20 loop
-                     P := (C.Lo.X + (C.Hi.X - C.Lo.X) * Rnd, 0.5,
+                     P := (C.Lo.X + (C.Hi.X - C.Lo.X) * Rnd, 0.0,
                            C.Lo.Z + (C.Hi.Z - C.Lo.Z) * Rnd);
+                     P.Y := 0.5 + Terrain.Height (P.X, P.Z);
                      exit when Inside (C, P.X, P.Z);
                   end loop;
                   if Inside (C, P.X, P.Z) then
@@ -416,7 +421,8 @@ package body Halloween is
             G.Pos := G.Pos + Dt * G.Vel;
             if G.Swoop <= 0.0 then
                --  bob up and down at a ghostly height
-               G.Pos.Y := G.Pos.Y + (2.6 + 0.5 * Sin (G.Phase * 1.3) - G.Pos.Y) * Dt;
+               G.Pos.Y := G.Pos.Y + (2.6 + 0.5 * Sin (G.Phase * 1.3)
+                                     + Terrain.Height (G.Pos.X, G.Pos.Z) - G.Pos.Y) * Dt;
             end if;
             declare
                D  : constant Vec3 := G.Pos - Listener;

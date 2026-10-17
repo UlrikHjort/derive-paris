@@ -28,6 +28,11 @@ CHUNKS=data/osm/chunks
 JOBS=${JOBS:-6}
 mkdir -p "$CHUNKS"
 
+# The ground heights (once); without them the city is built flat
+if [ ! -s data/elevation/paris.bil ]; then
+    ./scripts/download_terrain.sh "$1" "$2" "$3" "$4" || true
+fi
+
 PLAN=$(./bin/osm2tiles plan "$1" "$2" "$3" "$4") || exit 1
 TOTAL=$(echo "$PLAN" | wc -l)
 echo "$TOTAL chunks"

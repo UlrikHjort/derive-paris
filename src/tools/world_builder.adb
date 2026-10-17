@@ -15,6 +15,7 @@ with Interfaces;
 
 with Earcut;
 with Geo;
+with Terrain;
 with Tile_IO;
 
 package body World_Builder is
@@ -198,7 +199,41 @@ package body World_Builder is
    --  otherwise use.
    Current_Roof_Colour : Long_Float := 0.0;
 
-   function Add_Vertex
+   ---------------------------------------------------------------------------
+   --  Hills: everything is built as if the city were flat and lifted onto
+   --  the ground as it is emitted.  Small things follow the ground; a
+   --  building stands level on the highest point of its plot, its walls
+   --  reaching down to the ground on the lower side.
+   ---------------------------------------------------------------------------
+
+   type Lift_Kind is (Follow, Block);
+   Lift_Mode  : Lift_Kind := Follow;
+   Block_Base : Long_Float := 0.0;
+
+   function Lift_Y (X, Y, Z : Long_Float) return Long_Float is
+     (if Lift_Mode = Follow then Y + Terrain.Height (X, Z)
+      elsif Y <= 0.01 then Long_Float'Min (Block_Base, Terrain.Height (X, Z)) + Y
+      else Y + Block_Base);
+
+   procedure Stand_On (Outer : Ring) is
+   begin
+      Lift_Mode := Block;
+      Block_Base := Long_Float'First;
+      for P of Outer loop
+         Block_Base := Long_Float'Max (Block_Base, Terrain.Height (P.X, P.Z));
+      end loop;
+      if Block_Base = Long_Float'First then
+         Block_Base := 0.0;
+      end if;
+   end Stand_On;
+
+   procedure Follow_Ground is
+   begin
+      Lift_Mode := Follow;
+      Block_Base := 0.0;
+   end Follow_Ground;
+
+   function Put_Vertex
      (T : in out Tile_Builder; P, N : V3; U, V, Mat, Seed : Long_Float)
       return Interfaces.Unsigned_32
    is
@@ -218,7 +253,12 @@ package body World_Builder is
       T.Verts.Append (Float (Mat));
       T.Verts.Append (Float (Seed));
       return Index;
-   end Add_Vertex;
+   end Put_Vertex;
+
+   function Add_Vertex
+     (T : in out Tile_Builder; P, N : V3; U, V, Mat, Seed : Long_Float)
+      return Interfaces.Unsigned_32
+   is (Put_Vertex (T, (P.X, Lift_Y (P.X, P.Y, P.Z), P.Z), N, U, V, Mat, Seed));
 
    procedure Tri
      (T : in out Tile_Builder; G : Group_Id; A, B, C : Interfaces.Unsigned_32) is
@@ -305,6 +345,7 @@ package body World_Builder is
       N_Out := NA;
    end Clip_Rect;
 
+   --  Ground vertices lie on the hills, with the hills' normal
    function Ground_Vertex
      (T : in out Tile_Builder; X, Y, Z, Mat, Seed : Long_Float)
       return Interfaces.Unsigned_32
@@ -314,11 +355,15 @@ package body World_Builder is
          Integer (Mat), Integer (Seed * 1.0E6));
       C : constant Vertex_Maps.Cursor := T.Shared.Find (K);
       I : Interfaces.Unsigned_32;
+      E : constant := 2.0;
+      GX : constant Long_Float := (Terrain.Height (X + E, Z) - Terrain.Height (X - E, Z)) / (2.0 * E);
+      GZ : constant Long_Float := (Terrain.Height (X, Z + E) - Terrain.Height (X, Z - E)) / (2.0 * E);
    begin
       if Vertex_Maps.Has_Element (C) then
          return Vertex_Maps.Element (C);
       end if;
-      I := Add_Vertex (T, (X, Y, Z), (0.0, 1.0, 0.0), X, Z, Mat, Seed);
+      I := Put_Vertex (T, (X, Y + Terrain.Height (X, Z), Z), Normalize ((-GX, 1.0, -GZ)),
+                       X, Z, Mat, Seed);
       T.Shared.Insert (K, I);
       return I;
    end Ground_Vertex;
@@ -356,22 +401,81 @@ package body World_Builder is
                Clipped, N);
             if N >= 3 then
                declare
-                  T     : Tile_Builder renames Tile (TX, TZ).all;
-                  First : Interfaces.Unsigned_32 := 0;
-                  Prev  : Interfaces.Unsigned_32 := 0;
-                  Cur   : Interfaces.Unsigned_32;
-               begin
-                  for I in 1 .. N loop
-                     Cur := Ground_Vertex
-                       (T, Clipped (I).X, Y, Clipped (I).Z, Mat, Seed);
-                     if I = 1 then
-                        First := Cur;
-                     elsif I >= 3 and then First /= Prev and then Prev /= Cur
-                       and then First /= Cur
-                     then
-                        Tri (T, G, First, Prev, Cur);
+                  T : Tile_Builder renames Tile (TX, TZ).all;
+
+                  --  An edge is split where the ground bends under it.  The
+                  --  test only looks at the edge, so both triangles that
+                  --  share it split it the same way: no cracks.
+                  function Dist (A, B : P2) return Long_Float is
+                    (Sqrt ((A.X - B.X) ** 2 + (A.Z - B.Z) ** 2));
+
+                  function Split_Edge (A, B : P2) return Boolean is
+                     L : constant Long_Float := Dist (A, B);
+                  begin
+                     if L < 3.0 then
+                        return False;
+                     elsif L > 60.0 then
+                        return True;
                      end if;
-                     Prev := Cur;
+                     declare
+                        M : constant P2 := ((A.X + B.X) / 2.0, (A.Z + B.Z) / 2.0);
+                     begin
+                        return abs (Terrain.Height (M.X, M.Z)
+                                    - (Terrain.Height (A.X, A.Z) + Terrain.Height (B.X, B.Z)) / 2.0)
+                          > 0.05;
+                     end;
+                  end Split_Edge;
+
+                  procedure Drape (A, B, C : P2; Depth : Natural) is
+                     SA : constant Boolean := Depth < 12 and then Split_Edge (B, C);
+                     SB : constant Boolean := Depth < 12 and then Split_Edge (C, A);
+                     SC : constant Boolean := Depth < 12 and then Split_Edge (A, B);
+                  begin
+                     if not (SA or else SB or else SC) then
+                        declare
+                           IA : constant Interfaces.Unsigned_32 := Ground_Vertex (T, A.X, Y, A.Z, Mat, Seed);
+                           IB : constant Interfaces.Unsigned_32 := Ground_Vertex (T, B.X, Y, B.Z, Mat, Seed);
+                           IC : constant Interfaces.Unsigned_32 := Ground_Vertex (T, C.X, Y, C.Z, Mat, Seed);
+                        begin
+                           if IA /= IB and then IB /= IC and then IA /= IC then
+                              Tri (T, G, IA, IB, IC);
+                           end if;
+                        end;
+                        return;
+                     end if;
+                     --  split the longest of the edges that need it
+                     declare
+                        LA : constant Long_Float := (if SA then Dist (B, C) else -1.0);
+                        LB : constant Long_Float := (if SB then Dist (C, A) else -1.0);
+                        LC : constant Long_Float := (if SC then Dist (A, B) else -1.0);
+                     begin
+                        if LA >= LB and then LA >= LC then
+                           declare
+                              M : constant P2 := ((B.X + C.X) / 2.0, (B.Z + C.Z) / 2.0);
+                           begin
+                              Drape (A, B, M, Depth + 1);
+                              Drape (A, M, C, Depth + 1);
+                           end;
+                        elsif LB >= LC then
+                           declare
+                              M : constant P2 := ((C.X + A.X) / 2.0, (C.Z + A.Z) / 2.0);
+                           begin
+                              Drape (B, C, M, Depth + 1);
+                              Drape (B, M, A, Depth + 1);
+                           end;
+                        else
+                           declare
+                              M : constant P2 := ((A.X + B.X) / 2.0, (A.Z + B.Z) / 2.0);
+                           begin
+                              Drape (C, A, M, Depth + 1);
+                              Drape (C, M, B, Depth + 1);
+                           end;
+                        end if;
+                     end;
+                  end Drape;
+               begin
+                  for I in 3 .. N loop
+                     Drape (Clipped (1), Clipped (I - 1), Clipped (I), 0);
                   end loop;
                end;
             end if;
@@ -1218,7 +1322,12 @@ package body World_Builder is
 
    --  Collision edges go into every tile their bounding box touches, so
    --  the game only has to look at the tiles under a point
+   --  Edges keep absolute heights (on the hills), like the geometry
    procedure Add_Edge (A, B : P2; Bottom : Long_Float := 0.0; Top : Long_Float := 1.0) is
+      MX  : constant Long_Float := (A.X + B.X) / 2.0;
+      MZ  : constant Long_Float := (A.Z + B.Z) / 2.0;
+      Bot : constant Long_Float := Lift_Y (MX, Bottom, MZ);
+      Tp  : constant Long_Float := Lift_Y (MX, Top, MZ);
    begin
       for TX in Integer'Max (TX0, Geo.Tile_Of (Long_Float'Min (A.X, B.X)))
              .. Integer'Min (TX1, Geo.Tile_Of (Long_Float'Max (A.X, B.X)))
@@ -1233,8 +1342,8 @@ package body World_Builder is
                T.Edges.Append (Float (A.Z));
                T.Edges.Append (Float (B.X));
                T.Edges.Append (Float (B.Z));
-               T.Edges.Append (Float (Bottom));
-               T.Edges.Append (Float (Top));
+               T.Edges.Append (Float (Bot));
+               T.Edges.Append (Float (Tp));
             end;
          end loop;
       end loop;
@@ -2212,7 +2321,7 @@ package body World_Builder is
                L : constant P2 := Frame (S0 + Frac * (S1 - S0), 0.5 * (D0 + D1));
             begin
                T.Lights.Append (Float (L.X));
-               T.Lights.Append (Float (Y_Ceil - 0.4));
+               T.Lights.Append (Float (Lift_Y (L.X, Y_Ceil - 0.4, L.Z)));
                T.Lights.Append (Float (L.Z));
             end;
          end loop;
@@ -2228,7 +2337,7 @@ package body World_Builder is
             Ada.Text_IO.Put_Line (F, "# origin_x origin_z along_x along_z in_x in_z length depth floor_y");
             Ada.Text_IO.Put_Line
               (F, Img (O.X) & Img (O.Z) & Img (Along.X) & Img (Along.Z) & Img (Inward.X)
-               & Img (Inward.Z) & Img (S1 - S0) & Img (D1) & Img (Y_Low));
+               & Img (Inward.Z) & Img (S1 - S0) & Img (D1) & Img (Lift_Y (O.X, Y_Low, O.Z)));
             Ada.Text_IO.Put_Line (F, "# window centres along the facade (same origin)");
             Ada.Text_IO.Put_Line (F, "windows" & Ada.Strings.Unbounded.To_String (Windows)
                                      & " origin" & Long_Float'Image (S0));
@@ -4044,7 +4153,7 @@ package body World_Builder is
       Prism (T, Sq (0.17), Y0, Y0 + 0.55, Mat_Lantern, 0.0, Top => False);
       Pyramid_Roof (T, To_Ring (Sq (0.24)), Y0 + 0.55, 0.3, Mat_Lamp_Post, 0.0);
       T.Lights.Append (Float (X));
-      T.Lights.Append (Float (Y0 + 0.3));
+      T.Lights.Append (Float (Lift_Y (X, Y0 + 0.3, Z)));
       T.Lights.Append (Float (Z));
    end Emit_Lamp;
 
@@ -4334,6 +4443,7 @@ package body World_Builder is
       Lamps      : Natural := 0;
    begin
       Model_Ref := M'Unrestricted_Access;
+      Terrain.Load;
       Output_Dir := Ada.Strings.Unbounded.To_Unbounded_String (Out_Dir);
       Read_Home ("data/home/home.txt");
       DX0 := X0;
@@ -4464,9 +4574,13 @@ package body World_Builder is
          if Buildings (I).Skip then
             null;
          elsif Landmark (Buildings (I).Tags) /= None and then not Buildings (I).Edge_Only then
+            Stand_On (Buildings (I).Shape.Outer);
             Emit_Landmark (Buildings (I));
+            Follow_Ground;
          elsif Buildings (I).Is_Part or else not Buildings (I).Has_Parts then
+            Stand_On (Buildings (I).Shape.Outer);
             Emit_Building (I);
+            Follow_Ground;
          end if;
       end loop;
       Ada.Text_IO.Put_Line ("  buildings done");

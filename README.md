@@ -54,8 +54,9 @@ recording videos.
     make tiles      # download the OSM data if needed, build tiles/
     make run        # play
 
-The OSM data (`data/osm/`) and the generated tiles are not in the
-repository; `make tiles` recreates them.  The map area (`BBOX` in the
+The OSM data (`data/osm/`), the ground heights (`data/elevation/`) and
+the generated tiles are not in the repository; `make tiles` recreates
+them.  The map area (`BBOX` in the
 Makefile) is split into 2 x 2 km chunks which are downloaded one after the
 other from the Overpass API (`scripts/build_city.sh`, query in
 `data/query.overpassql`) and converted in parallel.  An interrupted
@@ -116,7 +117,7 @@ you go and kicks over kerbs and in crashes.
 | options | sound on/off |
 | PS | home |
 | enter (in the red dial) | horn |
-| L3 / R3 | stop navigating / reset |
+| L3 | stop navigating |
 | d-pad right / left | save this place / saved places |
 | + / - and turning the red dial | zoom |
 
@@ -188,4 +189,6 @@ keeps its ISC License (in those files).
 The map data is not part of this repository: it is downloaded from
 OpenStreetMap when you build the city.  Map data © OpenStreetMap
 contributors, available under the Open Database License (ODbL); the game
-shows this credit on screen.
+shows this credit on screen.  The ground heights (the hills of Montmartre,
+Belleville and the Montagne Sainte-Geneviève) come from IGN's RGE ALTI,
+© IGN, under the Licence Ouverte 2.0, also downloaded when you build.

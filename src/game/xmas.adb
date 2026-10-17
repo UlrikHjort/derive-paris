@@ -8,6 +8,7 @@ with Ada.Numerics.Elementary_Functions;
 with Geo;
 with Math3D;
 with Meshes;
+with Terrain;
 
 package body Xmas is
 
@@ -64,20 +65,20 @@ package body Xmas is
          begin
             Geo.To_Local (S.Lat, S.Lon, X, Z);
             declare
-               C : constant Vec3 := (Float (X), 0.0, Float (Z));
+               C : constant Vec3 := (Float (X), Terrain.Height (Float (X), Float (Z)), Float (Z));
             begin
                --  trunk in a big red tub
-               Meshes.Box (C.X - 1.6, C.X + 1.6, 0.0, 1.2, C.Z - 1.6, C.Z + 1.6, 19.0);
-               Meshes.Box (C.X - 0.4, C.X + 0.4, 1.2, 0.2 * H, C.Z - 0.4, C.Z + 0.4, 13.0);
+               Meshes.Box (C.X - 1.6, C.X + 1.6, C.Y, C.Y + 1.2, C.Z - 1.6, C.Z + 1.6, 19.0);
+               Meshes.Box (C.X - 0.4, C.X + 0.4, C.Y + 1.2, C.Y + 0.2 * H, C.Z - 0.4, C.Z + 0.4, 13.0);
                --  four tiers of branches
                for T in 0 .. 3 loop
                   Cone (C, 0.33 * H * (1.0 - 0.21 * Float (T)),
-                        0.1 * H + 0.2 * H * Float (T),
-                        0.1 * H + 0.2 * H * Float (T) + 0.38 * H, Mat_Fir);
+                        C.Y + 0.1 * H + 0.2 * H * Float (T),
+                        C.Y + 0.1 * H + 0.2 * H * Float (T) + 0.38 * H, Mat_Fir);
                end loop;
                --  the star
                declare
-                  Y : constant Float := 0.1 * H + 0.6 * H + 0.38 * H;
+                  Y : constant Float := C.Y + 0.1 * H + 0.6 * H + 0.38 * H;
                   R : constant Float := 0.06 * H;
                begin
                   Meshes.Box (C.X - R, C.X + R, Y - R, Y + R, C.Z - 0.15, C.Z + 0.15, Mat_Star);

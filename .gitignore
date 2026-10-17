@@ -3,6 +3,7 @@ bin/
 tiles/*.bin
 tiles/world.txt
 data/osm/
+data/elevation/
 tiles/.log_*
 tiles.new/
 tiles.old/

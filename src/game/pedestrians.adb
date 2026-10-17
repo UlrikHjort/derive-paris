@@ -8,6 +8,7 @@ with Ada.Numerics.Float_Random;
 
 with Math3D;
 with Meshes;
+with Terrain;
 with Road_Network;
 with Shaders;
 
@@ -328,7 +329,7 @@ package body Pedestrians is
             declare
                Bob   : constant Float := 0.025 * abs Sin (W.Phase);
                M     : constant Mat4 :=
-                 Translation ((W.X, Bob, W.Z)) * Rotation_Y (-W.Heading);
+                 Translation ((W.X, Bob + Terrain.Height (W.X, W.Z), W.Z)) * Rotation_Y (-W.Heading);
                Swing : constant Float := 0.45 * Sin (W.Phase);
             begin
                if Cloth_Loc >= 0 then
