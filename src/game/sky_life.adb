@@ -105,6 +105,21 @@ package body Sky_Life is
 
    function Show_Running return Boolean is (Show_On);
 
+   Dust_Due : Float := 0.0;
+
+   procedure Magic_Dust (Where : Vec3; Dt : Float) is
+   begin
+      Dust_Due := Dust_Due + 18.0 * Dt;
+      while Dust_Due >= 1.0 loop
+         Dust_Due := Dust_Due - 1.0;
+         Add ((Kind => Trail, Alive => True,
+               Pos => Where + Vec3'(0.6 * Sym, 0.3 * Sym, 0.6 * Sym),
+               Vel => (0.3 * Sym, -0.3 - 0.3 * Rnd, 0.3 * Sym),
+               Colour => (if Rnd < 0.7 then Vec3'(0.9, 0.7, 0.3) else Vec3'(0.9, 0.9, 0.8)),
+               Age => 0.0, Life => 0.8 + 0.8 * Rnd, Drag => 1.5, Shell => 0));
+      end loop;
+   end Magic_Dust;
+
    procedure Start_Show (Centre : Vec3; Big : Boolean) is
    begin
       Show_On := True;

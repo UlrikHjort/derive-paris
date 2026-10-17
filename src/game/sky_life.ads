@@ -25,4 +25,7 @@ package Sky_Life is
 
    function Show_Running return Boolean;
 
+   procedure Magic_Dust (Where : Math3D.Vec3; Dt : Float);
+   --  Golden glitter left behind (Father Christmas's sleigh)
+
 end Sky_Life;

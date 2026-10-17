@@ -38,6 +38,7 @@ with Car;
 with Compass;
 with Config;
 with Geo;
+with Halloween;
 with Instruments;
 with GL;
 with GL_Area;
@@ -52,6 +53,7 @@ with Road_Network;
 with Saved_Places;
 with Shaders;
 with Sky_Life;
+with Sleigh;
 with Sound;
 with Traffic;
 with Tyre_Effects;
@@ -99,6 +101,9 @@ package body Game is
    Xmas_Setting : Character := 'a';   --  a(uto), y(es), n(o)
    function Christmas return Boolean is
      (Xmas_Setting = 'y' or else (Xmas_Setting = 'a' and then Almanac.Christmas));
+   Spooky_Setting : Character := 'a';
+   function Spooky return Boolean is
+     (Spooky_Setting = 'y' or else (Spooky_Setting = 'a' and then Almanac.Halloween));
 
    --  Time of day (hours) and the lighting derived from it
    Hour         : Float := 18.0;
@@ -644,6 +649,8 @@ package body Game is
       Beacon.Create;
       Sky_Life.Create;
       Xmas.Create;
+      Sleigh.Create_Mesh;
+      Halloween.Create_Mesh;
 
       Profiling := Ada.Environment_Variables.Exists ("PARIS_PROFILE");
       declare
@@ -1018,6 +1025,9 @@ package body Game is
             Set (WU.Model, Identity);
             Xmas.Draw;
          end if;
+         Sleigh.Draw (WU.Model, WU.Car_Color, WU.Extra_Color);
+         Halloween.Draw (WU.Model);
+         Set (WU.Model, Identity);
          Pedestrians.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2,
                            Cam_Pos.X, Cam_Pos.Z, 130.0);
          if Mode = Flying then
@@ -1753,6 +1763,7 @@ package body Game is
         (if Visiting then Home.Floor_Y + 1.6 elsif Mode = Flying then Aircraft.Pos.Y else 1.2);
    begin
       Geo.To_Lat_Lon (Long_Float (Where.X), Long_Float (Where.Z), Lat, Lon);
+      Sleigh.Set_Listener_Heading (Head);
       if Show_Compass then
          Compass.Update (Head, Lat, Lon, (if Mode = Flying and then not Visiting
                                            then Aircraft.Pos.Y else -1.0));
@@ -1776,6 +1787,8 @@ package body Game is
           Traffic  => Float'Max (0.0, 1.0 - Traffic.Nearest (Where.X, Where.Z) / 60.0),
           Horn     => Keys.B or else Wheel.Held (Wheel.Enter),
           Church   => Church_Near,
+          Jingle   => Sleigh.Jingle,
+          Jingle_Pan => Sleigh.Pan,
           Squeal   => (if Mode = Driving and then not Visiting
                        then Float'Min (1.0, Float'Max (Player.Skid * Float'Min (1.0, abs Player.Speed / 6.0),
                                                        Player.Spin / 4.0))
@@ -2114,6 +2127,49 @@ package body Game is
 
       if Ready then
          Sky_Life.Update (Dt, Hour, Night, Cam_Pos);
+         Pedestrians.Set_Santas (Christmas, (if Env ("PARIS_SANTA") = "walkers" then 1.0 else 0.035));
+         Sleigh.Update (Dt, Christmas, Cam_Pos);
+         declare
+            Look : constant Vec3 := Cam_Look - Cam_Pos;
+         begin
+            Halloween.Update (Dt, Spooky, Night, Cam_Pos, (Player.X, 0.0, Player.Z),
+                              Arctan (Look.X, -Look.Z));
+         end;
+         if Frame_Number = 40 and then Env ("PARIS_GHOST") /= "" then
+            Halloween.Ghost_Here (Cam_Look + (if Env ("PARIS_GHOST") = "near" then 0.0 else 6.0)
+                                  * Normalize (Cam_Look - Cam_Pos) + Vec3'(0.0, 1.5, 0.0));
+         end if;
+         if Sleigh.Visible then
+            Sky_Life.Magic_Dust (Sleigh.Dust_Point, Dt);
+         end if;
+         if Frame_Number = 30 and then Env ("PARIS_SANTA") /= "" then
+            if Env ("PARIS_SANTA") = "near" then
+               --  across the view, 45 m ahead, from the left
+               Sleigh.Start_At (Vec3'(Cam_Look.X, Cam_Pos.Y + 4.0, Cam_Look.Z)
+                                + 45.0 * Normalize (Cam_Look - Cam_Pos)
+                                - 70.0 * Normalize (Cross (Cam_Look - Cam_Pos, (0.0, 1.0, 0.0))),
+                                Arctan (Cam_Look.X - Cam_Pos.X, -(Cam_Look.Z - Cam_Pos.Z))
+                                + Ada.Numerics.Pi / 2.0);
+            else
+               Sleigh.Start_Flight (Cam_Pos, Down_The_Street => True);
+            end if;
+         end if;
+         if Sleigh.Ho_Ho_Now then
+            Sound.Ho_Ho (Float'Min (1.0, Sleigh.Jingle * 1.5), Sleigh.Pan);
+         end if;
+         --  a Santa on the pavement says hello when you drive by
+         if Mode = Driving and then not Visiting then
+            declare
+               Found  : Boolean;
+               SX, SZ : Float;
+            begin
+               Pedestrians.Santa_Near (Player.X, Player.Z, Found, SX, SZ);
+               if Found then
+                  Sound.Ho_Ho (0.8, ((SX - Player.X) * Cos (Player.Heading)
+                                     + (SZ - Player.Z) * Sin (Player.Heading)) / 9.0);
+               end if;
+            end;
+         end if;
          if Frame_Number = 30 and then Env ("PARIS_FIREWORKS") /= "" then
             Sky_Life.Start_Show (Vec3'(Player.X, 0.0, Player.Z) + 500.0 * Car.Forward (Player),
                                  Big => Env ("PARIS_FIREWORKS") = "big");
@@ -2453,10 +2509,16 @@ package body Game is
       begin
          Xmas_Setting := (if X = "yes" then 'y' elsif X = "no" then 'n' else 'a');
       end;
+      declare
+         X : constant String := Config.Get ("halloween", "auto");
+      begin
+         Spooky_Setting := (if X = "yes" then 'y' elsif X = "no" then 'n' else 'a');
+      end;
       Traffic.Set_Density (Config.Get ("traffic", 1.0));
       Pedestrians.Set_Density (Config.Get ("pedestrians", 1.0));
       Sound.Set_Volume (Config.Get ("volume", 0.8));
       Saved_Places.Load;
+      Pedestrians.Set_Santas (Christmas, (if Env ("PARIS_SANTA") = "walkers" then 1.0 else 0.035));
       Show_Markers;
       Manual_Gearbox := Config.Get ("manual_gearbox", True);
       Need_Clutch := Config.Get ("clutch", True);

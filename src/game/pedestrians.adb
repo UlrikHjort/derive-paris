@@ -36,13 +36,26 @@ package body Pedestrians is
       Phase   : Float := 0.0;          --  walk cycle
       Dodge_X, Dodge_Z : Float := 0.0; --  stepping aside for the car
       Shirt, Skin, Legs : Vec3 := (0.5, 0.5, 0.5);
+      Santa   : Boolean := False;
+      Greeted : Boolean := False;
    end record;
+
+   Santas_On : Boolean := False;
+   Mat_Fur   : constant := 39.0;   --  white fur trim and beard
 
    Walkers : array (1 .. Max_Walkers) of Walker;
    Gen     : Ada.Numerics.Float_Random.Generator;
    Primed  : Boolean := False;
 
-   Body_Mesh, Left_Leg, Right_Leg : Meshes.Mesh;
+   Body_Mesh, Left_Leg, Right_Leg, Santa_Mesh : Meshes.Mesh;
+
+   Santa_Share : Float := 0.035;
+
+   procedure Set_Santas (On : Boolean; Share : Float := 0.035) is
+   begin
+      Santas_On := On;
+      Santa_Share := Share;
+   end Set_Santas;
 
    Shirts : constant array (0 .. 9) of Vec3 :=
      ((0.10, 0.10, 0.12), (0.80, 0.80, 0.78), (0.18, 0.22, 0.40), (0.50, 0.12, 0.12),
@@ -89,6 +102,22 @@ package body Pedestrians is
       Box (-0.1, 0.1, 1.5, 1.73, -0.11, 0.1, Mat_Skin);
       Box (-0.105, 0.105, 1.66, 1.77, -0.08, 0.115, Mat_Tyre);   --  hair
       Finish (Body_Mesh);
+      --  Father Christmas: the same body in red, with a beard, a belt and a
+      --  hat with a pompom (front is -Z)
+      Start;
+      Box (-0.2, 0.2, 0.9, 1.45, -0.12, 0.12, Mat_Cloth, Top_Inset_X => 0.03);
+      Box (-0.27, -0.2, 0.86, 1.42, -0.07, 0.07, Mat_Cloth);
+      Box (0.2, 0.27, 0.86, 1.42, -0.07, 0.07, Mat_Cloth);
+      Box (-0.205, 0.205, 0.86, 0.94, -0.125, 0.125, Mat_Fur);       --  hem
+      Box (-0.21, 0.21, 1.02, 1.08, -0.13, 0.13, Mat_Tyre);          --  belt
+      Box (-0.05, 0.05, 1.45, 1.52, -0.05, 0.05, Mat_Skin);
+      Box (-0.1, 0.1, 1.5, 1.73, -0.11, 0.1, Mat_Skin);
+      Box (-0.11, 0.11, 1.38, 1.62, -0.15, -0.08, Mat_Fur);          --  beard
+      Box (-0.115, 0.115, 1.71, 1.78, -0.125, 0.12, Mat_Fur);        --  hat brim
+      Box (-0.1, 0.1, 1.78, 1.92, -0.09, 0.11, Mat_Cloth,
+           Top_Inset_X => 0.06, Top_Inset_Front => 0.08, Top_Inset_Back => 0.02);
+      Box (-0.04, 0.04, 1.88, 1.96, 0.06, 0.14, Mat_Fur);            --  pompom
+      Finish (Santa_Mesh);
       for Side in 0 .. 1 loop
          declare
             X0 : constant Float := (if Side = 0 then -0.18 else 0.02);
@@ -181,6 +210,13 @@ package body Pedestrians is
                               Skin => Skins (Natural (Float'Floor (Rnd * 4.99))),
                               Legs => Trousers (Natural (Float'Floor (Rnd * 4.99))),
                               others => <>);
+                        if Santas_On and then Rnd < Santa_Share then
+                           W.Santa := True;
+                           W.Shirt := (0.72, 0.06, 0.06);
+                           W.Legs := (0.62, 0.05, 0.05);
+                           W.Skin := (0.92, 0.74, 0.62);
+                           W.Speed := 0.9 + 0.3 * Rnd;   --  in no hurry
+                        end if;
                         declare
                            Pos : constant Vec3 := Place (W);
                            Dir : constant Vec3 := Direction (W.Cur);
@@ -301,7 +337,7 @@ package body Pedestrians is
                   Shaders.Set (Legs_Loc, W.Legs);
                end if;
                Shaders.Set (Model_Loc, M);
-               Meshes.Draw (Body_Mesh);
+               Meshes.Draw ((if W.Santa then Santa_Mesh else Body_Mesh));
                Shaders.Set (Model_Loc, M * Translation ((0.0, Hip, 0.0))
                             * Rotation_X (Swing) * Translation ((0.0, -Hip, 0.0)));
                Meshes.Draw (Left_Leg);
@@ -312,5 +348,23 @@ package body Pedestrians is
          end if;
       end loop;
    end Draw;
+
+   procedure Santa_Near (X, Z : Float; Found : out Boolean; SX, SZ : out Float) is
+   begin
+      Found := False;
+      SX := 0.0;
+      SZ := 0.0;
+      for W of Walkers loop
+         if W.Active and then W.Santa and then not W.Greeted
+           and then (W.X - X) ** 2 + (W.Z - Z) ** 2 < 9.0 ** 2
+         then
+            W.Greeted := True;
+            Found := True;
+            SX := W.X;
+            SZ := W.Z;
+            return;
+         end if;
+      end loop;
+   end Santa_Near;
 
 end Pedestrians;

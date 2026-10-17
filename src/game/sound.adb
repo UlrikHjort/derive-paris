@@ -78,6 +78,10 @@ package body Sound is
       function Capture_Open return Boolean;
       procedure Set_Playing;
       procedure Click;
+      procedure Put_Laugh (Loudness, Pan : Float);
+      procedure Put_Wooo (Loudness, Pan : Float);
+      procedure Take_Wooo (Any : out Boolean; Loudness, Pan : out Float);
+      procedure Take_Laugh (Any : out Boolean; Loudness, Pan : out Float);
       procedure Put_Peal (Seconds : Float);
       procedure Take_Peal (Seconds : out Float);
       procedure Set_Pealing (On : Boolean);
@@ -97,6 +101,10 @@ package body Sound is
       Cap_Open  : Boolean := False;
       Play_On   : Boolean := False;
       Clicks    : Natural := 0;
+      Laugh_Ask : Boolean := False;
+      Wooo_Ask  : Boolean := False;
+      Wooo_Loud, Wooo_Pan : Float := 0.0;
+      Laugh_Loud, Laugh_Pan : Float := 0.0;
       Peal_Ask  : Float := 0.0;
       Peal_On   : Boolean := False;
       Boom_Wait : Boolean := False;
@@ -178,6 +186,32 @@ package body Sound is
          Peal_On := On;
       end Set_Pealing;
       function Is_Pealing return Boolean is (Peal_On);
+      procedure Put_Wooo (Loudness, Pan : Float) is
+      begin
+         Wooo_Ask := True;
+         Wooo_Loud := Loudness;
+         Wooo_Pan := Pan;
+      end Put_Wooo;
+      procedure Take_Wooo (Any : out Boolean; Loudness, Pan : out Float) is
+      begin
+         Any := Wooo_Ask;
+         Loudness := Wooo_Loud;
+         Pan := Wooo_Pan;
+         Wooo_Ask := False;
+      end Take_Wooo;
+      procedure Put_Laugh (Loudness, Pan : Float) is
+      begin
+         Laugh_Ask := True;
+         Laugh_Loud := Loudness;
+         Laugh_Pan := Pan;
+      end Put_Laugh;
+      procedure Take_Laugh (Any : out Boolean; Loudness, Pan : out Float) is
+      begin
+         Any := Laugh_Ask;
+         Loudness := Laugh_Loud;
+         Pan := Laugh_Pan;
+         Laugh_Ask := False;
+      end Take_Laugh;
       procedure Click is
       begin
          Clicks := Clicks + 1;
@@ -243,7 +277,7 @@ package body Sound is
    end Step;
 
    --  A sound event with an envelope: passing car, horn, bird, bell stroke
-   type Event_Kind is (None, Passing, Horn, Bird, Bell, Click, Boom, Crackle);
+   type Event_Kind is (None, Passing, Horn, Bird, Bell, Click, Boom, Crackle, Jingle, Laugh, Ghost);
 
    type Event is record
       Kind     : Event_Kind := None;
@@ -258,7 +292,22 @@ package body Sound is
       Speed    : Float := 10.0;
       Dir      : Float := 1.0;
       Filter2, Filter3 : Lowpass;
+      --  two resonators (a voice's formants)
+      R1a, R1b, R2a, R2b : Float := 0.0;
    end record;
+
+   --  A two-pole resonance at F Hz, bandwidth B Hz, scaled so that a
+   --  tone at F comes out about as loud as it went in
+   function Resonate (X : Float; F, B : Float; Y1, Y2 : in out Float) return Float is
+      R  : constant Float := Exp (-Ada.Numerics.Pi * B / Float (Rate));
+      W  : constant Float := Two_Pi * F / Float (Rate);
+      A1 : constant Float := 2.0 * R * Cos (W);
+      Y  : constant Float := (1.0 - R) * 2.0 * Sin (W) * X + A1 * Y1 - R * R * Y2;
+   begin
+      Y2 := Y1;
+      Y1 := Y;
+      return Y;
+   end Resonate;
 
    Events : array (1 .. 48) of Event;
 
@@ -349,6 +398,46 @@ package body Sound is
             Env := (1.0 - E.T / E.Dur);
             S := (if Uniform < 0.004 then 3.0 * Noise else 0.0);
             S := S - Step (E.Filter, S, 1500.0);
+         when Jingle =>
+            --  a little sleigh bell: bright, inharmonic, quickly gone
+            Env := Exp (-E.T * 22.0);
+            S := Sin (Two_Pi * E.Freq * E.T) + 0.6 * Sin (Two_Pi * E.Freq * 1.47 * E.T)
+              + 0.4 * Sin (Two_Pi * E.Freq * 2.09 * E.T);
+         when Laugh =>
+            --  "Ho, ho, ho!": three deep 'o' sounds, each with a breathy h
+            declare
+               N     : constant Float := Float'Floor (E.T / 0.42);
+               Local : constant Float := E.T - N * 0.42;
+               Pitch : constant Float := 118.0 - 9.0 * N - 25.0 * Local;
+               Src   : Float;
+            begin
+               if Local > 0.3 or else N > 2.0 then
+                  Env := 0.0;
+                  S := 0.0;
+               else
+                  Env := Float'Min (1.0, Local / 0.03) * (1.0 - Local / 0.3) ** 0.5;
+                  E.Phase := E.Phase + Pitch / Float (Rate);
+                  E.Phase := E.Phase - Float'Floor (E.Phase);
+                  Src := (if Local < 0.05 then 0.6 * Noise else 2.0 * E.Phase - 1.0 + 0.1 * Noise);
+                  S := 2.2 * Resonate (Src, 470.0, 90.0, E.R1a, E.R1b)
+                    + 1.3 * Resonate (Src, 820.0, 110.0, E.R2a, E.R2b);
+               end if;
+            end;
+         when Ghost =>
+            --  "wooooo": a hollow voice rising and falling, wavering
+            declare
+               F : constant Float := E.T / E.Dur;
+               Pitch : constant Float :=
+                 (260.0 + 160.0 * Sin (Ada.Numerics.Pi * F) - 60.0 * F)
+                 * (1.0 + 0.03 * Sin (Two_Pi * 5.5 * E.T));
+               Src : Float;
+            begin
+               Env := Sin (Ada.Numerics.Pi * F) ** 2;
+               E.Phase := E.Phase + Pitch / Float (Rate);
+               E.Phase := E.Phase - Float'Floor (E.Phase);
+               Src := Sin (Two_Pi * E.Phase) + 0.3 * Sin (2.0 * Two_Pi * E.Phase) + 0.15 * Noise;
+               S := 2.5 * Resonate (Src, 380.0, 120.0, E.R1a, E.R1b) + 0.5 * Src;
+            end;
          when Click =>
             --  a shutter: a short bright tick
             Env := Exp (-E.T * 160.0);
@@ -429,6 +518,7 @@ package body Sound is
    Wobble_F : Lowpass;
    Rain_Hp                  : Lowpass;
    Next_Horn, Next_Bird : Float := 1.0;
+   Jingle_Clock : Float := 0.0;
    Bell_Wait                : Float := 0.0;
    Bells_Left               : Natural := 0;
    Bell_Volume              : Float := 0.0;
@@ -638,6 +728,35 @@ package body Sound is
             Add ((Kind => Click, Dur => 0.06, T => -0.11, Volume => 0.35, others => <>));
          end if;
       end;
+      --  sleigh bells: shaken in the rhythm of the reindeer's gallop
+      if P.Jingle > 0.01 then
+         declare
+            Gallop : constant Float := 0.5 + 0.5 * Sin (Jingle_Clock * 2.0 * Ada.Numerics.Pi * 2.2);
+         begin
+            Jingle_Clock := Jingle_Clock + Dt;
+            for K in 1 .. Natural (Float'Floor (Dt * 45.0 * Gallop + Uniform)) loop
+               Add ((Kind => Jingle, Dur => 0.25, T => -Dt * Uniform,
+                     Volume => 0.05 * P.Jingle * (0.4 + 0.6 * Uniform),
+                     Pan => 0.7 * P.Jingle_Pan, Freq => 2300.0 + 1100.0 * Uniform,
+                     others => <>));
+            end loop;
+         end;
+      end if;
+      declare
+         Any : Boolean;
+         Loud, Where : Float;
+      begin
+         Shared.Take_Laugh (Any, Loud, Where);
+         if Any then
+            Add ((Kind => Laugh, Dur => 1.3, Volume => 0.18 * Loud, Pan => 0.7 * Where,
+                  others => <>));
+         end if;
+         Shared.Take_Wooo (Any, Loud, Where);
+         if Any then
+            Add ((Kind => Ghost, Dur => 2.4, Volume => 0.05 * Loud, Pan => 0.7 * Where,
+                  others => <>));
+         end if;
+      end;
       Next_Horn := Next_Horn - Dt;
       if Next_Horn <= 0.0 then
          Add ((Kind => Horn, Dur => 0.25 + 0.5 * Uniform,
@@ -833,7 +952,7 @@ package body Sound is
                   if E.Kind /= None then
                      if E.T < 0.0 then
                         E.T := E.T + 1.0 / Float (Rate);   --  delayed start
-                     elsif E.Kind = Bell then
+                     elsif E.Kind = Bell or else E.Kind = Ghost then
                         Play (E, BL, BR);
                      else
                         Play (E, L, R);
@@ -1012,6 +1131,16 @@ package body Sound is
    begin
       Shared.Put_Boom (Delay_S, Loudness, Big);
    end Boom;
+
+   procedure Wooo (Loudness, Pan : Float) is
+   begin
+      Shared.Put_Wooo (Loudness, Pan);
+   end Wooo;
+
+   procedure Ho_Ho (Loudness, Pan : Float) is
+   begin
+      Shared.Put_Laugh (Loudness, Pan);
+   end Ho_Ho;
 
    procedure Shutter is
    begin

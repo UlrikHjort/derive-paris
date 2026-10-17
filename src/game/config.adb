@@ -40,6 +40,8 @@ package body Config is
      & "date = today" & ASCII.LF
      & "# Christmas decorations: auto (December to Epiphany), yes or no." & ASCII.LF
      & "christmas = auto" & ASCII.LF
+     & "# Halloween: auto (25 October to 1 November), yes or no." & ASCII.LF
+     & "halloween = auto" & ASCII.LF
      & "time_speed = 1.0" & ASCII.LF
      & ASCII.LF
      & "# Shown at the start: compass and minimap, street name plaque," & ASCII.LF

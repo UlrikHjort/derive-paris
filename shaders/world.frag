@@ -484,6 +484,23 @@ void main()
             s.gloss = 60.0;
             s.emissive = toLinear(c) * 3.5 * tw * uNight;
         }
+    } else if (m == 39) {          // white fur: Father Christmas's beard and trim
+        float n = noise(vWorld.xy * 40.0 + vWorld.zy * 37.0);
+        s = Surface(toLinear(vec3(0.93, 0.92, 0.9) * (0.85 + 0.15 * n)), 0.0, 6.0, vec3(0), 0.5);
+    } else if (m == 40) {          // pumpkin skin with ribs
+        float rib = 0.85 + 0.15 * abs(sin(atan(vWorld.x - floor(vWorld.x * 2.0) * 0.5,
+                                                vWorld.z - floor(vWorld.z * 2.0) * 0.5) * 4.0));
+        vec3 c = vec3(0.92, 0.42, 0.06) * rib * (0.85 + 0.2 * noise(vWorld.xz * 9.0 + vWorld.y * 5.0));
+        s = Surface(toLinear(c), 0.25, 24.0, vec3(0), 0.2);
+    } else if (m == 41) {          // the carved face: a candle inside at night
+        float flicker = 0.75 + 0.15 * sin(uTime * 13.0 + vWorld.x * 7.0)
+                      + 0.1 * sin(uTime * 23.0 + vWorld.z * 5.0);
+        s = Surface(toLinear(vec3(0.12, 0.05, 0.01)), 0.0, 8.0,
+                    toLinear(vec3(1.0, 0.6, 0.15)) * 4.0 * flicker * uNight, 0.0);
+    } else if (m == 42) {          // a ghost's sheet: pale, glowing, see-through
+        s = Surface(toLinear(vec3(0.88, 0.92, 0.98)), 0.1, 12.0,
+                    toLinear(vec3(0.55, 0.65, 0.8)) * 0.6 * uNight, 0.5);
+        gAlpha = 0.65;
     } else if (m == 38) {          // the star on top
         s = Surface(toLinear(vec3(1.0, 0.85, 0.35)), 0.8, 40.0,
                     toLinear(vec3(1.0, 0.85, 0.4)) * (0.6 + 4.0 * uNight), 0.0);
@@ -622,7 +639,7 @@ void main()
     // Snow settles on everything that faces up; the traffic keeps the
     // roads to a grey slush
     if (uSnowCover > 0.01 && m != 6 && !(m >= 15 && m <= 19) && !(m >= 26 && m <= 28)
-        && !(m >= 30 && m <= 36)) {
+        && !(m >= 30 && m <= 36) && m < 40) {
         float up = smoothstep(0.35, 0.8, N.y);
         bool road = (m == 1 || m == 21 || m == 9);
         float amount = uSnowCover * (road ? 0.45 : 1.0);

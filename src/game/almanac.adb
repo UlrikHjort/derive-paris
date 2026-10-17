@@ -138,6 +138,8 @@ package body Almanac is
    end Easter_Sunday;
 
    function Christmas_Eve return Boolean is (Month = 12 and then Day = 24);
+   function Halloween return Boolean is
+     ((Month = 10 and then Day >= 25) or else (Month = 11 and then Day = 1));
 
    function Christmas return Boolean is
      (Month = 12 or else (Month = 1 and then Day <= 6));

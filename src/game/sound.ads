@@ -34,6 +34,8 @@ package Sound is
       Horn     : Boolean := False; --  the player's horn
       Squeal   : Float := 0.0;     --  0 .. 1: tyres sliding or spinning
       Church   : Float := 0.0;     --  0 .. 1: how near Saint-Sulpice is
+      Jingle   : Float := 0.0;     --  0 .. 1: sleigh bells going by
+      Jingle_Pan : Float := 0.0;
       Voices   : Voice_List;       --  the traffic around you
    end record;
 
@@ -58,6 +60,12 @@ package Sound is
 
    procedure Boom (Delay_S, Loudness : Float; Big : Boolean);
    --  A firework bursting: heard Delay_S seconds from now (sound is slow)
+
+   procedure Wooo (Loudness, Pan : Float);
+   --  A ghost going by
+
+   procedure Ho_Ho (Loudness, Pan : Float);
+   --  Father Christmas laughs
 
    procedure Shutter;
    --  A camera click (a photo was taken)

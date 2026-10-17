@@ -24,6 +24,12 @@ package Pedestrians is
 
    function Count return Natural;
 
+   procedure Set_Santas (On : Boolean; Share : Float := 0.035);
+   --  At Christmas a few of the walkers are Father Christmas
+
+   procedure Santa_Near (X, Z : Float; Found : out Boolean; SX, SZ : out Float);
+   --  A Santa within a few metres of (X, Z) who has not said hello yet
+
    procedure Set_Density (Factor : Float);
    --  1.0 = normal (160 people), 0 = none, up to 2.5
 

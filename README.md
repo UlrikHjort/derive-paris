@@ -144,7 +144,7 @@ comment); the game writes a commented starter file on its first run.
 So far: `traffic`, `pedestrians` (1.0 = normal), `volume` (0 .. 1),
 `start_hour`, `time_speed` (game minutes per real second), `compass`,
 `street_names` and `instruments` (yes/no), `date` (`today` or e.g.
-`2026-12-24`), `christmas` (auto/yes/no), and for the wheel `manual_gearbox` (no:
+`2026-12-24`), `christmas` and `halloween` (auto/yes/no), and for the wheel `manual_gearbox` (no:
 automatic), `clutch` (no: change gear without the clutch) and
 `force_feedback` (0 .. 1), `steering` (sensitivity) and `wheel_centre`
 (degrees).
