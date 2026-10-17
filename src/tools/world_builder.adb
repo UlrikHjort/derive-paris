@@ -803,6 +803,7 @@ package body World_Builder is
       Tags      : Tag_Maps.Map;
       Is_Part   : Boolean;
       Has_Parts : Boolean := False;
+      Parts_Area : Long_Float := 0.0; --  how much of it its parts cover
       Sacred    : Boolean := False;   --  part of a church, cathedral...
       Edge_Only : Boolean := False;   --  in the margin: collision edges only
       Skip      : Boolean := False;   --  part of a landmark we model ourselves
@@ -1088,7 +1089,11 @@ package body World_Builder is
       end loop;
 
       --  A building whose outline contains building:parts is drawn through
-      --  its parts only (the parts carry the detailed heights).
+      --  its parts only (the parts carry the detailed heights).  A part
+      --  standing in one of its courtyards (a hole) is not its part, and
+      --  the outline is only left out when the parts cover a good share of
+      --  it: the Palais du Louvre has the Pyramid and the Arc du Carrousel
+      --  in its courtyards, but its wings have no parts of their own.
       for Part of Buildings loop
          if Part.Is_Part then
             for B of Buildings loop
@@ -1096,8 +1101,9 @@ package body World_Builder is
                  and then Part.Center.X >= B.X0 and then Part.Center.X <= B.X1
                  and then Part.Center.Z >= B.Z0 and then Part.Center.Z <= B.Z1
                  and then Point_In_Ring (Part.Center, B.Shape.Outer)
+                 and then (for all H of B.Shape.Holes => not Point_In_Ring (Part.Center, H))
                then
-                  B.Has_Parts := True;
+                  B.Parts_Area := B.Parts_Area + abs Signed_Area (Part.Shape.Outer);
                   if Landmark (B.Tags) /= None then
                      Part.Skip := True;
                   end if;
@@ -1108,6 +1114,19 @@ package body World_Builder is
                   end if;
                end if;
             end loop;
+         end if;
+      end loop;
+
+      for B of Buildings loop
+         if not B.Is_Part and then B.Parts_Area > 0.0 then
+            declare
+               Net : Long_Float := abs Signed_Area (B.Shape.Outer);
+            begin
+               for H of B.Shape.Holes loop
+                  Net := Net - abs Signed_Area (H);
+               end loop;
+               B.Has_Parts := B.Parts_Area >= 0.4 * Net;
+            end;
          end if;
       end loop;
 
