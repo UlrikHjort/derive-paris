@@ -130,12 +130,26 @@ forgets it.  They are kept in `~/.derive_places`, one per line as
 `latitude longitude name`, so the names can be changed there.  Saved
 places show as green diamonds on the minimap.
 
-### The calendar
+### The calendar and its surprises
 
-The game runs on today's date (or the `date` in `~/.deriverc`): the sun
-rises and sets as it does in Paris in that season, the moon shows its
-real phase, and from December to Epiphany the city is decorated for
-Christmas.  Keep an eye on the night sky; Paris has a few surprises.
+The game runs on today's date: the sun rises and sets as it does in Paris
+in that season, the moon shows its real phase, the trees change with the
+year, and the clock carries on into the next day at midnight.
+
+Paris celebrates its days, and the game knows them: holidays, festivals,
+the seasons and the evenings before them all bring something to see and
+hear.  Other things happen at random, by day or at night, now and then or
+only rarely.  None of them is listed here; drive around, look up at the
+sky, listen, and come back on a special day.
+
+To play on another day, put it in `~/.deriverc`:
+
+    date = 2026-12-24
+
+or start the game with `PARIS_DATE=2026-12-24 ./bin/derive`.  `date =
+today` goes back to the real date.  Together with `start_hour` (and **T**
+in the game for one hour later) you can be in Paris on any day at any
+time.
 
 ## Settings
 
