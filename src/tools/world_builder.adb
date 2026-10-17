@@ -3503,6 +3503,47 @@ package body World_Builder is
 
    --  The sunken quays: street-level hole, paving below, and walls with a
    --  parapet wherever a strip borders the upper level
+   --  A road (or a ramp down to the lower quays) passes here: walls and
+   --  parapets along the river leave a gap for it
+   type Line_Box is record
+      X0, X1, Z0, Z1 : Long_Float;
+   end record;
+   package Road_Box_Vectors is new Ada.Containers.Vectors (Natural, Line_Box);
+   Road_Boxes : Road_Box_Vectors.Vector;
+
+   function Road_Crosses (P : P2) return Boolean is
+   begin
+      if Natural (Road_Boxes.Length) /= Natural (Lines.Length) then
+         Road_Boxes.Clear;
+         for L of Lines loop
+            declare
+               B : Line_Box;
+            begin
+               Bounds (L.Pts, B.X0, B.X1, B.Z0, B.Z1);
+               Road_Boxes.Append (B);
+            end;
+         end loop;
+      end if;
+      for I in Lines.First_Index .. Lines.Last_Index loop
+         declare
+            L : Line_Feature renames Lines (I);
+            B : Line_Box renames Road_Boxes (I);
+         begin
+            if L.Group = Road
+              and then P.X > B.X0 - 15.0 and then P.X < B.X1 + 15.0
+              and then P.Z > B.Z0 - 15.0 and then P.Z < B.Z1 + 15.0
+            then
+               for K in L.Pts.First_Index .. L.Pts.Last_Index - 1 loop
+                  if Segment_Distance (P, L.Pts (K), L.Pts (K + 1)) < L.Width / 2.0 + 0.5 then
+                     return True;
+                  end if;
+               end loop;
+            end if;
+         end;
+      end loop;
+      return False;
+   end Road_Crosses;
+
    procedure Emit_Low_Quays is
    begin
       for K in Low_Boxes.First_Index .. Low_Boxes.Last_Index loop
@@ -3533,7 +3574,8 @@ package body World_Builder is
                     (In_Data (P.X, P.Z)
                      and then not In_Low (P + 0.5 * Out_N)
                      and then not In_River (P + 0.5 * Out_N)
-                     and then not Near_Bridge (P, 0.5));
+                     and then not Near_Bridge (P, 0.5)
+                     and then not Road_Crosses (P));
 
                   procedure Wall (S, E2 : P2) is
                      T : Tile_Builder renames Tile_At (0.5 * (S + E2)).all;
@@ -3586,7 +3628,8 @@ package body World_Builder is
 
                function Off_Bridge (Q : P2) return Boolean is
                  (In_Data (Q.X, Q.Z) and then not Near_Bridge (Q, 2.5)
-                  and then not In_Low (Q + 1.0 * Land));
+                  and then not In_Low (Q + 1.0 * Land)
+                  and then not Road_Crosses (Q));
 
                procedure Parapet (S, E : P2) is
                   T : Tile_Builder renames Tile_At (0.5 * (S + E)).all;
@@ -3627,7 +3670,8 @@ package body World_Builder is
    --  Side of a bridge deck over the water: fascia below, parapet above
    procedure Bridge_Side (A, B, Outward : P2) is
       function Over_Water (Q : P2) return Boolean is
-        (In_Data (Q.X, Q.Z) and then (In_River (Q) or else In_Low (Q)));
+        (In_Data (Q.X, Q.Z) and then (In_River (Q) or else In_Low (Q))
+         and then not Road_Crosses (Q));
 
       procedure Side (S, E : P2) is
          T : Tile_Builder renames Tile_At (0.5 * (S + E)).all;

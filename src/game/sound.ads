@@ -9,7 +9,7 @@
 
 package Sound is
 
-   type Mode_Kind is (Driving, Flying, Visiting);
+   type Mode_Kind is (Driving, Flying, Visiting, Walking);
 
    --  A vehicle nearby, as heard by the listener
    type Voice is record

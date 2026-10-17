@@ -4,7 +4,8 @@
 #
 # Derive -- an open-world city game in Ada/GtkAda, Paris from OpenStreetMap
 #
-#   make            build converter and game
+#   make            check what is needed, build converter and game
+#   make check      only check that the tools and libraries are installed
 #   make tiles      download (missing) OSM chunks and generate tiles/
 #   make run        start the game
 #   make download   fetch all OSM chunks again (Overpass API)
@@ -18,7 +19,10 @@
 # Vincennes and a bit of La Defense: south west north east
 BBOX  := 48.8150 2.2240 48.9030 2.4700
 
-all: tools game
+all: check tools game
+
+check:
+	@./scripts/check_deps.sh
 
 tools:
 	gprbuild -p -P tools.gpr -j0
@@ -26,7 +30,7 @@ tools:
 game:
 	gprbuild -p -P derive.gpr -j0
 
-tiles: tools
+tiles: check tools
 	./scripts/build_city.sh $(BBOX)
 
 run: game

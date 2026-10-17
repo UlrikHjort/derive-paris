@@ -12,7 +12,9 @@ with Ada.Numerics.Elementary_Functions;
 with Ada.Numerics.Float_Random;
 with Ada.Real_Time;
 with Ada.Strings.Unbounded;
+with Ada.Strings.Fixed;
 with Ada.Text_IO;
+with Ada.Unchecked_Conversion;
 with Interfaces.C;
 with System;
 
@@ -20,6 +22,7 @@ with Cairo;
 with Cairo.Image_Surface;
 with Cairo.Png;
 with Cairo.Surface;
+with Gdk;
 with Gdk.Event;
 with Gdk.Frame_Clock;
 with Gdk.Types;
@@ -192,6 +195,14 @@ package body Game is
    type Mode_Kind is (Driving, Flying);
    Mode     : Mode_Kind := Driving;
 
+   --  On foot (Q): first person, the mouse looks all round
+   Walking    : Boolean := False;
+   Walk_X, Walk_Z : Float := 0.0;
+   Walk_Yaw   : Float := 0.0;
+   Walk_Pitch : Float := 0.0;
+   Walk_Step  : Float := 0.0;      --  the bob of the steps
+   Captured   : Boolean := False;  --  the mouse turns the head
+
    Player   : Car.State;
    Aircraft : Plane.State;
    Drone    : Boolean := False;
@@ -226,6 +237,7 @@ package body Game is
       Up, Down, Left, Right, W, S, A, D, Space : Boolean := False;
       Page_Up, Page_Down : Boolean := False;
       B : Boolean := False;   --  horn
+      Shift : Boolean := False;   --  run (on foot)
    end record;
    Keys : Key_State;
    Cam_Pos  : Vec3 := (0.0, 0.0, 0.0);
@@ -721,13 +733,17 @@ package body Game is
      (Home.Origin + Eye_S * Home.Along + Eye_D * Home.Inward
       + (0.0, Home.Floor_Y + 1.6, 0.0));
 
+   function Walk_Eye return Vec3 is
+     ((Walk_X, Terrain.Height (Walk_X, Walk_Z) + 1.65 + 0.03 * abs Sin (Walk_Step), Walk_Z));
+
    --  Where the action is: the car, the plane in flight, or home
    function Focus return Vec3 is
      (if Visiting then (Eye_Position.X, 0.0, Eye_Position.Z)
+      elsif Walking then (Walk_X, Terrain.Height (Walk_X, Walk_Z), Walk_Z)
       elsif Mode = Flying then Aircraft.Pos else (Player.X, Player.Ground, Player.Z));
 
    function Focus_Heading return Float is
-     (if Mode = Flying then Aircraft.Heading else Player.Heading);
+     (if Walking then Walk_Yaw elsif Mode = Flying then Aircraft.Heading else Player.Heading);
 
    function Focus_Forward return Vec3 is
      (Sin (Focus_Heading), 0.0, -Cos (Focus_Heading));
@@ -1116,7 +1132,7 @@ package body Game is
          Rain.Draw (VP, Cam_Pos, Time, Float'Max (Rain_Amount, Snow_Amount),
                     Snow_Amount > Rain_Amount, Float (H) / (2.0 * Tan (0.525)),
                     Mix (Vec3'(0.30, 0.32, 0.36), Vec3'(0.75, 0.78, 0.82), 1.0 - Night));
-         if Mode = Driving or else Visiting then
+         if Mode = Driving or else Visiting or else Walking then
             Rain.Draw_Leaves (VP, Cam_Pos, Time, Almanac.Leaves_Falling * (1.0 - Snow_Amount),
                               Float (H) / (2.0 * Tan (0.525)), 0.15 + 0.85 * (1.0 - Night));
          end if;
@@ -1258,6 +1274,12 @@ package body Game is
                                      -Cos (Eye_Yaw) * Cos (Eye_Pitch));
          return;
       end if;
+      if Walking then
+         Cam_Pos := Walk_Eye;
+         Cam_Look := Cam_Pos + Vec3'(Sin (Walk_Yaw) * Cos (Walk_Pitch), Sin (Walk_Pitch),
+                                     -Cos (Walk_Yaw) * Cos (Walk_Pitch));
+         return;
+      end if;
       if Mode = Flying then
          --  Behind and a little above the plane, following its heading
          --  (and half its pitch, so loops stay readable)
@@ -1378,6 +1400,150 @@ package body Game is
    end Go_To_Kitchen;
 
    --  Looking around and walking in the apartment
+   ---------------------------------------------------------------------------
+   --  On foot
+   ---------------------------------------------------------------------------
+
+   --  The mouse: a hidden pointer that is put back in the middle of the
+   --  window after every move, so the head turns as far as you like
+   function Gdk_Cursor_New_For_Display (Display : System.Address; Kind : Interfaces.C.int)
+     return System.Address
+     with Import, Convention => C, External_Name => "gdk_cursor_new_for_display";
+   function Gdk_Window_Get_Display (W : System.Address) return System.Address
+     with Import, Convention => C, External_Name => "gdk_window_get_display";
+   function Gdk_Window_Get_Screen (W : System.Address) return System.Address
+     with Import, Convention => C, External_Name => "gdk_window_get_screen";
+   procedure Gdk_Window_Set_Cursor (W, Cursor : System.Address)
+     with Import, Convention => C, External_Name => "gdk_window_set_cursor";
+   procedure Gdk_Window_Get_Origin (W : System.Address; X, Y : out Interfaces.C.int)
+     with Import, Convention => C, External_Name => "gdk_window_get_origin";
+   procedure Gdk_Device_Warp (D, Screen : System.Address; X, Y : Interfaces.C.int)
+     with Import, Convention => C, External_Name => "gdk_device_warp";
+   function To_Address is new Ada.Unchecked_Conversion (Gdk.Gdk_Window, System.Address);
+   use type System.Address;
+
+   procedure Capture_Mouse (On : Boolean) is
+      W : constant System.Address := To_Address (Window.Get_Window);
+      Blank : constant Interfaces.C.int := -2;   --  GDK_BLANK_CURSOR
+   begin
+      Captured := On;
+      if W = System.Null_Address then
+         return;
+      end if;
+      Gdk_Window_Set_Cursor
+        (W, (if On then Gdk_Cursor_New_For_Display (Gdk_Window_Get_Display (W), Blank)
+             else System.Null_Address));
+   end Capture_Mouse;
+
+   procedure Toggle_Walk is
+      Side_X : constant Float := -Cos (Player.Heading);   --  the driver's side (left)
+      Side_Z : constant Float := -Sin (Player.Heading);
+   begin
+      if not Walking then
+         if Mode /= Driving or else Visiting then
+            return;
+         end if;
+         if abs Player.Speed > 2.0 then
+            Announce := Ada.Strings.Unbounded.To_Unbounded_String ("Stop the car first");
+            Announce_Timer := 1.5;
+            Street_Timer := 1.0;
+            return;
+         end if;
+         Walking := True;
+         Walk_X := Player.X + 1.6 * Side_X;
+         Walk_Z := Player.Z + 1.6 * Side_Z;
+         Walk_Yaw := Player.Heading;
+         Walk_Pitch := 0.0;
+         Capture_Mouse (True);
+         Announce := Ada.Strings.Unbounded.To_Unbounded_String
+           ("On foot: mouse to look, W/A/S/D to walk, Shift to run, Q at the car to drive");
+         Announce_Timer := 4.0;
+         Street_Timer := 1.0;
+      else
+         declare
+            DX : constant Float := Player.X - Walk_X;
+            DZ : constant Float := Player.Z - Walk_Z;
+            D  : constant Float := Sqrt (DX * DX + DZ * DZ);
+            Points : constant array (0 .. 7) of String (1 .. 10) :=
+              ("north     ", "north-east", "east      ", "south-east",
+               "south     ", "south-west", "west      ", "north-west");
+         begin
+            if D < 6.0 then
+               Walking := False;
+               Capture_Mouse (False);
+               Traffic.Set_Walker (False, 0.0, 0.0);
+            else
+               Announce := Ada.Strings.Unbounded.To_Unbounded_String
+                 ("Your car is" & Natural'Image (Natural (D)) & " m "
+                  & Ada.Strings.Fixed.Trim
+                      (Points (Natural (Float'Floor ((Arctan (DX, -DZ) / (2.0 * Ada.Numerics.Pi) * 8.0)
+                                                       + 8.5)) mod 8), Ada.Strings.Right)
+                  & " of you");
+               Announce_Timer := 3.0;
+               Street_Timer := 1.0;
+            end if;
+         end;
+      end if;
+   end Toggle_Walk;
+
+   procedure Update_Walk (Dt : Float) is
+      Speed : constant Float := (if Keys.Shift then 4.2 else 1.5);
+      Fwd_X : constant Float := Sin (Walk_Yaw);
+      Fwd_Z : constant Float := -Cos (Walk_Yaw);
+      DX, DZ : Float := 0.0;
+      Turn  : constant Float := 1.8 * Dt;
+   begin
+      --  the arrows turn too, for those without a mouse
+      if Keys.Left then
+         Walk_Yaw := Walk_Yaw - Turn;
+      elsif Keys.Right then
+         Walk_Yaw := Walk_Yaw + Turn;
+      end if;
+      if Keys.Page_Up then
+         Walk_Pitch := Float'Min (1.4, Walk_Pitch + Turn);
+      elsif Keys.Page_Down then
+         Walk_Pitch := Float'Max (-1.4, Walk_Pitch - Turn);
+      end if;
+      if Keys.W or else Keys.Up then
+         DX := DX + Fwd_X;
+         DZ := DZ + Fwd_Z;
+      elsif Keys.S or else Keys.Down then
+         DX := DX - Fwd_X;
+         DZ := DZ - Fwd_Z;
+      end if;
+      if Keys.A then
+         DX := DX + Fwd_Z;
+         DZ := DZ - Fwd_X;
+      elsif Keys.D then
+         DX := DX - Fwd_Z;
+         DZ := DZ + Fwd_X;
+      end if;
+      if DX /= 0.0 or else DZ /= 0.0 then
+         declare
+            L : constant Float := Sqrt (DX * DX + DZ * DZ);
+            Hit : Boolean;
+            NX, NZ : Float;
+         begin
+            Walk_X := Walk_X + DX / L * Speed * Dt;
+            Walk_Z := Walk_Z + DZ / L * Speed * Dt;
+            --  walls, and the parked car
+            World.Collide (Walk_X, Walk_Z, 0.35, Hit, NX, NZ);
+            declare
+               CX : constant Float := Walk_X - Player.X;
+               CZ : constant Float := Walk_Z - Player.Z;
+               CD : constant Float := Sqrt (CX * CX + CZ * CZ);
+            begin
+               if CD < 1.6 and then CD > 0.01 then
+                  Walk_X := Player.X + CX / CD * 1.6;
+                  Walk_Z := Player.Z + CZ / CD * 1.6;
+               end if;
+            end;
+            Walk_Step := Walk_Step + Dt * Speed * 4.2;
+         end;
+      end if;
+      Traffic.Set_Walker (True, Walk_X, Walk_Z);
+   end Update_Walk;
+
    procedure Update_Visit (Dt : Float) is
       Turn  : constant Float := 1.6 * Dt;
       Walk  : constant Float := 1.4 * Dt;
@@ -1491,6 +1657,15 @@ package body Game is
              & "  PgUp/PgDn, drag  look up and down" & LF
              & "  K                kitchen window" & LF
              & "  V                back to the car" & LF & LF
+           elsif Walking then
+             Head ("On foot")
+             & "  mouse            look all round" & LF
+             & "  W / S, up/down   walk forwards / back" & LF
+             & "  A / D            step aside" & LF
+             & "  left / right     turn" & LF
+             & "  Shift            run" & LF
+             & "  Esc              free the mouse (click to look again)" & LF
+             & "  Q                back into the car (when you are by it)" & LF & LF
            elsif Mode = Driving then
              Head ("Driving")
              & "  arrows / WASD    drive" & LF
@@ -1499,6 +1674,7 @@ package body Game is
              & "  C                chase or drone camera" & LF
              & "  mouse wheel, +/-  zoom" & LF
              & "  F                take off in the plane" & LF
+             & "  Q                get out and walk" & LF
              & "  E                gearbox: manual or automatic" & LF
              & "  I                instruments (gear, revs, speed)" & LF
              & "  R                reset the car" & LF & LF
@@ -1858,7 +2034,7 @@ package body Game is
    procedure Update_Senses is
       Look  : constant Vec3 := Cam_Look - Cam_Pos;
       Head  : constant Float := Arctan (Look.X, -Look.Z);
-      Where : constant Vec3 := (if Visiting then Eye_Position else Focus);
+      Where : constant Vec3 := (if Visiting then Eye_Position elsif Walking then Walk_Eye else Focus);
       Lat, Lon : Long_Float;
       Ear_Y : constant Float :=
         (if Visiting then Home.Floor_Y + 1.6 - Terrain.Height (Home.Origin.X, Home.Origin.Z)
@@ -1874,11 +2050,11 @@ package body Game is
                                            then Aircraft.Pos.Y else -1.0));
       end if;
       Navigation.Update (Where.X, Where.Z,
-                         (if Visiting or else Mode = Flying then Head else Player.Heading),
+                         (if Visiting or else Walking or else Mode = Flying then Head else Player.Heading),
                          1.0 / 60.0, Route_Allowed => Mode = Driving and then not Visiting);
 
       Sound.Set
-        ((Mode     => (if Visiting then Sound.Visiting
+        ((Mode     => (if Visiting then Sound.Visiting elsif Walking then Sound.Walking
                        elsif Mode = Flying then Sound.Flying else Sound.Driving),
           Rpm      => Player.Rpm,
           Load     => (if Mode = Flying then Aircraft.Throttle
@@ -2004,6 +2180,10 @@ package body Game is
          Set_Key (16#66#, True);
          Set_Key (16#66#, False);
       end if;
+      if Ready and then Frame_Number = 30 and then Env ("PARIS_WALK") /= "" then
+         Toggle_Walk;
+         Walk_Yaw := Walk_Yaw + Float'Value (Env ("PARIS_WALK")) * Ada.Numerics.Pi / 180.0;
+      end if;
       if Ready and then Frame_Number = 30 and then Env ("PARIS_PEAL") /= "" then
          Sound.Peal (Float'Value (Env ("PARIS_PEAL")));
       end if;
@@ -2063,10 +2243,14 @@ package body Game is
             T0 : Ada.Real_Time.Time := Clock_Now;
          begin
             Steps := Positive'Max (1, Integer (Float'Ceiling (Dt / 0.008)));
-            if Visiting then
-               Update_Visit (Dt);
+            if Visiting or else Walking then
+               if Visiting then
+                  Update_Visit (Dt);
+               else
+                  Update_Walk (Dt);
+               end if;
                for I in 1 .. Steps loop
-                  Car.Update (Player, (others => <>), Dt / Float (Steps));
+                  Car.Update (Player, (Handbrake => True, others => <>), Dt / Float (Steps));
                end loop;
             elsif Mode = Driving then
                declare
@@ -2170,7 +2354,8 @@ package body Game is
                  & Natural'Image (Recorder.Seconds / 60) & ":"
                  & Natural'Image (100 + Recorder.Seconds mod 60) (3 .. 4) & "</span>   "
                else "")
-            & (if Mode = Driving and then Show_Panel and then not Visiting then ""
+            & (if Walking then " on foot   "
+               elsif Mode = Driving and then Show_Panel and then not Visiting then ""
                elsif Mode = Driving then
                  Integer'Image (Integer (abs Player.Speed * 3.6)) & " km/h  "
                  & (case Player.Gear is
@@ -2225,7 +2410,7 @@ package body Game is
       --  The instrument panel, in the car
       declare
          Want : constant Boolean := Ready and then Show_Panel and then Mode = Driving
-           and then not Visiting;
+           and then not Visiting and then not Walking;
       begin
          if Want /= Panel.Get_Visible then
             Panel.Set_Visible (Want);
@@ -2388,6 +2573,11 @@ package body Game is
          when 16#64#   => Keys.D := Down;
          when 16#20#   => Keys.Space := Down;
          when 16#62#   => Keys.B := Down;                     --  b: horn
+         when 16#FFE1# | 16#FFE2# => Keys.Shift := Down;      --  shift: run
+         when 16#71# =>                                       --  q: on foot
+            if Down then
+               Toggle_Walk;
+            end if;
          when 16#69# =>                                       --  i: instruments
             if Down then
                Show_Panel := not Show_Panel;
@@ -2541,7 +2731,9 @@ package body Game is
             end if;
          when 16#FF1B# =>                                     --  Escape
             if Down then
-               if Help.Get_Visible then
+               if Walking and then Captured then
+                  Capture_Mouse (False);   --  the mouse back (click to look again)
+               elsif Help.Get_Visible then
                   Help.Hide;
                else
                   Gtk.Main.Main_Quit;
@@ -2594,6 +2786,9 @@ package body Game is
    is
       pragma Unreferenced (Self);
    begin
+      if Walking and then not Captured then
+         Capture_Mouse (True);
+      end if;
       if Event.Button = 1 then
          Dragging := True;
          Drag_X := Float (Event.X);
@@ -2625,6 +2820,24 @@ package body Game is
       if Dragging and then Visiting then
          Eye_Yaw := Eye_Yaw - (X - Drag_X) * 0.004;
          Eye_Pitch := Float'Max (-1.2, Float'Min (1.2, Eye_Pitch + (Y - Drag_Y) * 0.004));
+      end if;
+      if Walking and then Captured then
+         declare
+            W  : constant System.Address := To_Address (Event.Window);
+            OX, OY : Interfaces.C.int;
+            CX : constant Float := Float (Area.Get_Allocated_Width) / 2.0;
+            CY : constant Float := Float (Area.Get_Allocated_Height) / 2.0;
+         begin
+            if abs (X - CX) > 0.5 or else abs (Y - CY) > 0.5 then
+               Walk_Yaw := Walk_Yaw + (X - CX) * 0.0025;
+               Walk_Pitch := Float'Max (-1.4, Float'Min (1.4, Walk_Pitch - (Y - CY) * 0.0025));
+               if W /= System.Null_Address and then Event.Device /= System.Null_Address then
+                  Gdk_Window_Get_Origin (W, OX, OY);
+                  Gdk_Device_Warp (Event.Device, Gdk_Window_Get_Screen (W),
+                                   OX + Interfaces.C.int (CX), OY + Interfaces.C.int (CY));
+               end if;
+            end if;
+         end;
       end if;
       Drag_X := X;
       Drag_Y := Y;

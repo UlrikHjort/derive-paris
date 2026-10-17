@@ -46,13 +46,34 @@ structure the project, build setup, libraries to use, documentation layout, et c
 
 ## Building
 
-Needs GNAT with gprbuild, GtkAda (GTK 3), libepoxy, zlib, PulseAudio
-(libpulse-simple), curl and an OpenGL 3.3 graphics card; ffmpeg for
-recording videos.
+Dérive runs on Linux.  It needs:
 
-    make            # build the converter (bin/osm2tiles) and the game (bin/derive)
-    make tiles      # download the OSM data if needed, build tiles/
+- **GNAT** (the Ada compiler, version 10 or newer) and **gprbuild**
+- **GtkAda** (the Ada binding to GTK 3) and **GTK 3**
+- **libepoxy** (OpenGL), **zlib**, **PulseAudio**'s libpulse-simple
+- **curl**, to download the map data and the ground heights
+- a graphics card with **OpenGL 3.3**
+- **ffmpeg** (optional), to record videos with F9
+
+`make` first checks that all of these are there.  If something is missing
+it says what, gives the command to install it, and offers to run it.
+`make check` does only the check.  The packages:
+
+| | |
+|---|---|
+| Debian, Ubuntu, Mint | `sudo apt install gnat gprbuild libgtkada-dev libgtk-3-dev libepoxy-dev zlib1g-dev libpulse-dev pkg-config curl ffmpeg` (the GtkAda package is called `libgtkada20-dev` or similar on some releases) |
+| Fedora | `sudo dnf install gcc-gnat gprbuild gtkada-devel gtk3-devel libepoxy-devel zlib-devel pulseaudio-libs-devel pkgconf curl ffmpeg-free` |
+| Arch | `sudo pacman -S gcc-ada gprbuild gtk3 libepoxy zlib libpulse pkgconf curl ffmpeg`, and `gtkada` from the AUR |
+| openSUSE | `sudo zypper install gcc-ada gprbuild gtkada-devel gtk3-devel libepoxy-devel zlib-devel libpulse-devel pkg-config curl ffmpeg` |
+
+Then:
+
+    make            # check, build the converter (bin/osm2tiles) and the game (bin/derive)
+    make tiles      # download the map data and the ground heights, build tiles/
     make run        # play
+
+Building the city the first time downloads a few hundred MB and takes a
+while; the tiles take about 800 MB.
 
 The OSM data (`data/osm/`), the ground heights (`data/elevation/`) and
 the generated tiles are not in the repository; `make tiles` recreates
@@ -70,6 +91,7 @@ fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 | arrows / WASD | drive |
 | space | handbrake |
 | B | horn |
+| Q | get out and walk (mouse to look all round, W/A/S/D to walk, Shift to run); Q again by the car to drive on |
 | E | gearbox: manual (with the wheel's shifter and clutch) or automatic |
 | I | instruments: the gear (H-pattern or R N D), rev counter, speed and pedals |
 | L | save the place where you are |
@@ -178,7 +200,7 @@ OpenStreetMap data.
 
 Debug options for screenshots: `PARIS_SHOT=file.ppm`, `PARIS_SPAWN`,
 `PARIS_CAM`, `PARIS_DRONE`, `PARIS_FLY`, `PARIS_TIME`, `PARIS_RAIN`,
-`PARIS_ZOOM`, `PARIS_TILES`, `PARIS_TELEPORT`, `PARIS_WAV`, `PARIS_COMPASS_PNG`, `PARIS_HELP_PNG`, `PARIS_LIST_PNG`, `PARIS_RECORD`, `PARIS_DATE`, `PARIS_FIREWORKS`, `PARIS_STRIKE`, `PARIS_SANTA`, `PARIS_GHOST`, `PARIS_UFO`, `PARIS_PEAL`, `PARIS_FREEZE`, `PARIS_SURPRISE`, `PARIS_ORBIT`, `PARIS_SHOT_PNG` (with the overlays), `PARIS_BURNOUT`, `PARIS_NOWHEEL`, `PARIS_NAV`, `PARIS_MAP_PNG`, `PARIS_PROFILE` (see `src/game/game.adb`).
+`PARIS_ZOOM`, `PARIS_TILES`, `PARIS_TELEPORT`, `PARIS_WAV`, `PARIS_COMPASS_PNG`, `PARIS_HELP_PNG`, `PARIS_LIST_PNG`, `PARIS_RECORD`, `PARIS_DATE`, `PARIS_FIREWORKS`, `PARIS_STRIKE`, `PARIS_SANTA`, `PARIS_GHOST`, `PARIS_UFO`, `PARIS_PEAL`, `PARIS_FREEZE`, `PARIS_SURPRISE`, `PARIS_WALK`, `PARIS_ORBIT`, `PARIS_SHOT_PNG` (with the overlays), `PARIS_BURNOUT`, `PARIS_NOWHEEL`, `PARIS_NAV`, `PARIS_MAP_PNG`, `PARIS_PROFILE` (see `src/game/game.adb`).
 
 ## License
 

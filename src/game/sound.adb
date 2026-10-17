@@ -1173,16 +1173,16 @@ package body Sound is
                      Prop_Phase := Prop_Phase + F0 / Float (Rate);
                      Prop_Phase := Prop_Phase - Float'Floor (Prop_Phase);
                      Ph := Two_Pi * Prop_Phase;
-                     S := (Sin (Ph) + 0.7 * Sin (2.0 * Ph) + 0.5 * Sin (3.0 * Ph)
-                           + 0.35 * Sin (5.0 * Ph)) * 0.06 * (0.6 + 0.6 * P.Load);
-                     S := S + Step (Engine_Grit, Noise, 600.0) * 0.18;
+                     S := (Sin (Ph) + 0.6 * Sin (2.0 * Ph) + 0.35 * Sin (3.0 * Ph)
+                           + 0.15 * Sin (5.0 * Ph)) * 0.035 * (0.6 + 0.6 * P.Load);
+                     S := S + Step (Engine_Grit, Noise, 450.0) * 0.09;
                      L := L + S;
                      R := R + S;
                   end;
-                  S := Step (Wind, Noise, 1500.0) * 0.5 * Float'Min (1.0, P.Speed / 50.0);
+                  S := Step (Wind, Noise, 1500.0) * 0.28 * Float'Min (1.0, P.Speed / 50.0);
                   L := L + S;
                   R := R + S;
-               when Visiting =>
+               when Visiting | Walking =>
                   null;
             end case;
 

@@ -42,6 +42,9 @@ package Traffic is
    procedure Clear_Corridor (A, B : Math3D.Vec3; Half_Width : Float);
    --  No cars along A .. B (a parade, a bike race): those there vanish
 
+   procedure Set_Walker (On : Boolean; X, Z : Float);
+   --  You on foot: the cars stop for you
+
    function Nearest (X, Z : Float) return Float;
 
    --  The vehicles you can hear: the nearest few, for the sound

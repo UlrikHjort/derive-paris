@@ -33,6 +33,7 @@ package body Traffic is
       T        : Float := 0.0;      --  metres along the segment
       Speed    : Float := 0.0;
       Lane     : Float := 0.0;      --  offset to the right of the centre line
+      Lane_Pick : Natural := 0;     --  the lane it likes, counted from the right
       Next     : Link;
       Has_Next : Boolean := False;
       X, Z     : Float := 0.0;      --  smoothed position for drawing
@@ -115,6 +116,16 @@ package body Traffic is
       return List;
    end Nearby;
 
+   Walker_On   : Boolean := False;
+   Walker_X, Walker_Z : Float := 0.0;
+
+   procedure Set_Walker (On : Boolean; X, Z : Float) is
+   begin
+      Walker_On := On;
+      Walker_X := X;
+      Walker_Z := Z;
+   end Set_Walker;
+
    procedure Clear_Corridor (A, B : Vec3; Half_Width : Float) is
       D  : constant Vec3 := B - A;
       L2 : constant Float := Float'Max (1.0, D.X * D.X + D.Z * D.Z);
@@ -163,22 +174,56 @@ package body Traffic is
    --  Driving
    ---------------------------------------------------------------------------
 
-   function Lane_For (W : Way) return Float is
+   --  Lanes in our direction of travel on a way
+   function Lanes_Our_Way (W : Way) return Positive is
+     (if W.Oneway /= 0 then W.Lanes else Positive'Max (1, W.Lanes / 2));
+
+   --  The offset (to the right of the centre line) of lane Index, counted
+   --  from the right; on a two-way street our half is the right half
+   function Lane_Offset (W : Way; Index : Natural) return Float is
+      N : constant Positive := Lanes_Our_Way (W);
+      I : constant Natural := Natural'Min (Index, N - 1);
    begin
       if W.Oneway = 0 then
-         --  rightmost lane of our half
-         return W.Width / 2.0 - W.Width / Float (2 * Positive'Max (2, W.Lanes));
-      elsif W.Lanes = 1 then
-         return 0.0;
-      else
          declare
-            K : constant Natural :=
-              Natural'Min (W.Lanes - 1, Natural (Float'Floor (Rnd * Float (W.Lanes))));
+            Half : constant Float := W.Width / 2.0;
+            Lane : constant Float := Half / Float (N);
          begin
-            return -W.Width / 2.0 + (Float (K) + 0.5) * W.Width / Float (W.Lanes);
+            return Half - (Float (I) + 0.5) * Lane;
+         end;
+      else
+         return W.Width / 2.0 - (Float (I) + 0.5) * W.Width / Float (N);
+      end if;
+   end Lane_Offset;
+
+   --  Most drivers keep to the right; some like the middle or the left
+   function Pick_Lane return Natural is
+      R : constant Float := Rnd;
+   begin
+      return (if R < 0.6 then 0 elsif R < 0.88 then 1 else 2);
+   end Pick_Lane;
+
+   --  Where an agent wants to be across the road: its own lane, or the
+   --  lane for the turn coming up
+   function Lane_Goal (A : Agent; W : Way; Left_Of_Segment : Float) return Float is
+      Index : Natural := A.Lane_Pick;
+      Two_Wheels_Right : constant Float := (if Four_Wheels (A.Kind) then 0.0 else 0.7);
+   begin
+      if A.Has_Next and then Left_Of_Segment < 45.0 and then A.Next.W /= A.Cur.W then
+         declare
+            D    : constant Vec3 := Direction (A.Cur);
+            N    : constant Vec3 := Direction (A.Next);
+            Turn : constant Float := D.X * N.Z - D.Z * N.X;   --  > 0: to the right
+         begin
+            if Turn > 0.35 then
+               Index := 0;                                     --  right turn
+            elsif Turn < -0.35 then
+               Index := Lanes_Our_Way (W) - 1;                 --  left turn
+            end if;
          end;
       end if;
-   end Lane_For;
+      return Lane_Offset (W, Index) + Two_Wheels_Right;
+   end Lane_Goal;
 
 
    --  Pick where to go at the end of the current segment
@@ -285,14 +330,14 @@ package body Traffic is
                   begin
                      A := (Active => True, Kind => K, Cur => L, T => Len / 2.0,
                            Speed => 6.0,
-                           --  two-wheelers ride towards the right of their lane
-                           Lane => Lane_For (Ways (W)) + (if Four_Wheels (K) then 0.0 else 0.7),
+                           Lane_Pick => Pick_Lane,
                            Color => (if K in Deux_Chevaux | DS
                                      then Vintage (Natural (Float'Floor (Rnd * 5.99)))
                                      else Palette (Natural (Float'Floor (Rnd * 11.99)))),
                            others => <>);
                   end;
                   Choose_Next (A);
+                  A.Lane := Lane_Goal (A, Ways (W), Len);
                   declare
                      P0 : constant Vec3 := Target_Point (A);
                      D  : constant Vec3 := Direction (A.Cur);
@@ -403,6 +448,9 @@ package body Traffic is
                end if;
             end loop;
             Obstacle (Player.X, Player.Z, Car_Length);
+            if Walker_On then
+               Obstacle (Walker_X, Walker_Z, 1.0);
+            end if;
          end;
       else
          A.Ghost := A.Ghost - Dt;
@@ -442,15 +490,27 @@ package body Traffic is
             return;
          end if;
          A.T := A.T - Len;
-         if A.Next.W /= A.Cur.W then
-            A.Lane := Lane_For (Ways (A.Next.W)) + (if Four_Wheels (A.Kind) then 0.0 else 0.7);
-         elsif A.Next.Dir /= A.Cur.Dir then
-            A.Lane := Lane_For (W) + (if Four_Wheels (A.Kind) then 0.0 else 0.7);
+         --  a U-turn at a dead end lands in the other half at once
+         if A.Next.W = A.Cur.W and then A.Next.Dir /= A.Cur.Dir then
+            A.Lane := Lane_Goal (A, W, 999.0);
          end if;
          A.Cur := A.Next;
          Choose_Next (A);
          Segment (A.Cur, P, Q, Len);
       end loop;
+
+      --  Drift towards the lane we want: a lane change takes a few seconds
+      --  (but a new street of another width is taken up quickly)
+      declare
+         Goal : constant Float := Lane_Goal (A, Ways (A.Cur.W), Len - A.T);
+         Rate : constant Float := (if abs (Goal - A.Lane) > 4.0 then 4.0 else 1.1);
+      begin
+         if A.Lane < Goal then
+            A.Lane := Float'Min (Goal, A.Lane + Rate * Dt);
+         else
+            A.Lane := Float'Max (Goal, A.Lane - Rate * Dt);
+         end if;
+      end;
 
       --  Smoothed position and heading for drawing
       declare
