@@ -6,3 +6,6 @@ data/osm/
 tiles/.log_*
 tiles.new/
 tiles.old/
+
+# The list of surprises stays private
+SECRETS.md

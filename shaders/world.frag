@@ -523,6 +523,9 @@ void main()
         s = Surface(toLinear(vec3(0.88, 0.92, 0.98)), 0.1, 12.0,
                     toLinear(vec3(0.6, 0.7, 0.85)) * 1.1 * uNight, 0.5);
         gAlpha = 0.65;
+    } else if (m == 43) {          // the Little Prince's asteroid
+        vec3 c = vec3(0.85, 0.72, 0.5) * (0.75 + 0.35 * noise(vWorld.xz * 0.2 + vWorld.y * 0.15));
+        s = Surface(toLinear(c), 0.0, 8.0, toLinear(vec3(1.0, 0.85, 0.6)) * 0.6 * uNight, 0.4);
     } else if (m == 38) {          // the star on top
         s = Surface(toLinear(vec3(1.0, 0.85, 0.35)), 0.8, 40.0,
                     toLinear(vec3(1.0, 0.85, 0.4)) * (0.6 + 4.0 * uNight), 0.0);

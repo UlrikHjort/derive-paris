@@ -50,6 +50,9 @@ package body Config is
      & "street_names = yes" & ASCII.LF
      & "instruments = yes" & ASCII.LF
      & ASCII.LF
+     & "# Your car: modern, 2cv (the Citroen 2CV) or ds (the Citroen DS)." & ASCII.LF
+     & "car = modern" & ASCII.LF
+     & ASCII.LF
      & "# Racing wheel (Logitech G29, found by itself when plugged in):" & ASCII.LF
      & "# drive with the H-shifter and clutch (no: automatic), whether a gear" & ASCII.LF
      & "# only goes in with the clutch down, force feedback strength 0 .. 1." & ASCII.LF

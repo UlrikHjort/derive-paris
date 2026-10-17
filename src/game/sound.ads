@@ -36,6 +36,10 @@ package Sound is
       Church   : Float := 0.0;     --  0 .. 1: how near Saint-Sulpice is
       Jingle   : Float := 0.0;     --  0 .. 1: sleigh bells going by
       Jingle_Pan : Float := 0.0;
+      Jets     : Float := 0.0;     --  0 .. 1: jets roaring over
+      Crowd    : Float := 0.0;     --  0 .. 1: a cheering crowd
+      Busker   : Natural := 0;     --  a street musician's tune (0: none)
+      Busker_Level, Busker_Pan : Float := 0.0;
       Alien    : Float := 0.0;     --  0 .. 1: the UFO's whine
       Alien_Pan : Float := 0.0;
       Voices   : Voice_List;       --  the traffic around you
@@ -71,6 +75,11 @@ package Sound is
 
    procedure Ho_Ho (Loudness, Pan : Float);
    --  Father Christmas laughs
+
+   type Effect_Kind is (Meow, Flutter, Thud, Organ);
+   procedure Effect (Kind : Effect_Kind; Loudness, Pan : Float);
+   --  Little one-off sounds: a cat, pigeons taking off, a snowball on the
+   --  car, the Phantom's organ
 
    procedure Shutter;
    --  A camera click (a photo was taken)

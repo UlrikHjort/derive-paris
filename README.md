@@ -144,7 +144,8 @@ comment); the game writes a commented starter file on its first run.
 So far: `traffic`, `pedestrians` (1.0 = normal), `volume` (0 .. 1),
 `start_hour`, `time_speed` (game minutes per real second), `compass`,
 `street_names` and `instruments` (yes/no), `date` (`today` or e.g.
-`2026-12-24`), `christmas` and `halloween` (auto/yes/no), and for the wheel `manual_gearbox` (no:
+`2026-12-24`), `christmas` and `halloween` (auto/yes/no), `car`
+(`modern`, `2cv` or `ds`), and for the wheel `manual_gearbox` (no:
 automatic), `clutch` (no: change gear without the clutch) and
 `force_feedback` (0 .. 1), `steering` (sensitivity) and `wheel_centre`
 (degrees).
@@ -162,7 +163,7 @@ OpenStreetMap data.
 
 Debug options for screenshots: `PARIS_SHOT=file.ppm`, `PARIS_SPAWN`,
 `PARIS_CAM`, `PARIS_DRONE`, `PARIS_FLY`, `PARIS_TIME`, `PARIS_RAIN`,
-`PARIS_ZOOM`, `PARIS_TILES`, `PARIS_TELEPORT`, `PARIS_WAV`, `PARIS_COMPASS_PNG`, `PARIS_HELP_PNG`, `PARIS_LIST_PNG`, `PARIS_RECORD`, `PARIS_DATE`, `PARIS_FIREWORKS`, `PARIS_STRIKE`, `PARIS_SANTA`, `PARIS_GHOST`, `PARIS_UFO`, `PARIS_PEAL`, `PARIS_FREEZE`, `PARIS_SHOT_PNG` (with the overlays), `PARIS_BURNOUT`, `PARIS_NOWHEEL`, `PARIS_NAV`, `PARIS_MAP_PNG`, `PARIS_PROFILE` (see `src/game/game.adb`).
+`PARIS_ZOOM`, `PARIS_TILES`, `PARIS_TELEPORT`, `PARIS_WAV`, `PARIS_COMPASS_PNG`, `PARIS_HELP_PNG`, `PARIS_LIST_PNG`, `PARIS_RECORD`, `PARIS_DATE`, `PARIS_FIREWORKS`, `PARIS_STRIKE`, `PARIS_SANTA`, `PARIS_GHOST`, `PARIS_UFO`, `PARIS_PEAL`, `PARIS_FREEZE`, `PARIS_SURPRISE`, `PARIS_ORBIT`, `PARIS_SHOT_PNG` (with the overlays), `PARIS_BURNOUT`, `PARIS_NOWHEEL`, `PARIS_NAV`, `PARIS_MAP_PNG`, `PARIS_PROFILE` (see `src/game/game.adb`).
 
 ## License
 

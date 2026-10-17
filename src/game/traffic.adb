@@ -6,7 +6,6 @@ with Ada.Numerics;
 with Ada.Numerics.Elementary_Functions;
 with Ada.Numerics.Float_Random;
 
-with Math3D;
 with Meshes;
 with Road_Network;
 with Shaders;
@@ -24,7 +23,7 @@ package body Traffic is
    Retire_Far   : constant := 320.0;
    Car_Length   : constant := 4.6;
 
-   type Vehicle_Kind is (Car_Kind, Scooter, Motorbike);
+   type Vehicle_Kind is (Car_Kind, Scooter, Motorbike, Deux_Chevaux, DS);
 
    type Agent is record
       Kind     : Vehicle_Kind := Car_Kind;
@@ -46,6 +45,14 @@ package body Traffic is
    end record;
 
    Agents : array (1 .. Max_Cars) of Agent;
+
+   function Four_Wheels (K : Vehicle_Kind) return Boolean is
+     (K in Car_Kind | Deux_Chevaux | DS);
+
+   --  the colours the 2CV and the DS came in
+   Vintage : constant array (0 .. 5) of Vec3 :=
+     ((0.55, 0.57, 0.58), (0.80, 0.74, 0.58), (0.45, 0.08, 0.10),
+      (0.42, 0.58, 0.72), (0.90, 0.88, 0.80), (0.10, 0.10, 0.11));
 
    type Float_Pair is array (1 .. 2) of Float;
    Gen    : Ada.Numerics.Float_Random.Generator;
@@ -95,7 +102,11 @@ package body Traffic is
                      Dist (J) := D;
                      List (J) := (Id => I, X => A.X, Z => A.Z, Speed => A.Speed,
                                   Heading => A.Heading,
-                                  Kind => Vehicle_Kind'Pos (A.Kind));
+                                  --  a 2CV's flat twin sounds like a motorbike
+                                  Kind => (case A.Kind is
+                                             when Scooter => 1,
+                                             when Motorbike | Deux_Chevaux => 2,
+                                             when others => 0));
                   end;
                end if;
             end if;
@@ -103,6 +114,26 @@ package body Traffic is
       end loop;
       return List;
    end Nearby;
+
+   procedure Clear_Corridor (A, B : Vec3; Half_Width : Float) is
+      D  : constant Vec3 := B - A;
+      L2 : constant Float := Float'Max (1.0, D.X * D.X + D.Z * D.Z);
+   begin
+      for Ag of Agents loop
+         if Ag.Active then
+            declare
+               T  : constant Float := Float'Max (0.0, Float'Min (1.0,
+                      ((Ag.X - A.X) * D.X + (Ag.Z - A.Z) * D.Z) / L2));
+               PX : constant Float := A.X + T * D.X;
+               PZ : constant Float := A.Z + T * D.Z;
+            begin
+               if (Ag.X - PX) ** 2 + (Ag.Z - PZ) ** 2 < Half_Width ** 2 then
+                  Ag.Active := False;
+               end if;
+            end;
+         end if;
+      end loop;
+   end Clear_Corridor;
 
    procedure Set_Density (Factor : Float) is
    begin
@@ -248,13 +279,17 @@ package body Traffic is
                   declare
                      R : constant Float := Rnd;
                      K : constant Vehicle_Kind :=
-                       (if R < 0.12 then Scooter elsif R < 0.2 then Motorbike else Car_Kind);
+                       (if R < 0.12 then Scooter elsif R < 0.2 then Motorbike
+                        elsif R < 0.23 then Deux_Chevaux elsif R < 0.245 then DS
+                        else Car_Kind);
                   begin
                      A := (Active => True, Kind => K, Cur => L, T => Len / 2.0,
                            Speed => 6.0,
                            --  two-wheelers ride towards the right of their lane
-                           Lane => Lane_For (Ways (W)) + (if K = Car_Kind then 0.0 else 0.7),
-                           Color => Palette (Natural (Float'Floor (Rnd * 11.99))),
+                           Lane => Lane_For (Ways (W)) + (if Four_Wheels (K) then 0.0 else 0.7),
+                           Color => (if K in Deux_Chevaux | DS
+                                     then Vintage (Natural (Float'Floor (Rnd * 5.99)))
+                                     else Palette (Natural (Float'Floor (Rnd * 11.99)))),
                            others => <>);
                   end;
                   Choose_Next (A);
@@ -292,14 +327,16 @@ package body Traffic is
       W      : constant Way := Ways (A.Cur.W);
       Base   : constant Float := (if W.Width >= 9.0 then 13.0 else 8.5);
       Cruise : constant Float := (case A.Kind is
-                                    when Car_Kind  => Base,
+                                    when Car_Kind | DS => Base,
+                                    when Deux_Chevaux => Base * 0.85,
                                     when Scooter   => Float'Min (Base, 11.0),
                                     when Motorbike => Base * 1.15);
       Accel  : constant Float := (case A.Kind is
-                                    when Car_Kind  => 2.8,
+                                    when Car_Kind | DS => 2.8,
+                                    when Deux_Chevaux => 1.8,
                                     when Scooter   => 3.2,
                                     when Motorbike => 4.8);
-      Width  : constant Float := (if A.Kind = Car_Kind then 2.0 else 1.1);
+      Width  : constant Float := (if Four_Wheels (A.Kind) then 2.0 else 1.1);
       Old_Heading : constant Float := A.Heading;
       Target : Float := Cruise;
       D      : constant Vec3 := Direction (A.Cur);
@@ -353,7 +390,7 @@ package body Traffic is
             begin
                if Fwd > 0.5 and then Fwd < 30.0 and then Lat < Width then
                   Target := Float'Min
-                    (Target, Float'Max (0.0, (Fwd - 0.5 * (Length + (if A.Kind = Car_Kind
+                    (Target, Float'Max (0.0, (Fwd - 0.5 * (Length + (if Four_Wheels (A.Kind)
                                                                      then Car_Length else 2.2))
                                               - 1.2) * 0.8));
                end if;
@@ -362,7 +399,7 @@ package body Traffic is
             for J in Agents'Range loop
                if J /= I and then Agents (J).Active then
                   Obstacle (Agents (J).X, Agents (J).Z,
-                            (if Agents (J).Kind = Car_Kind then Car_Length else 2.2));
+                            (if Four_Wheels (Agents (J).Kind) then Car_Length else 2.2));
                end if;
             end loop;
             Obstacle (Player.X, Player.Z, Car_Length);
@@ -406,9 +443,9 @@ package body Traffic is
          end if;
          A.T := A.T - Len;
          if A.Next.W /= A.Cur.W then
-            A.Lane := Lane_For (Ways (A.Next.W)) + (if A.Kind = Car_Kind then 0.0 else 0.7);
+            A.Lane := Lane_For (Ways (A.Next.W)) + (if Four_Wheels (A.Kind) then 0.0 else 0.7);
          elsif A.Next.Dir /= A.Cur.Dir then
-            A.Lane := Lane_For (W) + (if A.Kind = Car_Kind then 0.0 else 0.7);
+            A.Lane := Lane_For (W) + (if Four_Wheels (A.Kind) then 0.0 else 0.7);
          end if;
          A.Cur := A.Next;
          Choose_Next (A);
@@ -433,7 +470,7 @@ package body Traffic is
             A.Heading := A.Heading + Angle_Diff (H, A.Heading) * K;
          end if;
          --  lean into the turn: more with speed and turn rate
-         if A.Kind /= Car_Kind and then Dt > 0.0 then
+         if not Four_Wheels (A.Kind) and then Dt > 0.0 then
             declare
                Yaw_Rate : constant Float := Angle_Diff (A.Heading, Old_Heading) / Dt;
                Want     : constant Float :=
@@ -495,8 +532,8 @@ package body Traffic is
             for PO of Offsets loop
                for AO of Offsets loop
                   declare
-                     Reach : constant Float := (if A.Kind = Car_Kind then 2.0 else 1.6);
-                     Off   : constant Float := (if A.Kind = Car_Kind then AO else 0.4 * AO);
+                     Reach : constant Float := (if Four_Wheels (A.Kind) then 2.0 else 1.6);
+                     Off   : constant Float := (if Four_Wheels (A.Kind) then AO else 0.4 * AO);
                      PX : constant Float := Player.X + Sin (Player.Heading) * PO;
                      PZ : constant Float := Player.Z - Cos (Player.Heading) * PO;
                      AX : constant Float := A.X + Sin (A.Heading) * Off;
@@ -603,7 +640,9 @@ package body Traffic is
                Shaders.Set (Color_Loc, A.Color);
             end if;
             case A.Kind is
-               when Car_Kind  => Car.Draw;
+               when Car_Kind  => Car.Draw_Model (Car.Modern);
+               when Deux_Chevaux => Car.Draw_Model (Car.Deux_Chevaux);
+               when DS        => Car.Draw_Model (Car.DS);
                when Scooter   => Meshes.Draw (Scooter_Mesh);
                when Motorbike => Meshes.Draw (Motorbike_Mesh);
             end case;

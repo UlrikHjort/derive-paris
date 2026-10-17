@@ -59,6 +59,9 @@ package body Sound is
      with Import, Convention => C, External_Name => "pa_simple_free";
 
    ---------------------------------------------------------------------------
+   type Effect_List is array (1 .. 8) of Effect_Kind;
+   type Effect_Values is array (1 .. 8) of Float;
+
    --  Shared state between the game and the mixer
    ---------------------------------------------------------------------------
 
@@ -78,6 +81,8 @@ package body Sound is
       function Capture_Open return Boolean;
       procedure Set_Playing;
       procedure Click;
+      procedure Put_Effect (K : Effect_Kind; Loud, Pan : Float);
+      procedure Take_Effect (Any : out Boolean; K : out Effect_Kind; Loud, Pan : out Float);
       procedure Put_Laugh (Loudness, Pan : Float);
       procedure Put_Wooo (Loudness, Pan : Float);
       procedure Put_Thunder (Delay_S, Loudness : Float; Close : Boolean);
@@ -104,6 +109,9 @@ package body Sound is
       Cap_Open  : Boolean := False;
       Play_On   : Boolean := False;
       Clicks    : Natural := 0;
+      Effects   : Effect_List := (others => Meow);
+      Effect_Loud, Effect_Pan : Effect_Values := (others => 0.0);
+      Effect_Count : Natural := 0;
       Laugh_Ask : Boolean := False;
       Wooo_Ask  : Boolean := False;
       Thunder_Ask : Boolean := False;
@@ -234,6 +242,29 @@ package body Sound is
          Pan := Laugh_Pan;
          Laugh_Ask := False;
       end Take_Laugh;
+      procedure Put_Effect (K : Effect_Kind; Loud, Pan : Float) is
+      begin
+         if Effect_Count < Effects'Last then
+            Effect_Count := Effect_Count + 1;
+            Effects (Effect_Count) := K;
+            Effect_Loud (Effect_Count) := Loud;
+            Effect_Pan (Effect_Count) := Pan;
+         end if;
+      end Put_Effect;
+      procedure Take_Effect (Any : out Boolean; K : out Effect_Kind; Loud, Pan : out Float) is
+      begin
+         Any := Effect_Count > 0;
+         if Any then
+            K := Effects (Effect_Count);
+            Loud := Effect_Loud (Effect_Count);
+            Pan := Effect_Pan (Effect_Count);
+            Effect_Count := Effect_Count - 1;
+         else
+            K := Meow;
+            Loud := 0.0;
+            Pan := 0.0;
+         end if;
+      end Take_Effect;
       procedure Click is
       begin
          Clicks := Clicks + 1;
@@ -299,7 +330,8 @@ package body Sound is
    end Step;
 
    --  A sound event with an envelope: passing car, horn, bird, bell stroke
-   type Event_Kind is (None, Passing, Horn, Bird, Bell, Click, Boom, Crackle, Jingle, Laugh, Ghost, Thunder);
+   type Event_Kind is (None, Passing, Horn, Bird, Bell, Click, Boom, Crackle, Jingle, Laugh, Ghost, Thunder,
+                       Cat, Wings, Snowball, Pipe, Note);
 
    type Event is record
       Kind     : Event_Kind := None;
@@ -443,6 +475,64 @@ package body Sound is
                   Src := (if Local < 0.05 then 0.6 * Noise else 2.0 * E.Phase - 1.0 + 0.1 * Noise);
                   S := 2.2 * Resonate (Src, 470.0, 90.0, E.R1a, E.R1b)
                     + 1.3 * Resonate (Src, 820.0, 110.0, E.R2a, E.R2b);
+               end if;
+            end;
+         when Cat =>
+            --  "mi-aow": rising then falling, the vowel opening from i to a
+            declare
+               F     : constant Float := E.T / E.Dur;
+               Pitch : constant Float := 520.0 + 260.0 * Sin (Ada.Numerics.Pi * F) - 120.0 * F;
+               F1    : constant Float := 500.0 + 500.0 * Sin (Ada.Numerics.Pi * Float'Min (1.0, F * 1.3));
+               Src   : Float;
+            begin
+               Env := Sin (Ada.Numerics.Pi * F) ** 0.7;
+               E.Phase := E.Phase + Pitch / Float (Rate);
+               E.Phase := E.Phase - Float'Floor (E.Phase);
+               Src := 2.0 * E.Phase - 1.0;
+               S := 1.6 * Resonate (Src, F1, 150.0, E.R1a, E.R1b)
+                 + 0.9 * Resonate (Src, 2.2 * F1, 220.0, E.R2a, E.R2b);
+            end;
+         when Wings =>
+            --  a flock clattering up: bursts of noise at the wing beat
+            Env := Exp (-E.T * 2.2) * (0.5 + 0.5 * Sin (Two_Pi * 13.0 * E.T + 3.0 * Noise));
+            S := Noise - Step (E.Filter, Noise, 600.0);
+            S := Step (E.Filter2, S, 4000.0) * 1.5;
+         when Snowball =>
+            --  a soft thump on the car
+            Env := Exp (-E.T * 18.0);
+            S := Step (E.Filter2, Step (E.Filter, Noise, 500.0), 300.0) * 10.0;
+         when Pipe =>
+            --  one organ pipe: a stack of octaves and fifths, a slow speech
+            Env := Float'Min (1.0, E.T / 0.04) * Float'Min (1.0, (E.Dur - E.T) / 0.15);
+            S := Sin (Two_Pi * E.Freq * E.T) + 0.6 * Sin (Two_Pi * E.Freq * 2.0 * E.T)
+              + 0.45 * Sin (Two_Pi * E.Freq * 0.5 * E.T) + 0.3 * Sin (Two_Pi * E.Freq * 3.0 * E.T)
+              + 0.25 * Sin (Two_Pi * E.Freq * 4.0 * E.T) + 0.15 * Sin (Two_Pi * E.Freq * 6.0 * E.T);
+         when Note =>
+            --  a busker's note; Speed tells the instrument
+            declare
+               Vib : constant Float := 1.0 + (if E.Speed = 3.0 then 0.006 * Sin (Two_Pi * 5.5 * E.T)
+                                              else 0.002 * Sin (Two_Pi * 6.0 * E.T));
+               Ph  : Float;
+            begin
+               E.Phase := E.Phase + E.Freq * Vib / Float (Rate);
+               E.Phase := E.Phase - Float'Floor (E.Phase);
+               Ph := E.Phase;
+               if E.Speed = 1.0 then        --  accordion: two reeds, a little apart
+                  Env := Float'Min (1.0, E.T / 0.03) * Float'Min (1.0, (E.Dur - E.T) / 0.05);
+                  S := (if Ph < 0.3 then 1.0 else -0.43)
+                    + (if Ph * 1.004 - Float'Floor (Ph * 1.004) < 0.3 then 1.0 else -0.43);
+                  S := Step (E.Filter, 0.5 * S, 2500.0);
+               elsif E.Speed = 2.0 then     --  guitar: plucked
+                  Env := Exp (-E.T * 3.5) * Float'Min (1.0, E.T / 0.003);
+                  S := Sin (Two_Pi * Ph) + 0.5 * Sin (2.0 * Two_Pi * Ph) * Exp (-E.T * 3.0)
+                    + 0.3 * Sin (3.0 * Two_Pi * Ph) * Exp (-E.T * 6.0);
+               elsif E.Speed = 3.0 then     --  violin: bowed
+                  Env := Float'Min (1.0, E.T / 0.08) * Float'Min (1.0, (E.Dur - E.T) / 0.08);
+                  S := Step (E.Filter, 2.0 * Ph - 1.0, 3000.0);
+               else                          --  drum
+                  Env := Exp (-E.T * (if E.Freq > 100.0 then 25.0 else 10.0));
+                  S := (if E.Freq > 100.0 then Noise
+                        else Sin (Two_Pi * (60.0 - 30.0 * E.T) * E.T) * 1.5);
                end if;
             end;
          when Thunder =>
@@ -731,6 +821,100 @@ package body Sound is
      (if abs X <= 0.6 then X
       else (if X > 0.0 then 1.0 else -1.0) * (0.6 + 0.4 * Tanh ((abs X - 0.6) / 0.4)));
 
+   Octaves : constant array (1 .. 2) of Float := (0.5, 1.0);
+
+   ---------------------------------------------------------------------------
+   --  Street musicians (Fête de la Musique): old French tunes, each on its
+   --  own instrument.  Notes as (semitones from middle C, beats); a rest
+   --  is -99.
+   ---------------------------------------------------------------------------
+
+   type Tune_Note is record
+      Pitch : Integer;
+      Beats : Float;
+   end record;
+   type Tune_Notes is array (Positive range <>) of Tune_Note;
+
+   --  Frère Jacques (accordion)
+   Jacques : constant Tune_Notes :=
+     ((0, 1.0), (2, 1.0), (4, 1.0), (0, 1.0), (0, 1.0), (2, 1.0), (4, 1.0), (0, 1.0),
+      (4, 1.0), (5, 1.0), (7, 2.0), (4, 1.0), (5, 1.0), (7, 2.0),
+      (7, 0.5), (9, 0.5), (7, 0.5), (5, 0.5), (4, 1.0), (0, 1.0),
+      (7, 0.5), (9, 0.5), (7, 0.5), (5, 0.5), (4, 1.0), (0, 1.0),
+      (0, 1.0), (-5, 1.0), (0, 2.0), (0, 1.0), (-5, 1.0), (0, 2.0), (-99, 2.0));
+   --  Au clair de la lune (guitar)
+   Lune : constant Tune_Notes :=
+     ((0, 1.0), (0, 1.0), (0, 1.0), (2, 1.0), (4, 2.0), (2, 2.0),
+      (0, 1.0), (4, 1.0), (2, 1.0), (2, 1.0), (0, 4.0),
+      (0, 1.0), (0, 1.0), (0, 1.0), (2, 1.0), (4, 2.0), (2, 2.0),
+      (0, 1.0), (4, 1.0), (2, 1.0), (2, 1.0), (0, 4.0), (-99, 2.0));
+   --  Sur le pont d'Avignon (violin)
+   Avignon : constant Tune_Notes :=
+     ((0, 1.0), (0, 1.0), (0, 2.0), (2, 1.0), (2, 1.0), (2, 2.0),
+      (4, 1.0), (5, 1.0), (7, 1.0), (0, 1.0), (-1, 1.0), (-5, 1.0), (0, 2.0),
+      (0, 1.0), (0, 1.0), (0, 2.0), (2, 1.0), (2, 1.0), (2, 2.0),
+      (4, 1.0), (5, 1.0), (7, 1.0), (0, 1.0), (-1, 1.0), (-5, 1.0), (0, 2.0), (-99, 2.0));
+   --  La Marseillaise, the first lines (accordion)
+   Marseillaise : constant Tune_Notes :=
+     ((-5, 0.75), (-5, 0.25), (-5, 1.0), (0, 1.0), (0, 1.0), (2, 1.0), (2, 1.0),
+      (7, 1.5), (4, 0.5), (0, 0.75), (0, 0.25), (4, 0.75), (0, 0.25), (-3, 1.0),
+      (5, 2.0), (2, 0.75), (-1, 0.25), (0, 3.0), (-99, 1.0),
+      (0, 0.75), (2, 0.25), (4, 1.0), (4, 1.0), (4, 1.0), (5, 0.75), (4, 0.25),
+      (4, 1.0), (2, 1.0), (-99, 1.0), (2, 0.75), (4, 0.25), (5, 1.0), (5, 1.0),
+      (5, 1.0), (7, 0.75), (5, 0.25), (4, 3.0), (-99, 2.0));
+   --  a drummer: kick and snare
+   Drums : constant Tune_Notes :=
+     ((-24, 1.0), (24, 1.0), (-24, 0.5), (-24, 0.5), (24, 1.0),
+      (-24, 1.0), (24, 0.5), (24, 0.5), (-24, 0.5), (-24, 0.5), (24, 1.0));
+
+   Busker_Playing : Natural := 0;
+   Busker_Step    : Positive := 1;
+   Busker_Wait    : Float := 0.0;
+
+   procedure Play_Busker (P : Params; Dt : Float) is
+      Tempo : constant Float := (case P.Busker is when 2 => 0.55, when 3 => 0.4,
+                                                  when 5 => 0.3, when others => 0.42);
+      Instrument : constant Float := (case P.Busker is when 2 => 2.0, when 3 => 3.0,
+                                                       when 5 => 4.0, when others => 1.0);
+      function Get (I : Positive) return Tune_Note is
+        (case P.Busker is
+            when 1 => Jacques (I), when 2 => Lune (I), when 3 => Avignon (I),
+            when 4 => Marseillaise (I), when others => Drums (I));
+      function Last return Positive is
+        (case P.Busker is
+            when 1 => Jacques'Last, when 2 => Lune'Last, when 3 => Avignon'Last,
+            when 4 => Marseillaise'Last, when others => Drums'Last);
+   begin
+      if P.Busker = 0 or else P.Busker_Level < 0.01 then
+         Busker_Playing := 0;
+         return;
+      end if;
+      if P.Busker /= Busker_Playing then
+         Busker_Playing := P.Busker;
+         Busker_Step := 1;
+         Busker_Wait := 0.0;
+      end if;
+      Busker_Wait := Busker_Wait - Dt;
+      while Busker_Wait <= 0.0 loop
+         declare
+            N : constant Tune_Note := Get (Busker_Step);
+            Len : constant Float := N.Beats * Tempo;
+         begin
+            if N.Pitch /= -99 then
+               Add ((Kind => Note, Dur => Float'Max (0.12, Len * 0.92), T => Busker_Wait,
+                     Volume => 0.16 * P.Busker_Level, Pan => 0.7 * P.Busker_Pan,
+                     Freq => 261.63 * 2.0 ** (Float (N.Pitch) / 12.0),
+                     Speed => Instrument, others => <>));
+            end if;
+            Busker_Wait := Busker_Wait + Len;
+            Busker_Step := (if Busker_Step >= Last then 1 else Busker_Step + 1);
+         end;
+      end loop;
+   end Play_Busker;
+
+   --  a crowd cheering, and jets roaring over
+   Crowd_F1, Crowd_F2, Crowd_Swell, Jet_F1, Jet_F2 : Lowpass;
+
    procedure Mix (Buffer : out Sample_Array) is
       P     : constant Params := Shared.Get;
       Dt    : constant Float := Float (Frames) / Float (Rate);
@@ -767,6 +951,50 @@ package body Sound is
             Add ((Kind => Click, Dur => 0.06, T => -0.11, Volume => 0.35, others => <>));
          end if;
       end;
+      declare
+         Any  : Boolean;
+         K    : Effect_Kind;
+         Loud, Where : Float;
+      begin
+         loop
+            Shared.Take_Effect (Any, K, Loud, Where);
+            exit when not Any;
+            case K is
+               when Meow =>
+                  Add ((Kind => Cat, Dur => 0.75, Volume => 0.12 * Loud, Pan => 0.7 * Where,
+                        others => <>));
+               when Flutter =>
+                  Add ((Kind => Wings, Dur => 1.3, Volume => 0.25 * Loud, Pan => 0.7 * Where,
+                        others => <>));
+               when Thud =>
+                  Add ((Kind => Snowball, Dur => 0.3, Volume => 0.5 * Loud, Pan => 0.5 * Where,
+                        others => <>));
+               when Organ =>
+                  --  the opening of Bach's Toccata in D minor, in octaves
+                  declare
+                     type Step_Rec is record
+                        At_T, Hz, Len : Float;
+                     end record;
+                     Phrase : constant array (1 .. 11) of Step_Rec :=
+                       ((0.0, 440.0, 0.13), (0.13, 392.0, 0.13), (0.26, 440.0, 1.3),
+                        (1.9, 392.0, 0.13), (2.03, 349.2, 0.13), (2.16, 329.6, 0.13),
+                        (2.29, 293.7, 0.13), (2.42, 277.2, 0.55), (3.0, 293.7, 2.6),
+                        (3.0, 220.0, 2.6), (3.0, 174.6, 2.6));
+                  begin
+                     for N of Phrase loop
+                        for Octave of Octaves loop
+                           Add ((Kind => Pipe, Dur => N.Len, T => -N.At_T,
+                                 Volume => 0.035 * Loud, Freq => N.Hz * Octave,
+                                 Pan => 0.4 * Where, others => <>));
+                        end loop;
+                     end loop;
+                  end;
+            end case;
+         end loop;
+      end;
+
+      Play_Busker (P, Dt);
+
       --  sleigh bells: shaken in the rhythm of the reindeer's gallop
       if P.Jingle > 0.01 then
          declare
@@ -960,6 +1188,24 @@ package body Sound is
 
             Play_Voices (L, R);
 
+            if P.Crowd > 0.01 then
+               declare
+                  Swell : constant Float := 0.6 + 2.5 * abs Step (Crowd_Swell, Noise, 1.5);
+                  N     : constant Float := Noise;
+               begin
+                  S := Step (Crowd_F2, N - Step (Crowd_F1, N, 450.0), 2600.0)
+                    * 0.35 * P.Crowd * Swell;
+                  L := L + S * (0.9 + 0.2 * Noise);
+                  R := R + S * (0.9 + 0.2 * Noise);
+               end;
+            end if;
+            if P.Jets > 0.01 then
+               S := (Step (Jet_F1, Noise, 1400.0) * 1.2 + Step (Jet_F2, Noise, 120.0) * 2.5)
+                 * 0.5 * P.Jets;
+               L := L + S;
+               R := R + S;
+            end if;
+
             --  the UFO: an eerie, wavering whine over a deep throb
             Alien_Level := Alien_Level + (P.Alien - Alien_Level) * 0.0005;
             if Alien_Level > 0.001 then
@@ -1022,7 +1268,7 @@ package body Sound is
                   if E.Kind /= None then
                      if E.T < 0.0 then
                         E.T := E.T + 1.0 / Float (Rate);   --  delayed start
-                     elsif E.Kind = Bell or else E.Kind = Ghost then
+                     elsif E.Kind in Bell | Ghost | Pipe then
                         Play (E, BL, BR);
                      else
                         Play (E, L, R);
@@ -1216,6 +1462,11 @@ package body Sound is
    begin
       Shared.Put_Laugh (Loudness, Pan);
    end Ho_Ho;
+
+   procedure Effect (Kind : Effect_Kind; Loudness, Pan : Float) is
+   begin
+      Shared.Put_Effect (Kind, Loudness, Pan);
+   end Effect;
 
    procedure Shutter is
    begin

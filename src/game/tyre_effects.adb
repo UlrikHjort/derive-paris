@@ -37,12 +37,14 @@ package body Tyre_Effects is
    Tracks : array (1 .. 4) of Track;
 
    --  Smoke puffs
-   Max_Puffs : constant := 500;
+   Max_Puffs : constant := 2500;
    type Puff is record
       Pos, Vel : Vec3 := (0.0, 0.0, 0.0);
       Age, Life : Float := 0.0;
       Size     : Float := 0.0;
       Thick    : Float := 0.0;
+      Colour   : Natural := 0;
+      Grow     : Float := 1.2;
    end record;
    Puffs     : array (1 .. Max_Puffs) of Puff;
    Next_Puff : Positive := 1;
@@ -157,7 +159,7 @@ package body Tyre_Effects is
                   Age   => 0.0,
                   Life  => 2.5 + 1.5 * Rnd,
                   Size  => 0.45 + 0.15 * Rnd,
-                  Thick => (if Spinning then 0.35 else 0.2));
+                  Thick => (if Spinning then 0.35 else 0.2), Colour => 0, Grow => 1.2);
                Next_Puff := (if Next_Puff = Max_Puffs then 1 else Next_Puff + 1);
             end;
          end loop;
@@ -168,10 +170,18 @@ package body Tyre_Effects is
             P.Pos := P.Pos + Dt * P.Vel;
             P.Vel := (P.Vel.X * (1.0 - 1.5 * Dt), P.Vel.Y * (1.0 - 0.6 * Dt) + 0.15 * Dt,
                       P.Vel.Z * (1.0 - 1.5 * Dt));
-            P.Size := P.Size + 1.2 * Dt;   --  spreads out
+            P.Size := P.Size + P.Grow * Dt;   --  spreads out
          end if;
       end loop;
    end Update;
+
+   procedure Add_Puff (Where, Velocity : Vec3; Colour : Natural; Size, Life : Float) is
+   begin
+      Puffs (Next_Puff) := (Pos => Where, Vel => Velocity, Age => 0.0, Life => Life,
+                            Size => Size, Thick => (if Colour = 0 then 0.5 else 0.55),
+                            Colour => Colour, Grow => Size * 0.35);
+      Next_Puff := (if Next_Puff = Max_Puffs then 1 else Next_Puff + 1);
+   end Add_Puff;
 
    procedure Draw_Marks (VP : Mat4; Cam : Vec3) is
    begin
@@ -208,43 +218,49 @@ package body Tyre_Effects is
    end Draw_Marks;
 
    procedure Draw_Smoke (VP : Mat4; Cam : Vec3; Pixels_Per_Metre : Float; Light : Float) is
-      N : Natural := 0;
+      Tints : constant array (0 .. 3) of Vec3 :=
+        ((1.0, 1.0, 1.0), (0.15, 0.3, 0.95), (1.0, 1.0, 1.0), (0.95, 0.15, 0.15));
    begin
-      for P of Puffs loop
-         if P.Age < P.Life then
-            declare
-               Fade : constant Float := P.Age / P.Life;
-               A    : constant Float :=
-                 P.Thick * Float'Min (1.0, P.Age * 8.0) * (1.0 - Fade) * (1.0 - Fade);
-            begin
-               Puff_Data (N * Floats .. N * Floats + 4) :=
-                 (P.Pos.X, P.Pos.Y, P.Pos.Z, A, P.Size);
-               N := N + 1;
-            end;
-         end if;
+      for C in Tints'Range loop
+         declare
+            N : Natural := 0;
+         begin
+            for P of Puffs loop
+               if P.Age < P.Life and then P.Colour = C then
+                  declare
+                     Fade : constant Float := P.Age / P.Life;
+                     A    : constant Float :=
+                       P.Thick * Float'Min (1.0, P.Age * 8.0) * (1.0 - Fade) * (1.0 - Fade);
+                  begin
+                     Puff_Data (N * Floats .. N * Floats + 4) :=
+                       (P.Pos.X, P.Pos.Y, P.Pos.Z, A, P.Size);
+                     N := N + 1;
+                  end;
+               end if;
+            end loop;
+            if N > 0 then
+               glUseProgram (Program);
+               glBindBuffer (GL_ARRAY_BUFFER, Puff_VBO);
+               glBufferSubData (GL_ARRAY_BUFFER, 0, GLsizeiptr (N * Floats * 4), Puff_Data'Address);
+               Shaders.Set (U_View_Proj, VP);
+               Shaders.Set (U_Cam, Cam);
+               Shaders.Set (U_Points, 1);
+               Shaders.Set (U_Fade, (if C = 0 then 260.0 else 8000.0));
+               Shaders.Set (U_Scale, Pixels_Per_Metre);
+               Shaders.Set (U_Color, (0.25 + 0.65 * Light) * Tints (C));
+               glEnable (GL_PROGRAM_POINT_SIZE);
+               glEnable (GL_BLEND);
+               glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+               glDepthMask (GL_FALSE);
+               glBindVertexArray (Puff_VAO);
+               glDrawArrays (GL_POINTS, 0, GLsizei (N));
+               glBindVertexArray (0);
+               glDepthMask (GL_TRUE);
+               glDisable (GL_BLEND);
+               glDisable (GL_PROGRAM_POINT_SIZE);
+            end if;
+         end;
       end loop;
-      if N = 0 then
-         return;
-      end if;
-      glUseProgram (Program);
-      glBindBuffer (GL_ARRAY_BUFFER, Puff_VBO);
-      glBufferSubData (GL_ARRAY_BUFFER, 0, GLsizeiptr (N * Floats * 4), Puff_Data'Address);
-      Shaders.Set (U_View_Proj, VP);
-      Shaders.Set (U_Cam, Cam);
-      Shaders.Set (U_Points, 1);
-      Shaders.Set (U_Fade, 260.0);
-      Shaders.Set (U_Scale, Pixels_Per_Metre);
-      Shaders.Set (U_Color, (0.25 + 0.65 * Light) * Vec3'(1.0, 1.0, 1.0));
-      glEnable (GL_PROGRAM_POINT_SIZE);
-      glEnable (GL_BLEND);
-      glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-      glDepthMask (GL_FALSE);
-      glBindVertexArray (Puff_VAO);
-      glDrawArrays (GL_POINTS, 0, GLsizei (N));
-      glBindVertexArray (0);
-      glDepthMask (GL_TRUE);
-      glDisable (GL_BLEND);
-      glDisable (GL_PROGRAM_POINT_SIZE);
    end Draw_Smoke;
 
 end Tyre_Effects;

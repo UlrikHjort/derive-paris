@@ -57,6 +57,7 @@ with Sky_Life;
 with Sleigh;
 with Sound;
 with Storm;
+with Surprises;
 with Traffic;
 with Tyre_Effects;
 with Ufo;
@@ -668,6 +669,7 @@ package body Game is
       Sleigh.Create_Mesh;
       Halloween.Create_Mesh;
       Ufo.Create_Mesh;
+      Surprises.Create;
 
       Profiling := Ada.Environment_Variables.Exists ("PARIS_PROFILE");
       declare
@@ -678,6 +680,20 @@ package body Game is
          World.Init (Dir);
          Road_Network.Load (Dir);
          Load_Home (Dir & "/home.txt");
+         if Home.Known and then Home.Windows > 0 then
+            --  a cat walks the railings of the balconies
+            declare
+               Lo : Float := Home.Window_S (1);
+               Hi : Float := Home.Window_S (1);
+            begin
+               for K in 1 .. Home.Windows loop
+                  Lo := Float'Min (Lo, Home.Window_S (K));
+                  Hi := Float'Max (Hi, Home.Window_S (K));
+               end loop;
+               Surprises.Set_Balcony (Home.Origin, Home.Along, (-1.0) * Home.Inward,
+                                      Lo - 0.8, Hi + 0.8, Home.Floor_Y);
+            end;
+         end if;
          Load_Skyline (Dir);
       end;
       Reset_Car;
@@ -1068,6 +1084,7 @@ package body Game is
          Sleigh.Draw (WU.Model, WU.Car_Color, WU.Extra_Color);
          Halloween.Draw (WU.Model);
          Ufo.Draw (WU.Model, WU.Car_Color);
+         Surprises.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2);
          Set (WU.Model, Identity);
          Set (WU.Car_Color, Car_Color);
          Set (WU.Model, Identity);
@@ -1085,6 +1102,7 @@ package body Game is
          Beacon.Draw (VP, Cam_Pos, Time, Hour, Night, Rain_Amount);
          Storm.Draw (VP, Cam_Pos);
          Ufo.Draw_Beam (VP, Cam_Pos);
+         Surprises.Draw_Lights (VP, Cam_Pos);
          Sky_Life.Draw (VP, Float (H) / (2.0 * Tan (0.525)), Night);
          Rain.Draw (VP, Cam_Pos, Time, Float'Max (Rain_Amount, Snow_Amount),
                     Snow_Amount > Rain_Amount, Float (H) / (2.0 * Tan (0.525)),
@@ -1207,6 +1225,23 @@ package body Game is
    begin
       if Fixed_Camera then
          return;
+      end if;
+      --  PARIS_ORBIT="angle distance height": look at the car from there
+      --  (testing; angle in degrees from straight ahead, clockwise)
+      if Env ("PARIS_ORBIT") /= "" and then Mode = Driving then
+         declare
+            S  : constant String := Env ("PARIS_ORBIT") & " ";
+            P1 : constant Natural := Index_Of (S, ' ', S'First);
+            P2 : constant Natural := Index_Of (S, ' ', P1 + 1);
+            A  : constant Float := Player.Heading
+              + Float'Value (S (S'First .. P1 - 1)) * Ada.Numerics.Pi / 180.0;
+            D  : constant Float := Float'Value (S (P1 + 1 .. P2 - 1));
+            H  : constant Float := Float'Value (S (P2 + 1 .. S'Last - 1));
+         begin
+            Cam_Pos := (Player.X + D * Sin (A), H, Player.Z - D * Cos (A));
+            Cam_Look := (Player.X, 0.8, Player.Z);
+            return;
+         end;
       end if;
       if Visiting then
          Cam_Pos := Eye_Position;
@@ -1839,6 +1874,11 @@ package body Game is
           Horn     => Keys.B or else Wheel.Held (Wheel.Enter),
           Church   => Church_Near,
           Jingle   => Sleigh.Jingle,
+          Jets     => Surprises.Jets,
+          Crowd    => Surprises.Crowd,
+          Busker   => Surprises.Busker,
+          Busker_Level => Surprises.Busker_Level,
+          Busker_Pan => Surprises.Busker_Pan,
           Alien    => Ufo.Nearness,
           Alien_Pan => Ufo.Pan,
           Jingle_Pan => Sleigh.Pan,
@@ -2211,6 +2251,31 @@ package body Game is
          end if;
          Storm.Update (Dt, Storm_On and then Rain_Amount > 0.5, Cam_Pos);
          Ufo.Update (Dt, Hour, Night, Cam_Pos);
+         declare
+            Look : constant Vec3 := Cam_Look - Cam_Pos;
+         begin
+            Surprises.Update
+              ((Dt => Dt, Hour => Hour, Night => Night, Rain => Rain_Amount,
+                Snow => Snow_Cover, Listener => Cam_Pos, Heading => Arctan (Look.X, -Look.Z),
+                Car_Pos => (Player.X, 0.0, Player.Z), Car_Speed => abs Player.Speed,
+                Driving => Mode = Driving and then not Visiting, Visiting => Visiting));
+         end;
+         if Frame_Number = 100 and then Env ("PARIS_SURPRISE") /= "" then
+            Ada.Text_IO.Put_Line (Surprises.Report);
+         end if;
+         if Frame_Number = 30 and then Env ("PARIS_SURPRISE") /= "" then
+            declare
+               L : constant String := Env ("PARIS_SURPRISE") & ",";
+               First : Positive := L'First;
+            begin
+               for I in L'Range loop
+                  if L (I) = ',' then
+                     Surprises.Force (L (First .. I - 1));
+                     First := I + 1;
+                  end if;
+               end loop;
+            end;
+         end if;
          if Frame_Number = 30 and then Env ("PARIS_UFO") /= "" then
             Ufo.Visit (Cam_Pos);
          end if;
@@ -2604,6 +2669,12 @@ package body Game is
       Show_Compass := Config.Get ("compass", True);
       Show_Street := Config.Get ("street_names", True);
       Show_Panel := Config.Get ("instruments", True);
+      declare
+         M : constant String := Config.Get ("car", "modern");
+      begin
+         Car.Set_Player_Model ((if M = "2cv" then Car.Deux_Chevaux elsif M = "ds" then Car.DS
+                                else Car.Modern));
+      end;
       declare
          X : constant String := Config.Get ("christmas", "auto");
       begin

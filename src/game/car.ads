@@ -67,7 +67,15 @@ package Car is
    procedure Create_Mesh;
    --  Build the GPU mesh (GL context must be current)
 
+   type Model_Kind is (Modern, Deux_Chevaux, DS);
+   --  A plain modern car, the Citroën 2CV and the Citroën DS
+
+   procedure Set_Player_Model (M : Model_Kind);
+
    procedure Draw;
-   --  Draw the mesh; the caller sets the model matrix uniform
+   --  Draw the player's car; the caller sets the model matrix uniform
+
+   procedure Draw_Model (M : Model_Kind);
+   --  Any of the models (traffic)
 
 end Car;

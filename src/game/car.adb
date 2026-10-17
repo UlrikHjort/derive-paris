@@ -361,36 +361,96 @@ package body Car is
    --  Mesh
    ---------------------------------------------------------------------------
 
-   Body_Mesh : Meshes.Mesh;
+   Models : array (Model_Kind) of Meshes.Mesh;
+   Player_Model : Model_Kind := Modern;
 
    procedure Create_Mesh is
       use Meshes;
    begin
+      --  A plain modern car (front is -Z)
       Start;
-      --  Body (front is -Z)
       Box (-0.88, 0.88, 0.32, 0.95, -2.15, 2.1, Mat_Paint,
            Top_Inset_X => 0.03, Top_Inset_Front => 0.1, Top_Inset_Back => 0.05);
-      --  Cabin with glass sides
       Box (-0.80, 0.80, 0.95, 1.42, -0.9, 1.15, Mat_Paint,
            Top_Inset_X => 0.12, Top_Inset_Front => 0.55, Top_Inset_Back => 0.3,
            Side_Mat => Mat_Glass);
-      --  Wheels
       for WX of Float_Array'(-0.82, 0.82) loop
          for WZ of Float_Array'(-1.35, 1.3) loop
             Box (WX - 0.14, WX + 0.14, 0.0, 0.66, WZ - 0.33, WZ + 0.33, Mat_Tyre);
          end loop;
       end loop;
-      --  Lights
       Box (-0.78, -0.45, 0.68, 0.82, -2.17, -2.1, Mat_Headlight);
       Box (0.45, 0.78, 0.68, 0.82, -2.17, -2.1, Mat_Headlight);
       Box (-0.82, -0.5, 0.72, 0.86, 2.06, 2.12, Mat_Taillight);
       Box (0.5, 0.82, 0.72, 0.86, 2.06, 2.12, Mat_Taillight);
-      Finish (Body_Mesh);
+      Finish (Models (Modern));
+
+      --  The 2CV: tall and narrow, a rounded canvas roof, a ribbed bonnet
+      --  sloping down to the front, separate wings and round lamps
+      Start;
+      Box (-0.68, 0.68, 0.32, 0.92, -0.95, 1.75, Mat_Paint,
+           Top_Inset_Back => 0.25);                                     --  cabin and boot
+      Box (-0.66, 0.66, 0.92, 1.62, -0.85, 1.3, Mat_Paint,
+           Top_Inset_X => 0.2, Top_Inset_Front => 0.35, Top_Inset_Back => 0.7,
+           Side_Mat => Mat_Glass);                                      --  tall round roof
+      Box (-0.5, 0.5, 0.42, 0.9, -1.85, -0.95, Mat_Paint,
+           Top_Inset_X => 0.08, Top_Inset_Front => 0.5);                --  bonnet
+      Box (-0.42, 0.42, 0.36, 0.62, -1.92, -1.82, Mat_Tyre);            --  grille
+      for Side of Float_Array'(-1.0, 1.0) loop
+         Box (Side * 0.74 - 0.13, Side * 0.74 + 0.13, 0.32, 0.72, -1.75, -0.92, Mat_Paint,
+              Top_Inset_Front => 0.35, Top_Inset_X => 0.03);            --  front wings
+         Box (Side * 0.72 - 0.1, Side * 0.72 + 0.1, 0.32, 0.7, 0.95, 1.7, Mat_Paint,
+              Top_Inset_Back => 0.15);                                  --  rear wings
+         Box (Side * 0.55 - 0.1, Side * 0.55 + 0.1, 0.78, 0.96, -1.6, -1.46,
+              Mat_Headlight);                                           --  round lamps
+         Box (Side * 0.66 - 0.06, Side * 0.66 + 0.06, 0.6, 0.72, 1.7, 1.74, Mat_Taillight);
+      end loop;
+      for WX of Float_Array'(-0.7, 0.7) loop
+         for WZ of Float_Array'(-1.3, 1.25) loop
+            Box (WX - 0.09, WX + 0.09, 0.0, 0.64, WZ - 0.3, WZ + 0.3, Mat_Tyre);
+         end loop;
+      end loop;
+      Finish (Models (Deux_Chevaux));
+
+      --  The DS: long and low, a nose like a shark, a roof tapering to the
+      --  back with the indicator "trumpets", half-covered rear wheels
+      Start;
+      Box (-0.88, 0.88, 0.3, 0.82, -1.7, 1.9, Mat_Paint,
+           Top_Inset_X => 0.04);                                        --  body
+      Box (-0.84, 0.84, 0.26, 0.74, -2.5, -1.7, Mat_Paint,
+           Top_Inset_X => 0.1, Top_Inset_Front => 0.6);                 --  the nose
+      Box (-0.82, 0.82, 0.3, 0.8, 1.9, 2.45, Mat_Paint,
+           Top_Inset_X => 0.08, Top_Inset_Back => 0.25);                --  the tail
+      Box (-0.8, 0.8, 0.82, 1.4, -0.95, 1.75, Mat_Paint,
+           Top_Inset_X => 0.13, Top_Inset_Front => 0.5, Top_Inset_Back => 0.85,
+           Side_Mat => Mat_Glass);                                      --  cabin
+      for Side of Float_Array'(-1.0, 1.0) loop
+         Box (Side * 0.62 - 0.1, Side * 0.62 + 0.1, 1.27, 1.34, 1.35, 1.5,
+              Mat_Taillight);                                           --  trumpets
+         Box (Side * 0.66 - 0.12, Side * 0.66 + 0.12, 0.55, 0.68, -2.45, -2.36,
+              Mat_Headlight);
+         Box (Side * 0.7 - 0.1, Side * 0.7 + 0.1, 0.55, 0.65, 2.42, 2.46, Mat_Taillight);
+      end loop;
+      for WX of Float_Array'(-0.82, 0.82) loop
+         Box (WX - 0.12, WX + 0.12, 0.0, 0.66, -1.75, -1.1, Mat_Tyre);   --  front
+         Box (WX - 0.08, WX + 0.08, 0.0, 0.42, 1.0, 1.6, Mat_Tyre);      --  rear, behind the skirts
+      end loop;
+      Finish (Models (DS));
    end Create_Mesh;
+
+   procedure Set_Player_Model (M : Model_Kind) is
+   begin
+      Player_Model := M;
+   end Set_Player_Model;
 
    procedure Draw is
    begin
-      Meshes.Draw (Body_Mesh);
+      Meshes.Draw (Models (Player_Model));
    end Draw;
+
+   procedure Draw_Model (M : Model_Kind) is
+   begin
+      Meshes.Draw (Models (M));
+   end Draw_Model;
 
 end Car;

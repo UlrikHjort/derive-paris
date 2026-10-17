@@ -13,6 +13,7 @@
 with GL;
 
 with Car;
+with Math3D;
 
 package Traffic is
 
@@ -37,6 +38,9 @@ package Traffic is
 
    procedure Reset;
    --  Remove all traffic; new cars arrive gradually, out of sight
+
+   procedure Clear_Corridor (A, B : Math3D.Vec3; Half_Width : Float);
+   --  No cars along A .. B (a parade, a bike race): those there vanish
 
    function Nearest (X, Z : Float) return Float;
 
