@@ -230,7 +230,8 @@ package body Navigation is
          return;
       end if;
 
-      if (X - Dest_X) ** 2 + (Z - Dest_Z) ** 2 < 30.0 ** 2 then
+      --  only arriving by car counts (not flying over it)
+      if Route_Allowed and then (X - Dest_X) ** 2 + (Z - Dest_Z) ** 2 < 30.0 ** 2 then
          Set_Text ("<span font_family='sans' size='x-large' weight='bold' foreground='white' "
                    & "background='#2f6b45e0'> &#x2691; You have arrived: "
                    & To_String (Dest_Name) & " </span>");

@@ -43,4 +43,7 @@ package Meshes is
 
    procedure Draw (M : Mesh);
 
+   procedure Free (M : in out Mesh);
+   --  Give the GPU memory back
+
 end Meshes;

@@ -51,6 +51,7 @@ package Car is
       Engaged  : Float := 0.0;      --  clutch engagement last step
       Shift_Wait : Float := 0.0;    --  automatic: seconds until the next shift
       Power_Brake : Boolean := False;  --  automatic: throttle against the brake
+      Last_Lever  : Integer := 99;     --  shifter position last step (99: just placed)
    end record;
 
    function Rear_Wheel (S : State; Right : Boolean) return Math3D.Vec3;

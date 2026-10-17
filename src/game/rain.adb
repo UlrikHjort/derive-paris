@@ -87,4 +87,28 @@ package body Rain is
       glDisable (GL_BLEND);
    end Draw;
 
+   procedure Draw_Leaves (VP : Math3D.Mat4; Cam : Math3D.Vec3;
+                          Time, Amount, Pixels_Per_Metre, Light : Float) is
+   begin
+      if Amount <= 0.005 then
+         return;
+      end if;
+      glUseProgram (Program);
+      Shaders.Set (U_View_Proj, VP);
+      Shaders.Set (U_Cam, Cam);
+      Shaders.Set (U_Time, Time);
+      Shaders.Set (U_Amount, Amount);
+      Shaders.Set (U_Color, Math3D.Vec3'(Light, Light, Light));
+      Shaders.Set (U_Snow, 2);
+      Shaders.Set (U_Scale, Pixels_Per_Metre);
+      glEnable (GL_BLEND);
+      glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+      glEnable (GL_PROGRAM_POINT_SIZE);
+      glBindVertexArray (VAO);
+      glDrawArrays (GL_POINTS, 0, GLsizei (Drops * 2));
+      glBindVertexArray (0);
+      glDisable (GL_PROGRAM_POINT_SIZE);
+      glDisable (GL_BLEND);
+   end Draw_Leaves;
+
 end Rain;

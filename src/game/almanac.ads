@@ -29,6 +29,12 @@ package Almanac is
    --  Direction to the moon
 
    function Moon_Age return Float;
+
+   --  The trees through the year, 0 .. 1 each
+   function Autumn_Colour return Float;   --  leaves turning
+   function Bare return Float;            --  leaves gone
+   function Leaf_Litter return Float;     --  leaves on the ground
+   function Leaves_Falling return Float;  --  leaves in the air
    --  0 .. 1 through the lunar month: 0 new, 0.25 first quarter,
    --  0.5 full, 0.75 last quarter
 

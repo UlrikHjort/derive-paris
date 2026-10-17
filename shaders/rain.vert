@@ -18,6 +18,8 @@ uniform int uSnow;
 uniform float uPointScale;
 
 out float vAlpha;
+out vec3 vLeaf;      // leaves: colour
+out float vSpin;     // leaves: how much of the leaf faces you
 
 const float BOX = 36.0;
 const float HEIGHT = 28.0;
@@ -26,6 +28,27 @@ const float SPEED = 12.0;
 void main()
 {
     vec3 base;
+    vLeaf = vec3(0.0);
+    vSpin = 1.0;
+    if (uSnow == 2) {
+        // autumn leaves: few, slow, swirling and tumbling
+        vec3 r = fract(aDrop.xyz + aDrop.w * vec3(0.37, 0.61, 0.23));
+        float t = uTime * (0.6 + 0.4 * r.x);
+        base.xz = uCamPos.xz + mod(r.xz * BOX - uCamPos.xz
+                  + vec2(sin(t * 0.9 + r.y * 40.0), cos(t * 0.7 + r.z * 30.0)) * 2.0
+                  + vec2(t * 0.8, t * 0.3), BOX) - 0.5 * BOX;
+        base.y = uCamPos.y - 0.45 * HEIGHT + mod(r.y * HEIGHT - t * 0.9, HEIGHT);
+        float d = length(base - uCamPos);
+        vAlpha = step(fract(r.x * 57.31 + r.z * 13.7), uAmount)
+               * (1.0 - smoothstep(12.0, 18.0, d));
+        float k = fract(r.z * 91.7);
+        vLeaf = k < 0.35 ? vec3(0.85, 0.55, 0.12) : k < 0.65 ? vec3(0.70, 0.30, 0.08)
+              : k < 0.85 ? vec3(0.80, 0.68, 0.18) : vec3(0.45, 0.28, 0.12);
+        vSpin = 0.25 + 0.75 * abs(sin(t * 3.0 + r.x * 20.0));
+        gl_Position = uViewProj * vec4(base, 1.0);
+        gl_PointSize = clamp(0.14 * uPointScale / max(gl_Position.w, 0.1), 1.5, 16.0);
+        return;
+    }
     if (uSnow == 1) {
         vec3 r = fract(aDrop.xyz + aDrop.w * vec3(0.37, 0.61, 0.23));
         float t = uTime * (0.9 + 0.5 * r.x);

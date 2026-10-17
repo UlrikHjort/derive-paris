@@ -78,7 +78,7 @@ fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 | F | take off in a plane / land and drive again |
 | W / S, arrows (in the air) | throttle, pitch (up = nose down) and bank |
 | T | one hour later |
-| P | weather: rain, snow, dry again |
+| P | weather: rain, thunderstorm, snow, dry again |
 | N | street names |
 | G | compass, position (lat/lon, heading, altitude) and minimap |
 | Shift + 1 .. 0 | GPS: navigate to that place (route through the real streets, turn-by-turn with street names) |
@@ -162,7 +162,7 @@ OpenStreetMap data.
 
 Debug options for screenshots: `PARIS_SHOT=file.ppm`, `PARIS_SPAWN`,
 `PARIS_CAM`, `PARIS_DRONE`, `PARIS_FLY`, `PARIS_TIME`, `PARIS_RAIN`,
-`PARIS_ZOOM`, `PARIS_TILES`, `PARIS_TELEPORT`, `PARIS_WAV`, `PARIS_COMPASS_PNG`, `PARIS_HELP_PNG`, `PARIS_LIST_PNG`, `PARIS_RECORD`, `PARIS_SHOT_PNG` (with the overlays), `PARIS_BURNOUT`, `PARIS_NOWHEEL`, `PARIS_NAV`, `PARIS_MAP_PNG`, `PARIS_PROFILE` (see `src/game/game.adb`).
+`PARIS_ZOOM`, `PARIS_TILES`, `PARIS_TELEPORT`, `PARIS_WAV`, `PARIS_COMPASS_PNG`, `PARIS_HELP_PNG`, `PARIS_LIST_PNG`, `PARIS_RECORD`, `PARIS_DATE`, `PARIS_FIREWORKS`, `PARIS_STRIKE`, `PARIS_SANTA`, `PARIS_GHOST`, `PARIS_UFO`, `PARIS_PEAL`, `PARIS_FREEZE`, `PARIS_SHOT_PNG` (with the overlays), `PARIS_BURNOUT`, `PARIS_NOWHEEL`, `PARIS_NAV`, `PARIS_MAP_PNG`, `PARIS_PROFILE` (see `src/game/game.adb`).
 
 ## License
 

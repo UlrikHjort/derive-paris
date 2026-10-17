@@ -80,6 +80,9 @@ package body Sound is
       procedure Click;
       procedure Put_Laugh (Loudness, Pan : Float);
       procedure Put_Wooo (Loudness, Pan : Float);
+      procedure Put_Thunder (Delay_S, Loudness : Float; Close : Boolean);
+      procedure Take_Thunder (Any : out Boolean; Delay_S, Loudness : out Float;
+                              Close : out Boolean);
       procedure Take_Wooo (Any : out Boolean; Loudness, Pan : out Float);
       procedure Take_Laugh (Any : out Boolean; Loudness, Pan : out Float);
       procedure Put_Peal (Seconds : Float);
@@ -103,6 +106,9 @@ package body Sound is
       Clicks    : Natural := 0;
       Laugh_Ask : Boolean := False;
       Wooo_Ask  : Boolean := False;
+      Thunder_Ask : Boolean := False;
+      Thunder_Delay, Thunder_Loud : Float := 0.0;
+      Thunder_Close : Boolean := False;
       Wooo_Loud, Wooo_Pan : Float := 0.0;
       Laugh_Loud, Laugh_Pan : Float := 0.0;
       Peal_Ask  : Float := 0.0;
@@ -186,6 +192,22 @@ package body Sound is
          Peal_On := On;
       end Set_Pealing;
       function Is_Pealing return Boolean is (Peal_On);
+      procedure Put_Thunder (Delay_S, Loudness : Float; Close : Boolean) is
+      begin
+         Thunder_Ask := True;
+         Thunder_Delay := Delay_S;
+         Thunder_Loud := Loudness;
+         Thunder_Close := Close;
+      end Put_Thunder;
+      procedure Take_Thunder (Any : out Boolean; Delay_S, Loudness : out Float;
+                              Close : out Boolean) is
+      begin
+         Any := Thunder_Ask;
+         Delay_S := Thunder_Delay;
+         Loudness := Thunder_Loud;
+         Close := Thunder_Close;
+         Thunder_Ask := False;
+      end Take_Thunder;
       procedure Put_Wooo (Loudness, Pan : Float) is
       begin
          Wooo_Ask := True;
@@ -277,7 +299,7 @@ package body Sound is
    end Step;
 
    --  A sound event with an envelope: passing car, horn, bird, bell stroke
-   type Event_Kind is (None, Passing, Horn, Bird, Bell, Click, Boom, Crackle, Jingle, Laugh, Ghost);
+   type Event_Kind is (None, Passing, Horn, Bird, Bell, Click, Boom, Crackle, Jingle, Laugh, Ghost, Thunder);
 
    type Event is record
       Kind     : Event_Kind := None;
@@ -423,6 +445,22 @@ package body Sound is
                     + 1.3 * Resonate (Src, 820.0, 110.0, E.R2a, E.R2b);
                end if;
             end;
+         when Thunder =>
+            --  a crack if it was close, then a deep rumble rolling on and
+            --  swelling as the sound comes back from further along the bolt
+            declare
+               Roll : constant Float :=
+                 0.55 + 4.0 * abs Step (E.Filter3, Noise, 2.5);
+               Rumble : constant Float :=
+                 Step (E.Filter2, Step (E.Filter, Noise, 180.0), 110.0) * 40.0;
+            begin
+               Env := Float'Min (1.0, E.T / (if E.Freq > 0.0 then 0.02 else 0.35))
+                 * Exp (-E.T * 0.55);
+               S := Rumble * Roll;
+               if E.Freq > 0.0 and then E.T < 0.4 then
+                  S := S + 1.8 * Noise * Exp (-E.T * 14.0);   --  the crack
+               end if;
+            end;
          when Ghost =>
             --  "wooooo": a hollow voice rising and falling, wavering
             declare
@@ -518,6 +556,7 @@ package body Sound is
    Wobble_F : Lowpass;
    Rain_Hp                  : Lowpass;
    Next_Horn, Next_Bird : Float := 1.0;
+   Alien_Level, Alien_Time, Alien_Phase1, Alien_Phase2 : Float := 0.0;
    Jingle_Clock : Float := 0.0;
    Bell_Wait                : Float := 0.0;
    Bells_Left               : Natural := 0;
@@ -751,6 +790,16 @@ package body Sound is
             Add ((Kind => Laugh, Dur => 1.3, Volume => 0.18 * Loud, Pan => 0.7 * Where,
                   others => <>));
          end if;
+         declare
+            Wait  : Float;
+            Close : Boolean;
+         begin
+            Shared.Take_Thunder (Any, Wait, Loud, Close);
+            if Any then
+               Add ((Kind => Thunder, Dur => 9.0, T => -Wait, Volume => 0.3 * Loud,
+                     Freq => (if Close then 1.0 else 0.0), Pan => 0.3 * Noise, others => <>));
+            end if;
+         end;
          Shared.Take_Wooo (Any, Loud, Where);
          if Any then
             Add ((Kind => Ghost, Dur => 2.4, Volume => 0.05 * Loud, Pan => 0.7 * Where,
@@ -910,6 +959,27 @@ package body Sound is
             end case;
 
             Play_Voices (L, R);
+
+            --  the UFO: an eerie, wavering whine over a deep throb
+            Alien_Level := Alien_Level + (P.Alien - Alien_Level) * 0.0005;
+            if Alien_Level > 0.001 then
+               Alien_Time := Alien_Time + 1.0 / Float (Rate);
+               declare
+                  F : constant Float := 640.0 + 90.0 * Sin (Two_Pi * 5.5 * Alien_Time)
+                    + 40.0 * Sin (Two_Pi * 0.3 * Alien_Time);
+               begin
+                  Alien_Phase1 := Alien_Phase1 + F / Float (Rate);
+                  Alien_Phase1 := Alien_Phase1 - Float'Floor (Alien_Phase1);
+                  Alien_Phase2 := Alien_Phase2 + 62.0 / Float (Rate);
+                  Alien_Phase2 := Alien_Phase2 - Float'Floor (Alien_Phase2);
+                  S := (0.5 * Sin (Two_Pi * Alien_Phase1)
+                        + 0.25 * Sin (Two_Pi * 1.501 * Alien_Phase1)
+                        + 0.7 * Sin (Two_Pi * Alien_Phase2) * (0.6 + 0.4 * Sin (Two_Pi * 2.0 * Alien_Time)))
+                    * 0.08 * Alien_Level;
+                  L := L + S * (1.0 - 0.6 * P.Alien_Pan);
+                  R := R + S * (1.0 + 0.6 * P.Alien_Pan);
+               end;
+            end if;
 
             Horn_Level := Horn_Level
               + ((if P.Horn and then P.Mode = Driving then 1.0 else 0.0) - Horn_Level) * 0.004;
@@ -1131,6 +1201,11 @@ package body Sound is
    begin
       Shared.Put_Boom (Delay_S, Loudness, Big);
    end Boom;
+
+   procedure Thunder (Delay_S, Loudness : Float; Close : Boolean) is
+   begin
+      Shared.Put_Thunder (Delay_S, Loudness, Close);
+   end Thunder;
 
    procedure Wooo (Loudness, Pan : Float) is
    begin

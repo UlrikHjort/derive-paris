@@ -95,14 +95,19 @@ package body Car is
          --  Gear changes with the shifter
          Throttle := Throttle_In;
          Brake := Brake_In;
+         --  a car just put down (landing, reset, a jump) takes the gear the
+         --  lever is already in; only moving the lever needs the clutch
          if C.Gear /= S.Gear then
-            if C.Gear = 0 or else not C.Need_Clutch or else Clutch > 0.6 then
+            if C.Gear = 0 or else not C.Need_Clutch or else Clutch > 0.6
+              or else S.Last_Lever = 99
+            then
                S.Gear := C.Gear;
             else
                S.Gear := 0;
                S.Grinding := True;
             end if;
          end if;
+         S.Last_Lever := C.Gear;
       else
          --  Automatic: drive, or reverse with the shifter in R, or by
          --  holding the brake when stopped (keyboard)

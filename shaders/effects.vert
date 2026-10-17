@@ -12,6 +12,7 @@ uniform mat4 uViewProj;
 uniform vec3 uCamPos;
 uniform float uPointScale;   // pixels per metre at distance 1
 uniform int uPoints;
+uniform float uFadeFar;               // fades out towards this distance
 
 out float vAlpha;
 
@@ -19,7 +20,7 @@ void main()
 {
     vec3 p = aPos;
     float d = length(aPos - uCamPos);
-    vAlpha = aInfo.x * (1.0 - smoothstep(150.0, 260.0, d));
+    vAlpha = aInfo.x * (1.0 - smoothstep(0.6 * uFadeFar, uFadeFar, d));
     if (uPoints == 1) {
         // a puff is drawn at one depth: bring it forward by its radius so
         // it does not cut a hard line into the road; fade very close ones

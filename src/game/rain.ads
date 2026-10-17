@@ -18,4 +18,8 @@ package Rain is
    --  Amount 0 .. 1; draws nothing when it is 0.  Snow: slow, drifting
    --  flakes instead of streaks.
 
+   procedure Draw_Leaves (VP : Math3D.Mat4; Cam : Math3D.Vec3;
+                          Time, Amount, Pixels_Per_Metre, Light : Float);
+   --  Autumn leaves tumbling down around you; Light 0 (night) .. 1 (day)
+
 end Rain;

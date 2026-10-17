@@ -23,4 +23,9 @@ package Beacon is
                    Time, Hour, Night, Rain : Float);
    --  The beams (additive, after the solid world)
 
+   procedure Draw_Shaft (VP : Math3D.Mat4; Cam, From, To : Math3D.Vec3;
+                         Width_From, Width_To : Float; Color : Math3D.Vec3;
+                         Strength : Float);
+   --  Any shaft of light, bright at From and fading towards To
+
 end Beacon;

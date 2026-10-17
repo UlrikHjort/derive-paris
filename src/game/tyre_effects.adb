@@ -16,7 +16,7 @@ package body Tyre_Effects is
    use Ada.Numerics.Elementary_Functions;
 
    Program : GLuint := 0;
-   U_View_Proj, U_Cam, U_Scale, U_Points, U_Color : GLint;
+   U_View_Proj, U_Cam, U_Scale, U_Points, U_Color, U_Fade : GLint;
 
    --  Vertex: x, y, z, alpha, size
    Floats : constant := 5;
@@ -78,6 +78,7 @@ package body Tyre_Effects is
       U_Scale := Shaders.Location (Program, "uPointScale");
       U_Points := Shaders.Location (Program, "uPoints");
       U_Color := Shaders.Location (Program, "uColor");
+      U_Fade := Shaders.Location (Program, "uFadeFar");
       Make_Buffer (Mark_VAO'Access, Mark_VBO'Access, Mark_Data'Length * 4);
       Make_Buffer (Puff_VAO'Access, Puff_VBO'Access, Puff_Data'Length * 4);
       Ada.Numerics.Float_Random.Reset (Gen, 7);
@@ -189,6 +190,7 @@ package body Tyre_Effects is
       Shaders.Set (U_View_Proj, VP);
       Shaders.Set (U_Cam, Cam);
       Shaders.Set (U_Points, 0);
+      Shaders.Set (U_Fade, 260.0);
       Shaders.Set (U_Color, Vec3'(0.025, 0.025, 0.03));
       glEnable (GL_BLEND);
       glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -230,6 +232,7 @@ package body Tyre_Effects is
       Shaders.Set (U_View_Proj, VP);
       Shaders.Set (U_Cam, Cam);
       Shaders.Set (U_Points, 1);
+      Shaders.Set (U_Fade, 260.0);
       Shaders.Set (U_Scale, Pixels_Per_Metre);
       Shaders.Set (U_Color, (0.25 + 0.65 * Light) * Vec3'(1.0, 1.0, 1.0));
       glEnable (GL_PROGRAM_POINT_SIZE);

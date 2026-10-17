@@ -6,6 +6,10 @@ with Ada.Numerics;
 with Ada.Numerics.Elementary_Functions;
 with Ada.Numerics.Float_Random;
 
+with Geo;
+with Ada.Environment_Variables;
+with Ada.Strings.Fixed;
+with Ada.Text_IO;
 with Meshes;
 with Road_Network;
 with Shaders;
@@ -60,7 +64,152 @@ package body Halloween is
       Swoop  : Float := 0.0;    --  > 0: diving at the car
       Wooed  : Boolean := False;
    end record;
-   Ghosts : array (1 .. 4) of Ghost;
+   --  1 .. 4 roam the streets at Halloween; the rest haunt the cemeteries
+   --  of Montparnasse and Père-Lachaise every night of the year
+   Roamers  : constant := 4;
+   Haunters : constant := 21;
+   Ghosts : array (1 .. Roamers + Haunters) of Ghost;
+
+   --  The cemeteries (outlines from data/cemeteries.txt), with their
+   --  graves built when you come near
+   Max_Corners : constant := 200;
+   type Corner_Array is array (1 .. Max_Corners) of Vec3;
+   type Cemetery is record
+      Corners  : Corner_Array;
+      N        : Natural := 0;
+      Lo, Hi   : Vec3 := (0.0, 0.0, 0.0);
+      Graves   : Meshes.Mesh;
+      Built    : Boolean := False;
+      Pere_Lachaise : Boolean := False;   --  full of family chapels
+   end record;
+   Cemeteries : array (1 .. 6) of Cemetery;
+   Cemetery_Count : Natural := 0;
+
+   function Inside (C : Cemetery; X, Z : Float) return Boolean is
+      In_It : Boolean := False;
+      J     : Natural := C.N;
+   begin
+      for I in 1 .. C.N loop
+         if (C.Corners (I).Z > Z) /= (C.Corners (J).Z > Z)
+           and then X < C.Corners (I).X + (Z - C.Corners (I).Z)
+             * (C.Corners (J).X - C.Corners (I).X) / (C.Corners (J).Z - C.Corners (I).Z)
+         then
+            In_It := not In_It;
+         end if;
+         J := I;
+      end loop;
+      return In_It;
+   end Inside;
+
+   function Distance (C : Cemetery; P : Vec3) return Float is
+      DX : constant Float := Float'Max (0.0, Float'Max (C.Lo.X - P.X, P.X - C.Hi.X));
+      DZ : constant Float := Float'Max (0.0, Float'Max (C.Lo.Z - P.Z, P.Z - C.Hi.Z));
+   begin
+      return Sqrt (DX * DX + DZ * DZ);
+   end Distance;
+
+   function Home_Of (I : Positive) return Natural is
+     (if I <= Roamers or else Cemetery_Count = 0 then 0
+      else 1 + (I - Roamers - 1) mod Cemetery_Count);
+
+   procedure Load_Cemeteries is
+      use Ada.Text_IO;
+      F : File_Type;
+   begin
+      Open (F, In_File, "data/cemeteries.txt");
+      while not End_Of_File (F) loop
+         declare
+            Line : constant String := Get_Line (F);
+         begin
+            if Line'Length >= 8 and then Line (Line'First .. Line'First + 7) = "cemetery" then
+               if Cemetery_Count < Cemeteries'Last then
+                  Cemetery_Count := Cemetery_Count + 1;
+                  Cemeteries (Cemetery_Count).Pere_Lachaise :=
+                    Ada.Strings.Fixed.Index (Line, "Lachaise") > 0;
+               end if;
+            elsif Line'Length > 0 and then Line (Line'First) /= '#' and then Cemetery_Count > 0 then
+               declare
+                  Sp : constant Natural := Ada.Strings.Fixed.Index (Line, " ");
+                  X, Z : Long_Float;
+                  C : Cemetery renames Cemeteries (Cemetery_Count);
+               begin
+                  Geo.To_Local (Long_Float'Value (Line (Line'First .. Sp - 1)),
+                                Long_Float'Value (Line (Sp + 1 .. Line'Last)), X, Z);
+                  if C.N < Max_Corners then
+                     C.N := C.N + 1;
+                     C.Corners (C.N) := (Float (X), 0.0, Float (Z));
+                     if C.N = 1 then
+                        C.Lo := C.Corners (1);
+                        C.Hi := C.Corners (1);
+                     end if;
+                     C.Lo := (Float'Min (C.Lo.X, Float (X)), 0.0, Float'Min (C.Lo.Z, Float (Z)));
+                     C.Hi := (Float'Max (C.Hi.X, Float (X)), 0.0, Float'Max (C.Hi.Z, Float (Z)));
+                  end if;
+               end;
+            end if;
+         end;
+      end loop;
+      Close (F);
+   exception
+      when others =>
+         if Is_Open (F) then
+            Close (F);
+         end if;
+   end Load_Cemeteries;
+
+   --  Rows of graves: headstones, crosses, flat slabs and family chapels,
+   --  with paths between the blocks
+   procedure Build_Graves (C : in out Cemetery) is
+      use Meshes;
+      Mat_Stone : constant := 2.0;    --  grey stone (not floodlit)
+      Mat_Dark  : constant := 17.0;   --  black granite
+      X : Float := C.Lo.X + 1.5;
+      Col : Natural := 0;
+   begin
+      Start;
+      while X < C.Hi.X loop
+         Col := Col + 1;
+         declare
+            Z   : Float := C.Lo.Z + 2.0;
+            Row : Natural := 0;
+         begin
+            while Z < C.Hi.Z loop
+               Row := Row + 1;
+               declare
+                  H : constant Float := Hash (X, Z);
+                  K : constant Float := Hash (Z + 7.0, X - 3.0);
+                  M : constant Float := (if K < 0.2 then Mat_Dark else Mat_Stone);
+               begin
+                  if Col mod 9 /= 0 and then Row mod 7 /= 0 and then H < 0.7
+                    and then Inside (C, X, Z)
+                  then
+                     if K > (if C.Pere_Lachaise then 0.72 else 0.93) then
+                        --  a family chapel with a pointed roof and a door
+                        Box (X - 0.9, X + 0.9, 0.0, 2.6, Z - 1.3, Z + 1.3, Mat_Stone);
+                        Box (X - 0.95, X + 0.95, 2.6, 3.5, Z - 1.35, Z + 1.35, Mat_Stone,
+                             Top_Inset_X => 0.9);
+                        Box (X - 0.4, X + 0.4, 0.0, 1.9, Z - 1.33, Z - 1.29, Mat_Dark);
+                     else
+                        --  a flat slab, and a headstone or a cross at its head
+                        Box (X - 0.45, X + 0.45, 0.0, 0.25, Z - 0.9, Z + 1.0, M);
+                        if H < 0.5 then
+                           Box (X - 0.4, X + 0.4, 0.0, 0.8 + 0.4 * K, Z - 1.05, Z - 0.88, M,
+                                Top_Inset_X => 0.05);
+                        else
+                           Box (X - 0.06, X + 0.06, 0.0, 1.3, Z - 1.0, Z - 0.9, Mat_Stone);
+                           Box (X - 0.3, X + 0.3, 0.85, 0.97, Z - 1.0, Z - 0.9, Mat_Stone);
+                        end if;
+                     end if;
+                  end if;
+               end;
+               Z := Z + 4.4;
+            end loop;
+         end;
+         X := X + 3.2;
+      end loop;
+      Finish (C.Graves);
+      C.Built := True;
+   end Build_Graves;
 
    procedure Create_Mesh is
       use Meshes;
@@ -116,7 +265,12 @@ package body Halloween is
       Box (-0.5, -0.4, 0.6, 0.85, -0.1, 0.1, Mat_Ghost);              --  arms
       Box (0.4, 0.5, 0.6, 0.85, -0.1, 0.1, Mat_Ghost);
       Finish (Ghost_Mesh);
-      Ada.Numerics.Float_Random.Reset (Gen);
+      if Ada.Environment_Variables.Exists ("PARIS_FREEZE") then
+         Ada.Numerics.Float_Random.Reset (Gen, 7);   --  the same ghosts every run (testing)
+      else
+         Ada.Numerics.Float_Random.Reset (Gen);
+      end if;
+      Load_Cemeteries;
    end Create_Mesh;
 
    procedure Spawn_Ghost (G : in out Ghost; Near : Vec3) is
@@ -140,18 +294,22 @@ package body Halloween is
    begin
       Active := On;
       Dark := Night > 0.5;
+      for C of Cemeteries (1 .. Cemetery_Count) loop
+         if not C.Built and then Distance (C, Listener) < 900.0 then
+            Build_Graves (C);
+         elsif C.Built and then Distance (C, Listener) > 1400.0 then
+            Meshes.Free (C.Graves);
+            C.Built := False;
+         end if;
+      end loop;
       Clock := Clock + Dt;
       if not On then
          Pumpkin_Count := 0;
-         for G of Ghosts loop
-            G.Alive := False;
-         end loop;
-         return;
       end if;
 
       --  a pumpkin at about one lamp in three
       Look_Again := Look_Again - Dt;
-      if Look_Again <= 0.0 then
+      if On and then Look_Again <= 0.0 then
          Look_Again := 0.5;
          declare
             Lights : World.Light_Data;
@@ -189,12 +347,35 @@ package body Halloween is
       end if;
 
       --  ghosts, after dark
-      for G of Ghosts loop
-         if not Dark then
+      for I in Ghosts'Range loop
+         declare
+            G    : Ghost renames Ghosts (I);
+            Home : constant Natural := Home_Of (I);
+            Near_Home : constant Boolean :=
+              Home > 0 and then Distance (Cemeteries (Home), Listener) < 500.0;
+         begin
+         if not Dark or else (Home = 0 and then not On) or else (Home > 0 and then not Near_Home) then
             G.Alive := False;
          elsif not G.Alive then
-            if Rnd < Dt / 4.0 then
+            if Home = 0 and then Rnd < Dt / 4.0 then
                Spawn_Ghost (G, Listener);
+            elsif Home > 0 then
+               --  rising from among the graves
+               declare
+                  C : Cemetery renames Cemeteries (Home);
+                  P : Vec3;
+               begin
+                  for Try in 1 .. 20 loop
+                     P := (C.Lo.X + (C.Hi.X - C.Lo.X) * Rnd, 0.5,
+                           C.Lo.Z + (C.Hi.Z - C.Lo.Z) * Rnd);
+                     exit when Inside (C, P.X, P.Z);
+                  end loop;
+                  if Inside (C, P.X, P.Z) then
+                     Spawn_Ghost (G, P);
+                     G.Pos := P;
+                     G.Vel := 0.5 * G.Vel;
+                  end if;
+               end;
             end if;
          else
             G.Phase := G.Phase + Dt;
@@ -217,6 +398,21 @@ package body Halloween is
                   end if;
                end;
             end if;
+            --  cemetery ghosts stay among their graves (unless chasing you)
+            if Home > 0 and then G.Swoop <= 0.0 then
+               declare
+                  C    : Cemetery renames Cemeteries (Home);
+                  Next : constant Vec3 := G.Pos + 2.0 * G.Vel;
+               begin
+                  if not Inside (C, Next.X, Next.Z) then
+                     G.Vel := (-1.0) * G.Vel;   --  back among the graves
+                  end if;
+                  G.Vel := Float'Min (1.0, 1.0 / Float'Max (0.01, Length (G.Vel))) * G.Vel;
+               end;
+            end if;
+            if Ada.Environment_Variables.Exists ("PARIS_FREEZE") then
+               G.Vel := (0.0, 0.0, 0.0);
+            end if;
             G.Pos := G.Pos + Dt * G.Vel;
             if G.Swoop <= 0.0 then
                --  bob up and down at a ghostly height
@@ -235,21 +431,25 @@ package body Halloween is
                if R > 22.0 and then G.Swoop <= 0.0 then
                   G.Wooed := False;
                end if;
-               if R > 120.0 then
+               if R > 120.0 and then Home = 0 then
                   G.Alive := False;
                end if;
             end;
          end if;
+         end;
       end loop;
    end Update;
 
    procedure Draw (Model_Loc : GL.GLint) is
       use GL;
    begin
-      if not Active then
-         return;
-      end if;
-      for I in 1 .. Pumpkin_Count loop
+      Shaders.Set (Model_Loc, Identity);
+      for C of Cemeteries (1 .. Cemetery_Count) loop
+         if C.Built then
+            Meshes.Draw (C.Graves);
+         end if;
+      end loop;
+      for I in 1 .. (if Active then Pumpkin_Count else 0) loop
          declare
             P : Pumpkin renames Pumpkins (I);
             S : constant Float := P.Size;
@@ -270,9 +470,16 @@ package body Halloween is
                  (if abs G.Vel.X + abs G.Vel.Z < 0.01 then G.Phase
                   else Arctan (G.Vel.X, -G.Vel.Z));
                Sway    : constant Float := 0.15 * Sin (G.Phase * 2.1);
+               M : Mat4 := Translation (G.Pos) * Rotation_Y (-Heading)
+                 * Rotation_Z (Sway) * Rotation_X (-0.15);
             begin
-               Shaders.Set (Model_Loc, Translation (G.Pos) * Rotation_Y (-Heading)
-                            * Rotation_Z (Sway) * Rotation_X (-0.15));
+               --  a little larger than life
+               for K in 0 .. 10 loop
+                  if K mod 4 /= 3 then
+                     M (K) := M (K) * 1.35;
+                  end if;
+               end loop;
+               Shaders.Set (Model_Loc, M);
                Meshes.Draw (Ghost_Mesh);
             end;
          end if;

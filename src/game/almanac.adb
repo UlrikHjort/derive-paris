@@ -141,6 +141,24 @@ package body Almanac is
    function Halloween return Boolean is
      ((Month = 10 and then Day >= 25) or else (Month = 11 and then Day = 1));
 
+   --  0 before From, 1 after To, a ramp between (days of the year)
+   function Ramp (From, To : Integer) return Float is
+     (Float'Max (0.0, Float'Min (1.0, Float (Day_Of_Year - From) / Float (To - From))));
+
+   --  Paris: the plane trees turn from late September, are at their most
+   --  colourful late in October, bare by December, green again in April
+   function Autumn_Colour return Float is
+     (if Day_Of_Year < 150 then 0.0 else Ramp (268, 308));
+   function Bare return Float is
+     (if Day_Of_Year >= 150 then 0.85 * Ramp (298, 335)
+      else 0.85 * (1.0 - Ramp (80, 118)));
+   function Leaf_Litter return Float is
+     (if Day_Of_Year >= 150 then Ramp (280, 305) * (1.0 - 0.7 * Ramp (335, 365))
+      else 0.3 * (1.0 - Ramp (1, 40)));
+   function Leaves_Falling return Float is
+     (if Day_Of_Year < 150 then 0.0
+      else 0.12 * Ramp (283, 300) * (1.0 - Ramp (325, 340)));
+
    function Christmas return Boolean is
      (Month = 12 or else (Month = 1 and then Day <= 6));
    function Bastille_Day return Boolean is (Month = 7 and then Day = 14);

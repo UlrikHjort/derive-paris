@@ -36,6 +36,8 @@ package Sound is
       Church   : Float := 0.0;     --  0 .. 1: how near Saint-Sulpice is
       Jingle   : Float := 0.0;     --  0 .. 1: sleigh bells going by
       Jingle_Pan : Float := 0.0;
+      Alien    : Float := 0.0;     --  0 .. 1: the UFO's whine
+      Alien_Pan : Float := 0.0;
       Voices   : Voice_List;       --  the traffic around you
    end record;
 
@@ -60,6 +62,9 @@ package Sound is
 
    procedure Boom (Delay_S, Loudness : Float; Big : Boolean);
    --  A firework bursting: heard Delay_S seconds from now (sound is slow)
+
+   procedure Thunder (Delay_S, Loudness : Float; Close : Boolean);
+   --  Thunder after a lightning strike (sound travels 343 m a second)
 
    procedure Wooo (Loudness, Pan : Float);
    --  A ghost going by

@@ -9,6 +9,7 @@ with Ada.Exceptions;
 with Ada.Streams.Stream_IO;
 with Ada.Numerics;
 with Ada.Numerics.Elementary_Functions;
+with Ada.Numerics.Float_Random;
 with Ada.Real_Time;
 with Ada.Strings.Unbounded;
 with Ada.Text_IO;
@@ -55,8 +56,10 @@ with Shaders;
 with Sky_Life;
 with Sleigh;
 with Sound;
+with Storm;
 with Traffic;
 with Tyre_Effects;
+with Ufo;
 with Wheel;
 with World;
 with Xmas;
@@ -96,6 +99,12 @@ package body Game is
    Snow_Target  : Float := 0.0;   --  snowing (P cycles dry, rain, snow)
    Snow_Amount  : Float := 0.0;
    Snow_Cover   : Float := 0.0;   --  snow lying on the ground and roofs
+   Storm_On     : Boolean := False;   --  thunder and lightning with the rain
+   Storm_Auto   : Float := 0.0;       --  seconds left of a storm that came by itself
+   Storm_Rolled : Integer := -1;      --  the day a summer storm was decided on
+   Storm_At     : Float := -1.0;
+   Dice         : Ada.Numerics.Float_Random.Generator;
+   function Chance return Float is (Ada.Numerics.Float_Random.Random (Dice));
 
    --  Christmas decorations: in the season, or as ~/.deriverc says
    Xmas_Setting : Character := 'a';   --  a(uto), y(es), n(o)
@@ -240,7 +249,7 @@ package body Game is
       Sky_Zenith, Sky_Horizon, Fog_Density, Time, Car_Color,
       Shadow_Map, Shadows, Amb_Sky, Amb_Ground, Night, Lights, Light_Count,
       Head_Pos, Head_Dir, Head_On, Extra_Color, Extra_Color2, Wet,
-      Tower_Lights, Sparkle, Snow_Cover, Xmas_On : GLint;
+      Tower_Lights, Sparkle, Snow_Cover, Xmas_On, Autumn, Bare, Litter : GLint;
    end record;
    WU : World_Uniforms;
 
@@ -281,6 +290,9 @@ package body Game is
          Hour := Float'Value (Ada.Environment_Variables.Value ("PARIS_TIME"));
       end if;
       if Ada.Environment_Variables.Exists ("PARIS_RAIN") then
+         if Ada.Environment_Variables.Value ("PARIS_RAIN") = "storm" then
+            Storm_On := True;
+         end if;
          if Ada.Environment_Variables.Value ("PARIS_RAIN") = "snow" then
             Snow_Target := 1.0;
             Snow_Amount := 1.0;
@@ -617,6 +629,9 @@ package body Game is
              Sparkle       => Location (World_Prog, "uSparkle"),
              Snow_Cover    => Location (World_Prog, "uSnowCover"),
              Xmas_On       => Location (World_Prog, "uXmas"),
+             Autumn        => Location (World_Prog, "uAutumn"),
+             Bare          => Location (World_Prog, "uBare"),
+             Litter        => Location (World_Prog, "uLitter"),
              Lights        => Location (World_Prog, "uLights"),
              Light_Count   => Location (World_Prog, "uLightCount"),
              Head_Pos      => Location (World_Prog, "uHeadPos"),
@@ -647,10 +662,12 @@ package body Game is
       Rain.Create;
       Tyre_Effects.Create;
       Beacon.Create;
+      Storm.Create;
       Sky_Life.Create;
       Xmas.Create;
       Sleigh.Create_Mesh;
       Halloween.Create_Mesh;
+      Ufo.Create_Mesh;
 
       Profiling := Ada.Environment_Variables.Exists ("PARIS_PROFILE");
       declare
@@ -749,6 +766,16 @@ package body Game is
             Amb_Sky := Mix (Amb_Sky, 1.1 * Grey (Amb_Sky, (0.95, 1.0, 1.08)), R);
          end;
       end if;
+      --  lightning lights up the sky and the whole city for a moment
+      declare
+         F : constant Float := Storm.Flash;
+      begin
+         if F > 0.0 then
+            Sky_Zenith := Sky_Zenith + F * Vec3'(0.55, 0.57, 0.7);
+            Sky_Horizon := Sky_Horizon + F * Vec3'(0.6, 0.6, 0.7);
+            Amb_Sky := Amb_Sky + F * Vec3'(0.45, 0.47, 0.6);
+         end if;
+      end;
       Fog_Density := Fog_Base * (if Visiting then 0.4 else 1.0) * (1.0 + 2.5 * Rain_Amount + 3.5 * Snow_Amount);
    end Compute_Lighting;
 
@@ -980,6 +1007,9 @@ package body Game is
          Set (WU.Wet, Wetness);
          Set (WU.Snow_Cover, Snow_Cover);
          Set (WU.Xmas_On, (if Christmas then 1.0 else 0.0));
+         Set (WU.Autumn, Almanac.Autumn_Colour);
+         Set (WU.Bare, Almanac.Bare);
+         Set (WU.Litter, Almanac.Leaf_Litter * (1.0 - Snow_Cover));
          Set (WU.Time, Time);
          Set (WU.Car_Color, Car_Color);
          Set (WU.Shadow_Map, 0);
@@ -1000,6 +1030,16 @@ package body Game is
                                   Focus.Z + Ahead * Focus_Forward.Z, Lights, N);
             Add (C_Lights, T0);
             Set (WU.Light_Count, N);
+            --  a UFO nearby makes the street lamps flicker
+            if Ufo.Nearness > 0.15 then
+               for I in 0 .. N - 1 loop
+                  if Sin (Time * 37.0 + Float (I) * 5.1) + Sin (Time * 23.0 + Float (I) * 2.3)
+                    > 2.0 - 2.5 * Ufo.Nearness
+                  then
+                     Lights (4 * I + 3) := 0.1;
+                  end if;
+               end loop;
+            end if;
             if N > 0 then
                glUniform4fv (WU.Lights, GLsizei (N), Lights'Address);
             end if;
@@ -1027,6 +1067,9 @@ package body Game is
          end if;
          Sleigh.Draw (WU.Model, WU.Car_Color, WU.Extra_Color);
          Halloween.Draw (WU.Model);
+         Ufo.Draw (WU.Model, WU.Car_Color);
+         Set (WU.Model, Identity);
+         Set (WU.Car_Color, Car_Color);
          Set (WU.Model, Identity);
          Pedestrians.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2,
                            Cam_Pos.X, Cam_Pos.Z, 130.0);
@@ -1040,10 +1083,16 @@ package body Game is
          World.Draw_Ground;
          Tyre_Effects.Draw_Marks (VP, Cam_Pos);
          Beacon.Draw (VP, Cam_Pos, Time, Hour, Night, Rain_Amount);
+         Storm.Draw (VP, Cam_Pos);
+         Ufo.Draw_Beam (VP, Cam_Pos);
          Sky_Life.Draw (VP, Float (H) / (2.0 * Tan (0.525)), Night);
          Rain.Draw (VP, Cam_Pos, Time, Float'Max (Rain_Amount, Snow_Amount),
                     Snow_Amount > Rain_Amount, Float (H) / (2.0 * Tan (0.525)),
                     Mix (Vec3'(0.30, 0.32, 0.36), Vec3'(0.75, 0.78, 0.82), 1.0 - Night));
+         if Mode = Driving or else Visiting then
+            Rain.Draw_Leaves (VP, Cam_Pos, Time, Almanac.Leaves_Falling * (1.0 - Snow_Amount),
+                              Float (H) / (2.0 * Tan (0.525)), 0.15 + 0.85 * (1.0 - Night));
+         end if;
          Tyre_Effects.Draw_Smoke (VP, Cam_Pos, Float (H) / (2.0 * Tan (0.525)), 1.0 - Night);
          End_Pass (P_Ground);
          Begin_Pass (P_Resolve);
@@ -1424,7 +1473,7 @@ package body Game is
         & "  J                clear the traffic around you" & LF & LF
         & Head ("Time and weather")
         & "  T                one hour later" & LF
-        & "  P                weather: rain, snow, dry" & LF
+        & "  P                weather: rain, storm, snow, dry" & LF
         & "  M                sound on / off" & LF
         & "  F9               record a video (again: stop)" & LF
         & "  F12              take a photo" & LF
@@ -1764,8 +1813,10 @@ package body Game is
    begin
       Geo.To_Lat_Lon (Long_Float (Where.X), Long_Float (Where.Z), Lat, Lon);
       Sleigh.Set_Listener_Heading (Head);
+      Ufo.Set_Listener_Heading (Head);
       if Show_Compass then
-         Compass.Update (Head, Lat, Lon, (if Mode = Flying and then not Visiting
+         Compass.Update (Head + Ufo.Nearness * Ufo.Nearness * 25.0 * Sin (Time * 1.7)
+                                * Sin (Time * 0.6 + 1.0), Lat, Lon, (if Mode = Flying and then not Visiting
                                            then Aircraft.Pos.Y else -1.0));
       end if;
       Navigation.Update (Where.X, Where.Z,
@@ -1788,6 +1839,8 @@ package body Game is
           Horn     => Keys.B or else Wheel.Held (Wheel.Enter),
           Church   => Church_Near,
           Jingle   => Sleigh.Jingle,
+          Alien    => Ufo.Nearness,
+          Alien_Pan => Ufo.Pan,
           Jingle_Pan => Sleigh.Pan,
           Squeal   => (if Mode = Driving and then not Visiting
                        then Float'Min (1.0, Float'Max (Player.Skid * Float'Min (1.0, abs Player.Speed / 6.0),
@@ -1884,6 +1937,13 @@ package body Game is
       end if;
       if Ready and then Frame_Number = 30 and then Env ("PARIS_TELEPORT") /= "" then
          Teleport (Places (Integer'Value (Env ("PARIS_TELEPORT"))));
+      end if;
+      --  PARIS_TOGGLE_FLIGHT=<frame>: press F then (testing)
+      if Ready and then Env ("PARIS_TOGGLE_FLIGHT") /= ""
+        and then Frame_Number = Integer'Value (Env ("PARIS_TOGGLE_FLIGHT"))
+      then
+         Set_Key (16#66#, True);
+         Set_Key (16#66#, False);
       end if;
       if Ready and then Frame_Number = 30 and then Env ("PARIS_PEAL") /= "" then
          Sound.Peal (Float'Value (Env ("PARIS_PEAL")));
@@ -2068,7 +2128,8 @@ package body Game is
                  & Integer'Image (Integer (Aircraft.Throttle * 100.0)) & "%   ")
             & Integer'Image (Integer (Fps)) & " fps   "
             & Clock_Image & "  " & Almanac.Image
-            & (if Rain_Target > 0.0 then " rain" elsif Snow_Target > 0.0 then " snow" else "")
+            & (if Storm_On then " storm" elsif Rain_Target > 0.0 then " rain"
+               elsif Snow_Target > 0.0 then " snow" else "")
             & "   cars" & Natural'Image (Traffic.Count)
             & "  people" & Natural'Image (Pedestrians.Count)
             & "   F1 keys </span>");
@@ -2127,6 +2188,41 @@ package body Game is
 
       if Ready then
          Sky_Life.Update (Dt, Hour, Night, Cam_Pos);
+         --  summer: now and then an afternoon or evening thunderstorm
+         if Almanac.Month in 5 .. 9 and then Almanac.Day /= Storm_Rolled and then Hour >= 12.0 then
+            Storm_Rolled := Almanac.Day;
+            Storm_At := (if Chance < 0.25 then 15.0 + 7.0 * Chance else -1.0);
+         end if;
+         if Storm_At > 0.0 and then Hour >= Storm_At and then Hour < Storm_At + 0.5
+           and then Rain_Target = 0.0 and then Snow_Target = 0.0
+         then
+            Storm_At := -1.0;
+            Storm_On := True;
+            Rain_Target := 1.0;
+            Storm_Auto := 200.0 + 150.0 * Chance;
+         end if;
+         if Storm_Auto > 0.0 then
+            Storm_Auto := Storm_Auto - Dt;
+            if Storm_Auto <= 0.0 then
+               --  it passes over
+               Storm_On := False;
+               Rain_Target := 0.0;
+            end if;
+         end if;
+         Storm.Update (Dt, Storm_On and then Rain_Amount > 0.5, Cam_Pos);
+         Ufo.Update (Dt, Hour, Night, Cam_Pos);
+         if Frame_Number = 30 and then Env ("PARIS_UFO") /= "" then
+            Ufo.Visit (Cam_Pos);
+         end if;
+         if Frame_Number = 40 and then Env ("PARIS_STRIKE") /= "" then
+            declare
+               Look  : constant Vec3 := Cam_Look - Cam_Pos;
+               Ahead : constant Vec3 := Normalize (Vec3'(Look.X, 0.0, Look.Z));
+            begin
+               Storm.Strike_At ((Cam_Pos.X, 0.0, Cam_Pos.Z) + Float'Value (Env ("PARIS_STRIKE")) * Ahead,
+                                Cam_Pos);
+            end;
+         end if;
          Pedestrians.Set_Santas (Christmas, (if Env ("PARIS_SANTA") = "walkers" then 1.0 else 0.035));
          Sleigh.Update (Dt, Christmas, Cam_Pos);
          declare
@@ -2280,8 +2376,12 @@ package body Game is
             end if;
          when 16#70# =>                                       --  p
             if Down then
-               --  dry, rain, snow, dry
-               if Rain_Target > 0.0 then
+               --  dry, rain, storm, snow, dry
+               Storm_Auto := 0.0;
+               if Rain_Target > 0.0 and then not Storm_On then
+                  Storm_On := True;
+               elsif Rain_Target > 0.0 then
+                  Storm_On := False;
                   Rain_Target := 0.0;
                   Snow_Target := 1.0;
                elsif Snow_Target > 0.0 then
@@ -2518,6 +2618,7 @@ package body Game is
       Pedestrians.Set_Density (Config.Get ("pedestrians", 1.0));
       Sound.Set_Volume (Config.Get ("volume", 0.8));
       Saved_Places.Load;
+      Ada.Numerics.Float_Random.Reset (Dice);
       Pedestrians.Set_Santas (Christmas, (if Env ("PARIS_SANTA") = "walkers" then 1.0 else 0.035));
       Show_Markers;
       Manual_Gearbox := Config.Get ("manual_gearbox", True);

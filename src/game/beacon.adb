@@ -115,4 +115,42 @@ package body Beacon is
       glDisable (GL_BLEND);
    end Draw;
 
+   procedure Draw_Shaft (VP : Mat4; Cam, From, To : Vec3;
+                         Width_From, Width_To : Float; Color : Vec3;
+                         Strength : Float) is
+      Dir  : constant Vec3 := To - From;
+      Side : Vec3 := Cross (Dir, From - Cam);
+      N    : Natural := 0;
+      procedure Put (P : Vec3; Along, Across : Float) is
+      begin
+         Data (N * 5 .. N * 5 + 4) := (P.X, P.Y, P.Z, Along, Across);
+         N := N + 1;
+      end Put;
+   begin
+      if Length (Side) < 0.001 then
+         Side := (1.0, 0.0, 0.0);
+      end if;
+      Side := Normalize (Side);
+      Put (From - Width_From * Side, 0.0, -1.0);
+      Put (From + Width_From * Side, 0.0, 1.0);
+      Put (To + Width_To * Side, 1.0, 1.0);
+      Put (From - Width_From * Side, 0.0, -1.0);
+      Put (To + Width_To * Side, 1.0, 1.0);
+      Put (To - Width_To * Side, 1.0, -1.0);
+      glUseProgram (Program);
+      glBindBuffer (GL_ARRAY_BUFFER, VBO);
+      glBufferSubData (GL_ARRAY_BUFFER, 0, GLsizeiptr (N * 5 * 4), Data'Address);
+      Shaders.Set (U_View_Proj, VP);
+      Shaders.Set (U_Color, Color);
+      Shaders.Set (U_Strength, Strength);
+      glEnable (GL_BLEND);
+      glBlendFunc (GL_ONE, GL_ONE);
+      glDepthMask (GL_FALSE);
+      glBindVertexArray (VAO);
+      glDrawArrays (GL_TRIANGLES, 0, GLsizei (N));
+      glBindVertexArray (0);
+      glDepthMask (GL_TRUE);
+      glDisable (GL_BLEND);
+   end Draw_Shaft;
+
 end Beacon;

@@ -3,6 +3,7 @@
 --  SPDX-License-Identifier: MIT
 --
 with Ada.Containers.Vectors;
+with Ada.Unchecked_Deallocation;
 with Interfaces;
 with System.Storage_Elements;
 
@@ -85,8 +86,17 @@ package body Meshes is
    procedure Finish (M : out Mesh) is
       use GL;
       Stride : constant := 40;
-      V : array (0 .. Natural (Verts.Length) - 1) of aliased Float;
-      I : array (0 .. Natural (Index.Length) - 1) of aliased Interfaces.Unsigned_32;
+      --  on the heap: a big mesh (a whole cemetery) would not fit the stack
+      type Float_Array is array (Natural range <>) of aliased Float;
+      type U32_Array is array (Natural range <>) of aliased Interfaces.Unsigned_32;
+      type Float_Access is access Float_Array;
+      type U32_Access is access U32_Array;
+      procedure Free is new Ada.Unchecked_Deallocation (Float_Array, Float_Access);
+      procedure Free is new Ada.Unchecked_Deallocation (U32_Array, U32_Access);
+      VA : Float_Access := new Float_Array (0 .. Natural (Verts.Length) - 1);
+      IA : U32_Access := new U32_Array (0 .. Natural (Index.Length) - 1);
+      V  : Float_Array renames VA.all;
+      I  : U32_Array renames IA.all;
    begin
       for K in V'Range loop
          V (K) := Verts (K);
@@ -115,8 +125,21 @@ package body Meshes is
       glVertexAttribPointer (4, 1, GL_FLOAT, GL_FALSE, Stride, Offset (36));
       glEnableVertexAttribArray (4);
       glBindVertexArray (0);
+      Free (VA);
+      Free (IA);
       Start;
    end Finish;
+
+   procedure Free (M : in out Mesh) is
+      use GL;
+   begin
+      if M.Count > 0 then
+         glDeleteVertexArrays (1, M.VAO'Address);
+         glDeleteBuffers (1, M.VBO'Address);
+         glDeleteBuffers (1, M.EBO'Address);
+      end if;
+      M := (others => <>);
+   end Free;
 
    procedure Draw (M : Mesh) is
       use GL;

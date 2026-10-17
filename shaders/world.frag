@@ -28,6 +28,9 @@ uniform float uTowerLights;  // the Eiffel Tower lit (0 after 23:45)
 uniform float uSparkle;      // 0 .. 1: the tower sparkles
 uniform float uSnowCover;    // 0 .. 1: snow lying on the ground, roofs and trees
 uniform float uXmas;         // 1 in the Christmas season: lights in the trees
+uniform float uAutumn;       // 0 .. 1: the leaves turning yellow, orange and brown
+uniform float uBare;         // 0 .. 1: the trees losing their leaves (winter)
+uniform float uLitter;       // 0 .. 1: fallen leaves on the ground
 uniform vec4 uLights[64];    // street lamps: xyz position, w intensity
 uniform int uLightCount;
 uniform vec3 uHeadPos;       // player's headlights
@@ -456,6 +459,25 @@ void main()
         vec3 leaf = mix(vec3(0.17, 0.30, 0.08), vec3(0.32, 0.45, 0.13), vSeed);
         float n = noise(vWorld.xy * 1.3 + vWorld.zy * 0.9);
         leaf *= 0.65 + 0.6 * n;
+        // autumn: each tree turns in its own time and its own colour
+        if (uAutumn > 0.0) {
+            float k = fract(vSeed * 7.31);
+            vec3 fall = k < 0.4 ? vec3(0.78, 0.55, 0.10) : k < 0.7 ? vec3(0.72, 0.33, 0.07)
+                      : k < 0.9 ? vec3(0.55, 0.36, 0.12) : vec3(0.60, 0.15, 0.06);
+            fall *= 0.7 + 0.5 * n;
+            float turn = clamp(uAutumn * 1.4 - k * 0.6 + 0.15 * (n - 0.5), 0.0, 1.0);
+            leaf = mix(leaf, fall, turn);
+        }
+        // winter: the crown thins out to bare twigs
+        if (uBare > 0.0) {
+            float holes = noise(vWorld.xy * 2.3 + vWorld.zy * 1.9 + vSeed * 13.0);
+            float keep = smoothstep(uBare - 0.1, uBare + 0.1, holes);
+            // a fake network of twigs where the leaves have gone
+            float twig = 1.0 - smoothstep(0.0, 0.05,
+                abs(noise(vWorld.xy * 3.1 + vWorld.zy * 2.7 + 5.0) - 0.5));
+            leaf = mix(vec3(0.22, 0.18, 0.14) * (0.8 + 0.3 * n), leaf, keep);
+            gAlpha = max(keep, 0.9 * twig);
+        }
         s = Surface(toLinear(leaf), 0.0, 8.0, vec3(0), 0.45);
         // Christmas: strings of little lights in the street trees
         if (uXmas > 0.5 && uNight > 0.05) {
@@ -499,7 +521,7 @@ void main()
                     toLinear(vec3(1.0, 0.6, 0.15)) * 4.0 * flicker * uNight, 0.0);
     } else if (m == 42) {          // a ghost's sheet: pale, glowing, see-through
         s = Surface(toLinear(vec3(0.88, 0.92, 0.98)), 0.1, 12.0,
-                    toLinear(vec3(0.55, 0.65, 0.8)) * 0.6 * uNight, 0.5);
+                    toLinear(vec3(0.6, 0.7, 0.85)) * 1.1 * uNight, 0.5);
         gAlpha = 0.65;
     } else if (m == 38) {          // the star on top
         s = Surface(toLinear(vec3(1.0, 0.85, 0.35)), 0.8, 40.0,
@@ -615,6 +637,19 @@ void main()
         s = Surface(toLinear(vec3(0.45, 0.45, 0.42)), 0.6, 60.0, glow * (0.05 + 4.0 * uNight), 0.0);
     } else {
         s = ground(m, vWorld.xz, vSeed);
+        // fallen leaves on the pavements, squares and lawns
+        if (uLitter > 0.0 && (m == 0 || m == 3 || m == 4 || m == 8)) {
+            vec2 cell = floor(vWorld.xz / 0.22);
+            float h = hash(cell + 3.1);
+            vec2 f = fract(vWorld.xz / 0.22) - 0.5;
+            float patch = noise(vWorld.xz * 0.25);
+            if (h < uLitter * (0.25 + 0.6 * patch) && dot(f * vec2(1.0, 1.6), f * vec2(1.0, 1.6)) < 0.16) {
+                float k = fract(h * 37.0);
+                vec3 lc = k < 0.4 ? vec3(0.70, 0.48, 0.10) : k < 0.75 ? vec3(0.60, 0.28, 0.07)
+                        : vec3(0.42, 0.27, 0.12);
+                s.albedo = toLinear(lc);
+            }
+        }
     }
 
     // Rain: horizontal ground and roofs darken and turn glossy, with
