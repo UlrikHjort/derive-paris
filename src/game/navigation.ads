@@ -21,6 +21,10 @@ package Navigation is
    --  instruction text and redraw the minimap.  Route_Allowed is False in
    --  the apartment and the plane (no driving instructions there).
 
+   procedure Clear_Markers;
+   procedure Add_Marker (X, Z : Float);
+   --  Saved places, shown as small diamonds on the minimap
+
    procedure Show (On : Boolean);
    --  Minimap and instructions visible or not
 

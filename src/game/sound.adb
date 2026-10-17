@@ -5,6 +5,7 @@
 with Ada.Environment_Variables;
 with Ada.Numerics;
 with Ada.Streams.Stream_IO;
+with Ada.Strings.Unbounded;
 with Ada.Numerics.Elementary_Functions;
 with Interfaces;
 with Interfaces.C;
@@ -71,6 +72,14 @@ package body Sound is
       procedure Flip_Mute;
       function Is_Muted return Boolean;
       procedure Put_Volume (V : Float);
+      procedure Set_Capture (Name : String);
+      function Capture_Name return String;
+      procedure Set_Capture_Open (Open : Boolean);
+      function Capture_Open return Boolean;
+      procedure Set_Playing;
+      procedure Click;
+      procedure Take_Click (Any : out Boolean);
+      function Is_Playing return Boolean;
       function Volume return Float;
    private
       Current   : Params;
@@ -78,6 +87,10 @@ package body Sound is
       Bell_Loud  : Float := 0.0;
       Stop_Flag : Boolean := False;
       Mute      : Boolean := False;
+      Cap_Name  : Ada.Strings.Unbounded.Unbounded_String;
+      Cap_Open  : Boolean := False;
+      Play_On   : Boolean := False;
+      Clicks    : Natural := 0;
       Master    : Float := 0.8;
    end Shared;
 
@@ -108,6 +121,30 @@ package body Sound is
          Mute := not Mute;
       end Flip_Mute;
       function Is_Muted return Boolean is (Mute);
+      procedure Set_Capture (Name : String) is
+      begin
+         Cap_Name := Ada.Strings.Unbounded.To_Unbounded_String (Name);
+      end Set_Capture;
+      function Capture_Name return String is (Ada.Strings.Unbounded.To_String (Cap_Name));
+      procedure Set_Capture_Open (Open : Boolean) is
+      begin
+         Cap_Open := Open;
+      end Set_Capture_Open;
+      function Capture_Open return Boolean is (Cap_Open);
+      procedure Set_Playing is
+      begin
+         Play_On := True;
+      end Set_Playing;
+      function Is_Playing return Boolean is (Play_On);
+      procedure Click is
+      begin
+         Clicks := Clicks + 1;
+      end Click;
+      procedure Take_Click (Any : out Boolean) is
+      begin
+         Any := Clicks > 0;
+         Clicks := 0;
+      end Take_Click;
       procedure Put_Volume (V : Float) is
       begin
          Master := Float'Max (0.0, Float'Min (1.0, V));
@@ -164,7 +201,7 @@ package body Sound is
    end Step;
 
    --  A sound event with an envelope: passing car, horn, bird, bell stroke
-   type Event_Kind is (None, Passing, Horn, Bird, Bell);
+   type Event_Kind is (None, Passing, Horn, Bird, Bell, Click);
 
    type Event is record
       Kind     : Event_Kind := None;
@@ -255,6 +292,10 @@ package body Sound is
                  * Exp (-E.T * (0.35 + 0.45 * Float (K))) / Float (K);
             end loop;
             S := S * (if E.T < 0.005 then E.T / 0.005 else 1.0);
+         when Click =>
+            --  a shutter: a short bright tick
+            Env := Exp (-E.T * 160.0);
+            S := Step (E.Filter, Noise, 4000.0) - Step (E.Filter2, Noise, 800.0) * 0.5;
          when None =>
             return;
       end case;
@@ -271,14 +312,169 @@ package body Sound is
    Hum_Phase : Hum_Phases := (others => 0.0);
    Rpm_Now                  : Float := 850.0;
    Rumble, Road, Wind, Rain_F, Engine_Tone, Engine_Grit : Lowpass;
-   Engine_Tone2, Road2, Wind2 : Lowpass;   --  second stages: softer roll-off
+   Engine_Tone2, Road2, Wind2, Rumble2 : Lowpass;   --  second stages: softer roll-off
    Wobble   : Float := 0.0;                --  slow random drift of the revs
    Wobble_F : Lowpass;
    Rain_Hp                  : Lowpass;
-   Next_Pass, Next_Horn, Next_Bird : Float := 1.0;
+   Next_Horn, Next_Bird : Float := 1.0;
    Bell_Wait                : Float := 0.0;
    Bells_Left               : Natural := 0;
    Bell_Volume              : Float := 0.0;
+
+   ---------------------------------------------------------------------------
+   --  The traffic around you: every nearby vehicle has its own engine,
+   --  placed where it is, with Doppler; cars waiting at a light idle
+   ---------------------------------------------------------------------------
+
+   type Voice_State is record
+      Id        : Natural := 0;
+      Live      : Boolean := False;
+      Gain, Pan, Shift, Rpm : Float := 0.0;
+      T_Gain, T_Pan, T_Shift, T_Rpm, T_Bright, T_Tyres : Float := 0.0;
+      Tyres_Now : Float := 0.0;
+      Bright    : Float := 300.0;
+      Kind      : Natural := 0;
+      Char      : Float := 1.0;   --  each engine sounds a little different
+      Phase     : Float := 0.0;
+      F1, F2, T1, T2 : Lowpass;
+   end record;
+
+   Slots : array (Voice_List'Range) of Voice_State;
+
+   function Traffic_Rpm (Kind : Natural; Speed : Float) return Float is
+      Kmh : constant Float := Speed * 3.6;
+      Low : Float := 0.0;
+      Tops : constant array (1 .. 4) of Float :=
+        (if Kind = 2 then (30.0, 55.0, 80.0, 110.0) else (18.0, 35.0, 52.0, 72.0));
+   begin
+      if Kind = 1 then   --  scooter: automatic, revs rise and stay
+         return (if Kmh < 3.0 then 1900.0 else Float'Min (7600.0, 4200.0 + Kmh * 110.0));
+      end if;
+      if Kmh < 3.0 then
+         return (if Kind = 2 then 1100.0 else 780.0);
+      end if;
+      for G in Tops'Range loop
+         if Kmh < Tops (G) or else G = Tops'Last then
+            return 1100.0 + Float'Min (1.0, (Kmh - Low) / (Tops (G) - Low))
+              * (if Kind = 2 then 3800.0 else 2100.0);
+         end if;
+         Low := Tops (G);
+      end loop;
+      return 800.0;
+   end Traffic_Rpm;
+
+   procedure Match_Voices (List : Voice_List) is
+      Wanted : array (Slots'Range) of Boolean := (others => False);
+   begin
+      --  vehicles already heard keep their slot
+      for S of Slots loop
+         S.Live := False;
+      end loop;
+      for I in List'Range loop
+         if List (I).Id /= 0 then
+            for J in Slots'Range loop
+               if Slots (J).Id = List (I).Id then
+                  Slots (J).Live := True;
+                  Wanted (I) := True;
+                  exit;
+               end if;
+            end loop;
+         end if;
+      end loop;
+      --  new ones take a free slot and fade in
+      for I in List'Range loop
+         if List (I).Id /= 0 and then not Wanted (I) then
+            for J in Slots'Range loop
+               if not Slots (J).Live and then Slots (J).Gain < 0.0005 then
+                  Slots (J) := (Id => List (I).Id, Live => True, Kind => List (I).Kind,
+                                Char => 0.88 + 0.24 * Float ((List (I).Id * 7919) mod 101) / 100.0,
+                                Pan => List (I).Pan, Shift => 1.0,
+                                Rpm => Traffic_Rpm (List (I).Kind, List (I).Speed),
+                                others => <>);
+                  exit;
+               end if;
+            end loop;
+         end if;
+      end loop;
+      --  targets
+      for S of Slots loop
+         S.T_Gain := 0.0;
+         if S.Live then
+            for V of List loop
+               if V.Id = S.Id then
+                  declare
+                     Moving : constant Float := Float'Min (1.0, V.Speed / 8.0);
+                  begin
+                     S.T_Gain := (case S.Kind is
+                                    when 1 => 0.22, when 2 => 0.55, when others => 0.30)
+                       * (0.55 + 0.45 * Moving) / (V.Dist + 3.0);
+                     S.T_Tyres := 0.5 * Float'Min (1.0, (V.Speed / 14.0) ** 2) / (V.Dist + 3.0);
+                     S.T_Pan := V.Pan;
+                     S.T_Shift := 343.0 / (343.0 + V.Radial);
+                     S.T_Rpm := Traffic_Rpm (S.Kind, V.Speed) * S.Char;
+                     --  far away the sound gets duller
+                     S.T_Bright := 1.0 / (1.0 + V.Dist / 35.0);
+                  end;
+               end if;
+            end loop;
+         end if;
+      end loop;
+   end Match_Voices;
+
+   --  One sample of all traffic voices
+   procedure Play_Voices (L, R : in out Float) is
+      K : constant Float := 0.0006;   --  parameter smoothing per sample
+   begin
+      for S of Slots loop
+         if S.Live or else S.Gain > 0.00005 then
+            S.Gain := S.Gain + (S.T_Gain - S.Gain) * K;
+            S.Pan := S.Pan + (S.T_Pan - S.Pan) * K;
+            S.Shift := S.Shift + (S.T_Shift - S.Shift) * K;
+            S.Rpm := S.Rpm + (S.T_Rpm - S.Rpm) * K * 0.5;
+            S.Bright := S.Bright + (S.T_Bright - S.Bright) * K;
+            S.Tyres_Now := S.Tyres_Now + (S.T_Tyres - S.Tyres_Now) * K;
+            declare
+               F0 : constant Float :=
+                 S.Rpm / (if S.Kind = 0 then 30.0 else 60.0) * S.Shift;
+               Ph : Float;
+               E  : Float;
+               T  : Float;
+            begin
+               S.Phase := S.Phase + F0 / Float (Rate);
+               S.Phase := S.Phase - Float'Floor (S.Phase);
+               Ph := Two_Pi * S.Phase;
+               case S.Kind is
+                  when 1 =>   --  scooter: buzzing two-stroke
+                     E := (if S.Phase < 0.25 then 1.0 else -0.33) + 0.3 * Noise;
+                     E := Step (S.F1, E, 300.0 + 1200.0 * S.Bright);
+                  when 2 =>   --  motorbike: deep, uneven pulses
+                     E := (if S.Phase < 0.15 then 1.0 else -0.18)
+                       + 0.6 * Sin (0.5 * Ph) + 0.2 * Noise;
+                     E := Step (S.F1, E, 150.0 + 500.0 * S.Bright);
+                  when others =>
+                     E := Sin (Ph) + 0.5 * Sin (2.0 * Ph + 0.7) + 0.25 * Sin (3.0 * Ph + 1.9)
+                       + 0.3 * Sin (0.5 * Ph) + 0.25 * Noise;
+                     E := Step (S.F1, E, 90.0 + F0 * 1.5 + 250.0 * S.Bright);
+               end case;
+               E := Step (S.F2, E, 200.0 + F0 * 2.0 + 900.0 * S.Bright);
+               --  tyres: a soft, dark rush
+               T := Step (S.T1, Noise, 250.0 + 500.0 * S.Bright);
+               T := T - Step (S.T2, T, 120.0);
+               E := E * S.Gain + T * S.Tyres_Now;
+               L := L + E * (1.0 - 0.7 * S.Pan);
+               R := R + E * (1.0 + 0.7 * S.Pan);
+            end;
+         end if;
+      end loop;
+   end Play_Voices;
+
+   --  The player's horn: two tones like a French car
+   Horn_Phase1, Horn_Phase2, Horn_Level : Float := 0.0;
+   Horn_F1, Horn_F2 : Lowpass;
+
+   --  Tyre squeal: a wavering high tone with a rough edge
+   Squeal_Level, Squeal_Phase : Float := 0.0;
+   Squeal_Drift, Squeal_Hp, Squeal_Lp : Lowpass;
 
    procedure Mix (Buffer : out Sample_Array) is
       P     : constant Params := Shared.Get;
@@ -291,25 +487,16 @@ package body Sound is
       Gain   : constant Float := Shared.Volume / 0.8;
    begin
       --  Schedule events for this buffer
-      Next_Pass := Next_Pass - Dt;
-      if Next_Pass <= 0.0 then
-         declare
-            Speed   : constant Float := 8.0 + 7.0 * Uniform;
-            Scooter : constant Boolean := Uniform < 0.25;
-         begin
-            --  at street level cars pass close by; from up high they are
-            --  further away, so their sound spreads into a murmur
-            Add ((Kind => Passing, Dur => 2.0 * 40.0 / Speed,
-                  Volume => (0.06 + 0.06 * Uniform) * (0.4 + 0.6 * Day)
-                            * (if Scooter then 0.6 else 1.0),
-                  Near => Float'Max (0.9 * Ear, 2.5 + 7.0 * Uniform), Speed => Speed,
-                  Dir => (if Uniform < 0.5 then -1.0 else 1.0),
-                  Freq => (if Scooter then 95.0 + 50.0 * Uniform else 38.0 + 30.0 * Uniform),
-                  T => (if Scooter then -0.0 else 0.0),
-                  others => <>));
-         end;
-         Next_Pass := (0.8 + 2.8 * Uniform) * (1.0 + 2.0 * P.Night) / (0.5 + P.Traffic);
-      end if;
+      Match_Voices (P.Voices);
+      declare
+         Any : Boolean;
+      begin
+         Shared.Take_Click (Any);
+         if Any then
+            Add ((Kind => Click, Dur => 0.06, Volume => 0.5, others => <>));
+            Add ((Kind => Click, Dur => 0.06, T => -0.11, Volume => 0.35, others => <>));
+         end if;
+      end;
       Next_Horn := Next_Horn - Dt;
       if Next_Horn <= 0.0 then
          Add ((Kind => Horn, Dur => 0.25 + 0.5 * Uniform,
@@ -357,7 +544,7 @@ package body Sound is
          begin
             --  Distant traffic: a steady low murmur of many engines far
             --  away, no swell
-            S := Step (Rumble, Noise, 90.0) * 0.55;
+            S := Step (Rumble2, Step (Rumble, Noise, 110.0), 110.0) * 0.32;
             for K in Hum_Phase'Range loop
                Hum_Phase (K) := Hum_Phase (K) + Hum_Freq (K) / Float (Rate);
                Hum_Phase (K) := Hum_Phase (K) - Float'Floor (Hum_Phase (K));
@@ -430,6 +617,42 @@ package body Sound is
                when Visiting =>
                   null;
             end case;
+
+            Play_Voices (L, R);
+
+            Horn_Level := Horn_Level
+              + ((if P.Horn and then P.Mode = Driving then 1.0 else 0.0) - Horn_Level) * 0.004;
+            if Horn_Level > 0.001 then
+               Horn_Phase1 := Horn_Phase1 + 415.0 / Float (Rate);
+               Horn_Phase1 := Horn_Phase1 - Float'Floor (Horn_Phase1);
+               Horn_Phase2 := Horn_Phase2 + 523.0 / Float (Rate);
+               Horn_Phase2 := Horn_Phase2 - Float'Floor (Horn_Phase2);
+               S := (if Horn_Phase1 < 0.5 then 1.0 else -1.0)
+                 + (if Horn_Phase2 < 0.5 then 1.0 else -1.0);
+               S := Step (Horn_F2, Step (Horn_F1, S, 2200.0), 3000.0) * 0.09 * Horn_Level;
+               L := L + S;
+               R := R + S;
+            end if;
+
+            Squeal_Level := Squeal_Level + (P.Squeal - Squeal_Level) * 0.002;
+            if Squeal_Level > 0.001 then
+               declare
+                  Drift : constant Float := Step (Squeal_Drift, Noise, 6.0);
+                  N     : constant Float := Noise;
+                  Band  : Float;
+               begin
+                  Squeal_Phase := Squeal_Phase
+                    + (1050.0 + 220.0 * Squeal_Level + 2500.0 * Drift) / Float (Rate);
+                  Squeal_Phase := Squeal_Phase - Float'Floor (Squeal_Phase);
+                  Band := Step (Squeal_Lp, N, 3500.0);
+                  Band := Band - Step (Squeal_Hp, Band, 1200.0);
+                  S := (Sin (Two_Pi * Squeal_Phase) * 0.6
+                        + 0.25 * Sin (2.0 * Two_Pi * Squeal_Phase) + 1.6 * Band)
+                    * 0.10 * Squeal_Level;
+                  L := L + S;
+                  R := R + S;
+               end;
+            end if;
 
             for E of Events loop
                if E.Kind /= None then
@@ -515,14 +738,45 @@ package body Sound is
          end;
       else
       --  without a sound server we simply stay silent
-      while Stream /= System.Null_Address and then not Shared.Stopping loop
-         Mix (Buffer);
-         if Shared.Is_Muted then
-            Buffer := Silent;
+      if Stream /= System.Null_Address then
+         Shared.Set_Playing;
+      end if;
+      declare
+         use Ada.Streams.Stream_IO;
+         Cap : File_Type;
+      begin
+         while Stream /= System.Null_Address and then not Shared.Stopping loop
+            Mix (Buffer);
+            if Shared.Is_Muted then
+               Buffer := Silent;
+            end if;
+            --  recording a video: keep a copy of the sound
+            declare
+               Name : constant String := Shared.Capture_Name;
+            begin
+               if Name /= "" and then not Is_Open (Cap) then
+                  begin
+                     Create (Cap, Out_File, Name);
+                     Shared.Set_Capture_Open (True);
+                  exception
+                     when others => Shared.Set_Capture ("");
+                  end;
+               elsif Name = "" and then Is_Open (Cap) then
+                  Close (Cap);
+                  Shared.Set_Capture_Open (False);
+               end if;
+               if Is_Open (Cap) then
+                  Sample_Array'Write (Ada.Streams.Stream_IO.Stream (Cap), Buffer);
+               end if;
+            end;
+            exit when PA_Write (Stream, Buffer'Address, C.size_t (Buffer'Length * 2),
+                                Err'Access) < 0;
+         end loop;
+         if Is_Open (Cap) then
+            Close (Cap);
+            Shared.Set_Capture_Open (False);
          end if;
-         exit when PA_Write (Stream, Buffer'Address, C.size_t (Buffer'Length * 2),
-                             Err'Access) < 0;
-      end loop;
+      end;
       end if;
       if Stream /= System.Null_Address then
          PA_Free (Stream);
@@ -543,5 +797,26 @@ package body Sound is
    begin
       Shared.Request_Stop;
    end Stop;
+
+   procedure Start_Capture (File_Name : String) is
+   begin
+      Shared.Set_Capture (File_Name);
+   end Start_Capture;
+
+   procedure Stop_Capture is
+   begin
+      Shared.Set_Capture ("");
+      for I in 1 .. 50 loop
+         exit when not Shared.Capture_Open;
+         delay 0.01;
+      end loop;
+   end Stop_Capture;
+
+   function Playing return Boolean is (Shared.Is_Playing);
+
+   procedure Shutter is
+   begin
+      Shared.Click;
+   end Shutter;
 
 end Sound;

@@ -37,9 +37,23 @@ package body Config is
      & "start_hour = 18.0" & ASCII.LF
      & "time_speed = 1.0" & ASCII.LF
      & ASCII.LF
-     & "# Shown at the start: compass and minimap, street name plaque." & ASCII.LF
+     & "# Shown at the start: compass and minimap, street name plaque," & ASCII.LF
+     & "# instrument panel (gear, revs, speed)." & ASCII.LF
      & "compass = yes" & ASCII.LF
-     & "street_names = yes" & ASCII.LF;
+     & "street_names = yes" & ASCII.LF
+     & "instruments = yes" & ASCII.LF
+     & ASCII.LF
+     & "# Racing wheel (Logitech G29, found by itself when plugged in):" & ASCII.LF
+     & "# drive with the H-shifter and clutch (no: automatic), whether a gear" & ASCII.LF
+     & "# only goes in with the clutch down, force feedback strength 0 .. 1." & ASCII.LF
+     & "manual_gearbox = yes" & ASCII.LF
+     & "clutch = yes" & ASCII.LF
+     & "force_feedback = 0.6" & ASCII.LF
+     & "# Steering sensitivity (1.0: 900 degrees lock to lock like a real car," & ASCII.LF
+     & "# 1.5: quicker) and a correction if the car does not run straight with" & ASCII.LF
+     & "# the wheel centred (degrees, + if the car pulls to the right)." & ASCII.LF
+     & "steering = 1.0" & ASCII.LF
+     & "wheel_centre = 0.0" & ASCII.LF;
 
    function File_Name return String is
      (Ada.Environment_Variables.Value ("HOME", ".") & "/.deriverc");

@@ -71,6 +71,39 @@ package body Traffic is
       return (if Best = Float'Last then Best else Sqrt (Best));
    end Nearest;
 
+   function Nearby (X, Z : Float) return Source_List is
+      List : Source_List;
+      Dist : array (Source_List'Range) of Float := (others => Float'Last);
+   begin
+      for I in Agents'Range loop
+         declare
+            A : Agent renames Agents (I);
+            D : Float;
+         begin
+            if A.Active then
+               D := (A.X - X) ** 2 + (A.Z - Z) ** 2;
+               if D < 120.0 ** 2 and then D < Dist (Dist'Last) then
+                  --  insert sorted
+                  declare
+                     J : Integer := Dist'Last;
+                  begin
+                     while J > Dist'First and then Dist (J - 1) > D loop
+                        Dist (J) := Dist (J - 1);
+                        List (J) := List (J - 1);
+                        J := J - 1;
+                     end loop;
+                     Dist (J) := D;
+                     List (J) := (Id => I, X => A.X, Z => A.Z, Speed => A.Speed,
+                                  Heading => A.Heading,
+                                  Kind => Vehicle_Kind'Pos (A.Kind));
+                  end;
+               end if;
+            end if;
+         end;
+      end loop;
+      return List;
+   end Nearby;
+
    procedure Set_Density (Factor : Float) is
    begin
       Limit := Natural (Float'Max (0.0, Float'Min (Float (Max_Cars), 180.0 * Factor)));

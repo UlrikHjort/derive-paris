@@ -9,6 +9,23 @@ real outlines, heights and roofs, streets with markings and traffic
 lights, the Seine with its quays and bridges, trees, street lamps, traffic
 and pedestrians, day and night, and rain.
 
+![The Eiffel Tower seen from the Trocadéro](docs/screenshots/eiffel.jpg)
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Driving with the GPS](docs/screenshots/gps.jpg) | ![The Champs-Élysées and the Arc de Triomphe](docs/screenshots/champs-elysees.jpg) |
+| Driving with the GPS: turn-by-turn directions, compass and minimap | The Champs-Élysées and the Arc de Triomphe |
+| ![The Seine and Notre-Dame at sunset](docs/screenshots/seine.jpg) | ![The Île de la Cité from above](docs/screenshots/ile-de-la-cite.jpg) |
+| The Seine and Notre-Dame at sunset | The Île de la Cité and Sainte-Chapelle from above |
+| ![A rainy night near Saint-Sulpice](docs/screenshots/night-rain.jpg) | ![Flying towards the Eiffel Tower](docs/screenshots/flying.jpg) |
+| A rainy night near Saint-Sulpice | Flying towards the Eiffel Tower |
+| ![The rooftops of Paris](docs/screenshots/rooftops.jpg) | ![A burnout](docs/screenshots/burnout.jpg) |
+| The rooftops, towards Montmartre | Drop the clutch: smoke and skid marks |
+| ![The Eiffel Tower sparkling](docs/screenshots/eiffel-sparkle.jpg) | ![The beacon sweeping over Paris](docs/screenshots/eiffel-night.jpg) |
+| On the hour after dark the Eiffel Tower sparkles for five minutes | The beacon on top sweeps its beams over Paris until 23:45 |
+
 ## Written entirely by prompting
 
 This project started as a test of what Claude Code can do.  Every line of
@@ -24,10 +41,14 @@ The work happened in conversation: Claude wrote and built the code, checked
 the result with screenshots and recordings it made itself, and the author
 played the game and said what to change next.
 
+Claude had access to all the authors existing Ada projects for inspiration how to 
+structure the project, build setup, libraries to use, documentation layout, et cetera.
+
 ## Building
 
 Needs GNAT with gprbuild, GtkAda (GTK 3), libepoxy, zlib, PulseAudio
-(libpulse-simple), curl and an OpenGL 3.3 graphics card.
+(libpulse-simple), curl and an OpenGL 3.3 graphics card; ffmpeg for
+recording videos.
 
     make            # build the converter (bin/osm2tiles) and the game (bin/derive)
     make tiles      # download the OSM data if needed, build tiles/
@@ -47,6 +68,11 @@ fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 |---|---|
 | arrows / WASD | drive |
 | space | handbrake |
+| B | horn |
+| E | gearbox: manual (with the wheel's shifter and clutch) or automatic |
+| I | instruments: the gear (H-pattern or R N D), rev counter, speed and pedals |
+| L | save the place where you are |
+| O | saved places: navigate there with the GPS, or go there |
 | C | chase or drone camera |
 | mouse wheel, + / - | zoom |
 | F | take off in a plane / land and drive again |
@@ -62,14 +88,58 @@ fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 | 1 .. 9, 0 | jump to Saint-Sulpice, Notre-Dame, Louvre, Tour Eiffel, Arc de Triomphe, Sacré-Cœur, Panthéon, Concorde, Opéra, Bastille |
 | H | home: Place Saint-Sulpice (also where the game starts) |
 | R | reset |
+| F9 | record a video with sound; F9 again stops (saved in `~/Videos/Derive`) |
+| F12 | take a photo (saved in `~/Pictures/Derive`) |
+| F1 | show these keys in the game |
+
+### Racing wheel
+
+A Logitech G29 (with its pedals and the Driving Force H-shifter) is found
+by itself when it is plugged in, also while the game runs.  It is read
+straight from the Linux event device, no extra libraries.  You drive with
+a manual six-speed gearbox: the gear only goes in with the clutch down
+(otherwise it grinds), first gear creeps at idle, and the engine does not
+stall; E switches to an automatic gearbox.  Drop the clutch at high revs
+(or, in the automatic, hold the brake and floor the throttle, then let go
+of the brake) and the rear wheels spin, smoke and leave black marks; so do
+locked brakes and fast corners, and the tyres squeal.  Force feedback pulls the wheel back to the centre more the faster
+you go and kicks over kerbs and in crashes.
+
+| Wheel | |
+|---|---|
+| X | handbrake |
+| square | camera |
+| triangle | compass and minimap |
+| circle | street names |
+| R2 / L2 | one hour later / rain |
+| share | clear the traffic |
+| options | sound on/off |
+| PS | home |
+| enter (in the red dial) | horn |
+| L3 / R3 | stop navigating / reset |
+| d-pad right / left | save this place / saved places |
+| + / - and turning the red dial | zoom |
+
+The plane is flown with the keyboard.
+
+### Saved places
+
+L saves the place where you are (named after the street) and O lists the
+saved places: Enter sets the GPS to it, Space takes you there, Delete
+forgets it.  They are kept in `~/.derive_places`, one per line as
+`latitude longitude name`, so the names can be changed there.  Saved
+places show as green diamonds on the minimap.
 
 ## Settings
 
 `~/.deriverc` holds settings as `name = value` lines (`#` starts a
 comment); the game writes a commented starter file on its first run.
 So far: `traffic`, `pedestrians` (1.0 = normal), `volume` (0 .. 1),
-`start_hour`, `time_speed` (game minutes per real second), `compass` and
-`street_names` (yes/no).
+`start_hour`, `time_speed` (game minutes per real second), `compass`,
+`street_names` and `instruments` (yes/no), and for the wheel `manual_gearbox` (no:
+automatic), `clutch` (no: change gear without the clutch) and
+`force_feedback` (0 .. 1), `steering` (sensitivity) and `wheel_centre`
+(degrees).
 
 ## How it works
 
@@ -84,7 +154,7 @@ OpenStreetMap data.
 
 Debug options for screenshots: `PARIS_SHOT=file.ppm`, `PARIS_SPAWN`,
 `PARIS_CAM`, `PARIS_DRONE`, `PARIS_FLY`, `PARIS_TIME`, `PARIS_RAIN`,
-`PARIS_ZOOM`, `PARIS_TILES`, `PARIS_TELEPORT`, `PARIS_WAV`, `PARIS_COMPASS_PNG`, `PARIS_NAV`, `PARIS_MAP_PNG`, `PARIS_PROFILE` (see `src/game/game.adb`).
+`PARIS_ZOOM`, `PARIS_TILES`, `PARIS_TELEPORT`, `PARIS_WAV`, `PARIS_COMPASS_PNG`, `PARIS_HELP_PNG`, `PARIS_LIST_PNG`, `PARIS_RECORD`, `PARIS_SHOT_PNG` (with the overlays), `PARIS_BURNOUT`, `PARIS_NOWHEEL`, `PARIS_NAV`, `PARIS_MAP_PNG`, `PARIS_PROFILE` (see `src/game/game.adb`).
 
 ## License
 

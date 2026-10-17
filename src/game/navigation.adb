@@ -41,6 +41,25 @@ package body Navigation is
 
    function Active return Boolean is (Has_Dest);
 
+   type Marker is record
+      X, Z : Float;
+   end record;
+   Markers : array (1 .. 64) of Marker;
+   Marker_Count : Natural := 0;
+
+   procedure Clear_Markers is
+   begin
+      Marker_Count := 0;
+   end Clear_Markers;
+
+   procedure Add_Marker (X, Z : Float) is
+   begin
+      if Marker_Count < Markers'Last then
+         Marker_Count := Marker_Count + 1;
+         Markers (Marker_Count) := (X, Z);
+      end if;
+   end Add_Marker;
+
    procedure Set_Destination (Name : String; X, Z : Float) is
    begin
       Dest_Name := To_Unbounded_String (Name);
@@ -334,6 +353,27 @@ package body Navigation is
             Stroke (Cr);
          end;
       end if;
+      --  saved places
+      for I in 1 .. Marker_Count loop
+         declare
+            SX, SY : Gdouble;
+         begin
+            To_Screen (Markers (I).X, Markers (I).Z, SX, SY);
+            if (SX - C) ** 2 + (SY - C) ** 2 < (R - 6.0) ** 2 then
+               Move_To (Cr, SX, SY - 6.0);
+               Line_To (Cr, SX + 5.0, SY);
+               Line_To (Cr, SX, SY + 6.0);
+               Line_To (Cr, SX - 5.0, SY);
+               Close_Path (Cr);
+               Set_Source_Rgba (Cr, 0.2, 0.85, 0.75, 1.0);
+               Fill_Preserve (Cr);
+               Set_Source_Rgba (Cr, 0.0, 0.0, 0.0, 0.6);
+               Set_Line_Width (Cr, 1.0);
+               Stroke (Cr);
+            end if;
+         end;
+      end loop;
+
       --  destination flag (pinned to the rim when far away)
       if Has_Dest then
          declare

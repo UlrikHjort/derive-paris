@@ -39,6 +39,18 @@ package Traffic is
    --  Remove all traffic; new cars arrive gradually, out of sight
 
    function Nearest (X, Z : Float) return Float;
+
+   --  The vehicles you can hear: the nearest few, for the sound
+   type Sound_Source is record
+      Id       : Natural := 0;        --  0: none; stays the same per vehicle
+      X, Z     : Float := 0.0;
+      Speed    : Float := 0.0;        --  m/s
+      Heading  : Float := 0.0;
+      Kind     : Natural := 0;        --  0 car, 1 scooter, 2 motorbike
+   end record;
+   type Source_List is array (1 .. 8) of Sound_Source;
+
+   function Nearby (X, Z : Float) return Source_List;
    --  Distance to the nearest traffic car (m), Float'Last if none
 
 end Traffic;

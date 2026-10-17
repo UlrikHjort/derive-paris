@@ -14,6 +14,10 @@ with Ada.Text_IO;
 with Interfaces.C;
 with System;
 
+with Cairo;
+with Cairo.Image_Surface;
+with Cairo.Png;
+with Cairo.Surface;
 with Gdk.Event;
 with Gdk.Frame_Clock;
 with Gdk.Types;
@@ -27,21 +31,28 @@ with Gtk.Style_Provider;
 with Gtk.Widget;
 with Gtk.Window;
 
+with Beacon;
 with Car;
 with Compass;
 with Config;
 with Geo;
+with Instruments;
 with GL;
 with GL_Area;
 with Math3D;
 with Navigation;
 with Pedestrians;
+with Photo;
 with Plane;
 with Rain;
+with Recorder;
 with Road_Network;
+with Saved_Places;
 with Shaders;
 with Sound;
 with Traffic;
+with Tyre_Effects;
+with Wheel;
 with World;
 
 package body Game is
@@ -91,13 +102,30 @@ package body Game is
    Window  : Gtk.Window.Gtk_Window;
    Area    : GL_Area.Gtk_GL_Area;
    Hud     : Gtk.Label.Gtk_Label;
+   Overlay : Gtk.Overlay.Gtk_Overlay;   --  the 3D view with everything on top
+   Help    : Gtk.Label.Gtk_Label;   --  the keys, shown with F1
+   Start_Recording : Boolean := False;   --  F9 pressed
+   Take_Photo      : Boolean := False;   --  F12 pressed
+   Place_List : Gtk.Label.Gtk_Label;   --  saved places, shown with O
+   List_Open  : Boolean := False;
+   List_Sel   : Positive := 1;
    Sign    : Gtk.Label.Gtk_Label;      --  street name, like a Paris plaque
 
    Show_Street  : Boolean := True;     --  N toggles
    Show_Compass : Boolean := True;     --  G toggles compass and position
    Compass_Widget : Gtk.Widget.Gtk_Widget;
+   Panel          : Gtk.Widget.Gtk_Widget;   --  instruments (I)
+   Show_Panel     : Boolean := True;
    Last_Hour    : Integer := -1;       --  church bells strike the hours
    Announce       : Ada.Strings.Unbounded.Unbounded_String;   --  shown on the
+   Manual_Gearbox : Boolean := True;    --  with a wheel and H-shifter
+   Need_Clutch    : Boolean := True;
+   Steer_Gain     : Float := 1.0;       --  wheel sensitivity
+   Steer_Centre   : Float := 0.0;       --  degrees, if the wheel is off centre
+   Force_Time     : Float := 0.0;       --  for the force feedback
+   Last_Steering  : Float := 0.0;
+   Jolt           : Float := 0.0;       --  kerb or crash kick, decays
+   Jolt_Time      : Float := 0.0;
    Announce_Timer : Float := 0.0;                             --  plaque briefly
    Pending_Load   : Boolean := False;
    --  Load the tiles around the focus at the next frame.  GL objects can
@@ -165,6 +193,7 @@ package body Game is
    type Key_State is record
       Up, Down, Left, Right, W, S, A, D, Space : Boolean := False;
       Page_Up, Page_Down : Boolean := False;
+      B : Boolean := False;   --  horn
    end record;
    Keys : Key_State;
    Cam_Pos  : Vec3 := (0.0, 0.0, 0.0);
@@ -190,7 +219,8 @@ package body Game is
       View_Proj, Model, Shadow_Matrix, Cam_Pos, Sun_Dir, Sun_Color,
       Sky_Zenith, Sky_Horizon, Fog_Density, Time, Car_Color,
       Shadow_Map, Shadows, Amb_Sky, Amb_Ground, Night, Lights, Light_Count,
-      Head_Pos, Head_Dir, Head_On, Extra_Color, Extra_Color2, Wet : GLint;
+      Head_Pos, Head_Dir, Head_On, Extra_Color, Extra_Color2, Wet,
+      Tower_Lights, Sparkle : GLint;
    end record;
    WU : World_Uniforms;
 
@@ -554,6 +584,8 @@ package body Game is
              Amb_Sky       => Location (World_Prog, "uAmbSky"),
              Amb_Ground    => Location (World_Prog, "uAmbGround"),
              Night         => Location (World_Prog, "uNight"),
+             Tower_Lights  => Location (World_Prog, "uTowerLights"),
+             Sparkle       => Location (World_Prog, "uSparkle"),
              Lights        => Location (World_Prog, "uLights"),
              Light_Count   => Location (World_Prog, "uLightCount"),
              Head_Pos      => Location (World_Prog, "uHeadPos"),
@@ -579,6 +611,8 @@ package body Game is
       Traffic.Create_Meshes;
       Pedestrians.Create_Mesh;
       Rain.Create;
+      Tyre_Effects.Create;
+      Beacon.Create;
 
       Profiling := Ada.Environment_Variables.Exists ("PARIS_PROFILE");
       declare
@@ -726,6 +760,79 @@ package body Game is
       Close (F);
    end Save_Screenshot;
 
+   --  PARIS_SHOT_PNG=<file.png>: the frame as it is on screen, with the
+   --  info line, compass, minimap and signs drawn on top (for the README)
+   procedure Save_Composite (Name : String; W, H : Integer) is
+      use Cairo;
+      type Byte_Array is array (Natural range <>) of Interfaces.Unsigned_8;
+      Pixels  : Byte_Array (0 .. W * H * 4 - 1);
+      Surface : constant Cairo_Surface := Cairo.Image_Surface.Create
+        (Cairo.Image_Surface.Cairo_Format_RGB24, Glib.Gint (W), Glib.Gint (H));
+      Stride  : constant Natural := Natural (Cairo.Image_Surface.Get_Stride (Surface));
+      Out_Px  : Byte_Array (0 .. Stride * H - 1)
+        with Import, Address => Cairo.Image_Surface.Get_Data_Generic (Surface);
+      Cr      : Cairo_Context;
+      Status  : Cairo_Status;
+      use Gtk.Widget.Widget_List;
+      Children : Glist := Overlay.Get_Children;
+      Item     : Glist := Children;
+   begin
+      glReadPixels (0, 0, GLsizei (W), GLsizei (H), GL_RGBA, GL_UNSIGNED_BYTE, Pixels'Address);
+      Cairo.Surface.Flush (Surface);
+      for Y in 0 .. H - 1 loop
+         for X in 0 .. W - 1 loop
+            declare
+               S : constant Natural := ((H - 1 - Y) * W + X) * 4;
+               D : constant Natural := Y * Stride + X * 4;
+            begin
+               Out_Px (D) := Pixels (S + 2);
+               Out_Px (D + 1) := Pixels (S + 1);
+               Out_Px (D + 2) := Pixels (S);
+               Out_Px (D + 3) := 255;
+            end;
+         end loop;
+      end loop;
+      Cairo.Surface.Mark_Dirty (Surface);
+      Cr := Create (Surface);
+      while Item /= Null_List loop
+         declare
+            Child : constant Gtk.Widget.Gtk_Widget := Get_Data (Item);
+            X, Y  : Glib.Gint;
+            Ok    : Boolean;
+         begin
+            if Gtk.Widget."/=" (Child, Gtk.Widget.Gtk_Widget (Area)) and then Child.Get_Mapped then
+               Child.Translate_Coordinates (Area, 0, 0, X, Y, Ok);
+               Save (Cr);
+               Translate (Cr, Glib.Gdouble (X), Glib.Gdouble (Y));
+               Child.Draw (Cr);
+               Restore (Cr);
+            end if;
+         end;
+         Item := Next (Item);
+      end loop;
+      Free (Children);
+      Destroy (Cr);
+      Status := Cairo.Png.Write_To_Png (Surface, Name);
+      pragma Unreferenced (Status);
+      Surface_Destroy (Surface);
+   end Save_Composite;
+
+   --  For testing: a label as a picture
+   procedure Save_Label_Png (L : Gtk.Label.Gtk_Label; File_Name : String) is
+      use Cairo;
+      Surface : constant Cairo_Surface := Cairo.Image_Surface.Create
+        (Cairo.Image_Surface.Cairo_Format_ARGB32,
+         L.Get_Allocated_Width, L.Get_Allocated_Height);
+      Cr      : constant Cairo_Context := Create (Surface);
+      Status  : Cairo_Status;
+   begin
+      L.Draw (Cr);
+      Status := Cairo.Png.Write_To_Png (Surface, File_Name);
+      pragma Unreferenced (Status);
+      Destroy (Cr);
+      Surface_Destroy (Surface);
+   end Save_Label_Png;
+
    function Render (Area_Ptr, Context, Data : System.Address) return Glib.Gboolean
      with Convention => C;
    function Render (Area_Ptr, Context, Data : System.Address) return Glib.Gboolean
@@ -829,6 +936,8 @@ package body Game is
          Set (WU.Amb_Sky, Amb_Sky);
          Set (WU.Amb_Ground, Amb_Ground);
          Set (WU.Night, Night);
+         Set (WU.Tower_Lights, (if Beacon.Lights_On (Hour, Night) then Night else 0.0));
+         Set (WU.Sparkle, Beacon.Sparkle (Hour, Night));
          declare
             Lights : aliased World.Light_Data;
             N      : Natural;
@@ -871,8 +980,11 @@ package body Game is
          End_Pass (P_Solid);
          Begin_Pass (P_Ground);
          World.Draw_Ground;
+         Tyre_Effects.Draw_Marks (VP, Cam_Pos);
+         Beacon.Draw (VP, Cam_Pos, Time, Hour, Night, Rain_Amount);
          Rain.Draw (VP, Cam_Pos, Time, Rain_Amount,
                     Mix (Vec3'(0.30, 0.32, 0.36), Vec3'(0.75, 0.78, 0.82), 1.0 - Night));
+         Tyre_Effects.Draw_Smoke (VP, Cam_Pos, Float (H) / (2.0 * Tan (0.525)), 1.0 - Night);
          End_Pass (P_Ground);
          Begin_Pass (P_Resolve);
 
@@ -882,6 +994,22 @@ package body Game is
          glBlitFramebuffer (0, 0, GLint (W), GLint (H), 0, 0, GLint (W), GLint (H),
                             GL_COLOR_BUFFER_BIT, GL_NEAREST);
          glBindFramebuffer (GL_FRAMEBUFFER, GLuint (Target));
+         if Start_Recording then
+            Start_Recording := False;
+            Recorder.Start (Natural (W), Natural (H));
+            Announce := Ada.Strings.Unbounded.To_Unbounded_String (Recorder.Message);
+            Announce_Timer := 3.0;
+            Street_Timer := 1.0;
+         end if;
+         Recorder.Frame (Natural (W), Natural (H));
+         if Take_Photo then
+            Take_Photo := False;
+            Photo.Take (Natural (W), Natural (H));
+            Sound.Shutter;
+            Announce := Ada.Strings.Unbounded.To_Unbounded_String (Photo.Message);
+            Announce_Timer := 3.0;
+            Street_Timer := 1.0;
+         end if;
          End_Pass (P_Resolve);
       end;
       Fps_Frames := Fps_Frames + 1;
@@ -890,8 +1018,20 @@ package body Game is
         and then Frame_Number = Integer'Value (Env ("PARIS_SHOT_FRAME", "90"))
       then
          Save_Screenshot (Env ("PARIS_SHOT"), W, H);
+         if Env ("PARIS_SHOT_PNG") /= "" then
+            Save_Composite (Env ("PARIS_SHOT_PNG"), W, H);
+         end if;
          if Env ("PARIS_COMPASS_PNG") /= "" then
             Compass.Save_Png (Env ("PARIS_COMPASS_PNG"));
+         end if;
+         if Env ("PARIS_HELP_PNG") /= "" then
+            Save_Label_Png (Help, Env ("PARIS_HELP_PNG"));
+         end if;
+         if Env ("PARIS_PANEL_PNG") /= "" then
+            Instruments.Save_Png (Env ("PARIS_PANEL_PNG"));
+         end if;
+         if Env ("PARIS_LIST_PNG") /= "" then
+            Save_Label_Png (Place_List, Env ("PARIS_LIST_PNG"));
          end if;
          if Env ("PARIS_MAP_PNG") /= "" then
             Navigation.Save_Png (Env ("PARIS_MAP_PNG"));
@@ -1168,23 +1308,356 @@ package body Game is
       return HH (2 .. HH'Last) & ":" & MM (3 .. 4);
    end Clock_Image;
 
-   --  Engine revolutions from a simple five-speed gearbox
-   function Engine_Rpm (Speed_Kmh : Float; Throttle : Boolean) return Float is
-      Tops : constant array (1 .. 5) of Float := (25.0, 45.0, 70.0, 100.0, 140.0);
-      Low  : Float := 0.0;
+   procedure Set_Key (Key : Gdk.Types.Gdk_Key_Type; Down : Boolean);
+
+   --  F1: the keys for what you are doing now
+   function Help_Text return String is
+      LF : constant String := (1 => ASCII.LF);
+      function Head (S : String) return String is
+        ("<b><span foreground='#ffd27a'>" & S & "</span></b>" & LF);
    begin
-      if Speed_Kmh < 2.0 then
-         return (if Throttle then 1800.0 else 850.0);
-      end if;
-      for G in Tops'Range loop
-         if Speed_Kmh < Tops (G) or else G = Tops'Last then
-            return (if G = 1 then 1000.0 else 2000.0)
-              + Float'Min (1.0, (Speed_Kmh - Low) / (Tops (G) - Low)) * 3800.0;
-         end if;
-         Low := Tops (G);
+      return "<span font_family='monospace'>"
+        & (if Visiting then
+             Head ("Walking")
+             & "  arrows, W/S      walk and turn" & LF
+             & "  A / D            step aside" & LF
+             & "  PgUp/PgDn, drag  look up and down" & LF
+             & "  K                kitchen window" & LF
+             & "  V                back to the car" & LF & LF
+           elsif Mode = Driving then
+             Head ("Driving")
+             & "  arrows / WASD    drive" & LF
+             & "  space            handbrake" & LF
+             & "  B                horn" & LF
+             & "  C                chase or drone camera" & LF
+             & "  mouse wheel, +/-  zoom" & LF
+             & "  F                take off in the plane" & LF
+             & "  E                gearbox: manual or automatic" & LF
+             & "  I                instruments (gear, revs, speed)" & LF
+             & "  R                reset the car" & LF & LF
+           else
+             Head ("Flying")
+             & "  W / S            throttle" & LF
+             & "  up / down        nose down / up" & LF
+             & "  left / right     bank" & LF
+             & "  mouse wheel, +/-  zoom" & LF
+             & "  F                land and drive" & LF
+             & "  R                restart the plane" & LF & LF)
+        & Head ("Paris")
+        & "  1 .. 0           go to Saint-Sulpice, Notre-Dame, Louvre," & LF
+        & "                   Tour Eiffel, Arc de Triomphe, Sacré-Cœur," & LF
+        & "                   Panthéon, Concorde, Opéra, Bastille" & LF
+        & "  H                home (Saint-Sulpice)" & LF
+        & "  Shift + 1 .. 0   navigate there (GPS)" & LF
+        & "  X                stop navigating" & LF
+        & "  L                save this place" & LF
+        & "  O                saved places (GPS, go there)" & LF
+        & "  G                compass, position and minimap" & LF
+        & "  N                street names" & LF
+        & "  J                clear the traffic around you" & LF & LF
+        & Head ("Time and weather")
+        & "  T                one hour later" & LF
+        & "  P                rain" & LF
+        & "  M                sound on / off" & LF
+        & "  F9               record a video (again: stop)" & LF
+        & "  F12              take a photo" & LF
+        & (if Wheel.Present and then not Visiting then
+             LF & Head ("Racing wheel")
+             & "  X button         handbrake" & LF
+             & "  red dial button  horn" & LF
+             & "  red dial, + / -  zoom" & LF
+             & "  square           camera" & LF
+             & "  triangle         compass and minimap" & LF
+             & "  circle           street names" & LF
+             & "  R2 / L2          one hour later / rain" & LF
+             & "  share / options  clear traffic / sound" & LF
+             & "  PS               home" & LF
+             & "  L3 / R3          stop navigating / reset" & LF
+             & "  d-pad right/left save place / saved places" & LF
+           else "")
+        & LF & "  F1 or Esc        close" & LF
+        & "  Esc otherwise    quit the game"
+        & "</span>";
+   end Help_Text;
+
+   ---------------------------------------------------------------------------
+   --  Saved places: L saves where you are, O lists them for the GPS
+   ---------------------------------------------------------------------------
+
+   procedure Show_Markers is
+      X, Z : Long_Float;
+   begin
+      Navigation.Clear_Markers;
+      for I in 1 .. Saved_Places.Count loop
+         Geo.To_Local (Saved_Places.Lat (I), Saved_Places.Lon (I), X, Z);
+         Navigation.Add_Marker (Float (X), Float (Z));
       end loop;
-      return 850.0;
-   end Engine_Rpm;
+   end Show_Markers;
+
+   function Escape (S : String) return String is
+      use Ada.Strings.Unbounded;
+      R : Unbounded_String;
+   begin
+      for C of S loop
+         case C is
+            when '&' => Append (R, "&amp;");
+            when '<' => Append (R, "&lt;");
+            when '>' => Append (R, "&gt;");
+            when others => Append (R, C);
+         end case;
+      end loop;
+      return To_String (R);
+   end Escape;
+
+   procedure Refresh_List is
+      use Ada.Strings.Unbounded;
+      LF : constant String := (1 => ASCII.LF);
+      T  : Unbounded_String :=
+        To_Unbounded_String ("<span font_family='monospace'>"
+                             & "<b><span foreground='#ffd27a'>Saved places</span></b>" & LF & LF);
+      N  : constant Natural := Saved_Places.Count;
+   begin
+      if N = 0 then
+         Append (T, "  Nothing saved yet." & LF
+                 & "  Press L (or d-pad right on the wheel)" & LF
+                 & "  to save the place where you are." & LF);
+      else
+         List_Sel := Positive'Min (List_Sel, N);
+         for I in 1 .. N loop
+            declare
+               Num  : constant String := Natural'Image (I);
+               Line : constant String :=
+                 (if Num'Length < 3 then " " else "") & Num & "  " & Escape (Saved_Places.Name (I));
+            begin
+               if I = List_Sel then
+                  Append (T, "<span background='#3a6fd8'>" & Line & "  </span>" & LF);
+               else
+                  Append (T, Line & LF);
+               end if;
+            end;
+         end loop;
+      end if;
+      Append (T, LF & "<span foreground='#aab'>"
+              & "  up/down  choose      Enter    navigate (GPS)" & LF
+              & "  Space    go there    Delete   forget it" & LF
+              & "  O / Esc  close" & LF
+              & (if Wheel.Present then
+                   "  wheel: d-pad choose, X navigate, square go, circle close" & LF
+                 else "")
+              & "  (names can be changed in ~/.derive_places)</span></span>");
+      Place_List.Set_Markup (To_String (T));
+   end Refresh_List;
+
+   procedure Save_Here is
+      Where : constant Vec3 :=
+        (if Visiting then Eye_Position
+         elsif Mode = Flying then Aircraft.Pos else (Player.X, 0.0, Player.Z));
+      Lat, Lon : Long_Float;
+      Street : constant String := Road_Network.Street_At (Where.X, Where.Z, 40.0);
+      Count  : Natural := 0;
+   begin
+      Geo.To_Lat_Lon (Long_Float (Where.X), Long_Float (Where.Z), Lat, Lon);
+      for I in 1 .. Saved_Places.Count loop
+         if Street /= "" and then Saved_Places.Name (I)'Length >= Street'Length
+           and then Saved_Places.Name (I) (Saved_Places.Name (I)'First
+                                           .. Saved_Places.Name (I)'First + Street'Length - 1)
+                    = Street
+         then
+            Count := Count + 1;
+         end if;
+      end loop;
+      declare
+         Name : constant String :=
+           (if Street = "" then "Place" & Natural'Image (Saved_Places.Count + 1)
+            elsif Count = 0 then Street
+            else Street & " (" & Natural'Image (Count + 1) (2 .. Natural'Image (Count + 1)'Last) & ")");
+      begin
+         Saved_Places.Add (Name, Lat, Lon);
+         Announce := Ada.Strings.Unbounded.To_Unbounded_String ("Saved: " & Name);
+      end;
+      Announce_Timer := 2.0;
+      Street_Timer := 1.0;
+      Show_Markers;
+      if List_Open then
+         Refresh_List;
+      end if;
+   end Save_Here;
+
+   procedure Toggle_List is
+   begin
+      List_Open := not List_Open;
+      if List_Open then
+         Help.Hide;
+         Refresh_List;
+         Place_List.Show;
+      else
+         Place_List.Hide;
+      end if;
+   end Toggle_List;
+
+   procedure Go_To_Saved (I : Positive; Jump : Boolean) is
+      X, Z : Long_Float;
+   begin
+      if I > Saved_Places.Count then
+         return;
+      end if;
+      if Jump then
+         if not Visiting then
+            Teleport ((Ada.Strings.Unbounded.To_Unbounded_String (Saved_Places.Name (I)),
+                       Saved_Places.Lat (I), Saved_Places.Lon (I)));
+         end if;
+      else
+         Geo.To_Local (Saved_Places.Lat (I), Saved_Places.Lon (I), X, Z);
+         Navigation.Set_Destination (Saved_Places.Name (I), Float (X), Float (Z));
+         if not Show_Compass then
+            Set_Key (16#67#, True);   --  show the minimap
+         end if;
+      end if;
+      Toggle_List;
+   end Go_To_Saved;
+
+   --  Keys while the list is open; True when the key was used
+   function List_Key (K : Gdk.Types.Gdk_Key_Type) return Boolean is
+      N : constant Natural := Saved_Places.Count;
+   begin
+      case K is
+         when 16#FF52# | 16#77# =>                            --  up, w
+            if List_Sel > 1 then
+               List_Sel := List_Sel - 1;
+            end if;
+         when 16#FF54# | 16#73# =>                            --  down, s
+            if List_Sel < N then
+               List_Sel := List_Sel + 1;
+            end if;
+         when 16#FF0D# | 16#FF8D# =>                          --  Enter
+            Go_To_Saved (List_Sel, Jump => False);
+            return True;
+         when 16#20# =>                                       --  space
+            Go_To_Saved (List_Sel, Jump => True);
+            return True;
+         when 16#31# .. 16#39# =>                             --  1 .. 9
+            Go_To_Saved (Positive (K - 16#30#), Jump => False);
+            return True;
+         when 16#FFFF# | 16#FF08# =>                          --  Delete, Backspace
+            if N > 0 then
+               Saved_Places.Remove (List_Sel);
+               Show_Markers;
+            end if;
+         when 16#6F# | 16#FF1B# =>                            --  o, Escape
+            Toggle_List;
+            return True;
+         when 16#6C# =>                                       --  l
+            Save_Here;
+         when others =>
+            return False;
+      end case;
+      Refresh_List;
+      return True;
+   end List_Key;
+
+   --  Racing wheel buttons do what the keys do
+   procedure Wheel_Buttons is
+      B : Wheel.Button;
+      procedure Tap (Key : Gdk.Types.Gdk_Key_Type) is
+      begin
+         Set_Key (Key, True);
+         Set_Key (Key, False);
+      end Tap;
+   begin
+      while Wheel.Next_Press (B) loop
+         if List_Open then
+            case B is
+               when Wheel.Pad_Up   => Tap (16#FF52#);
+               when Wheel.Pad_Down => Tap (16#FF54#);
+               when Wheel.Cross    => Tap (16#FF0D#);
+               when Wheel.Square   => Tap (16#20#);
+               when Wheel.Circle | Wheel.Pad_Left => Tap (16#6F#);
+               when Wheel.Pad_Right => Tap (16#6C#);
+               when others => null;
+            end case;
+            goto Next;
+         end if;
+         case B is
+            when Wheel.Pad_Right => Tap (16#6C#);   --  l: save this place
+            when Wheel.Pad_Left  => Tap (16#6F#);   --  o: saved places
+            when Wheel.Square   => Tap (16#63#);    --  c: camera
+            when Wheel.Triangle => Tap (16#67#);    --  g: compass and map
+            when Wheel.Circle   => Tap (16#6E#);    --  n: street names
+            when Wheel.R2       => Tap (16#74#);    --  t: one hour later
+            when Wheel.L2       => Tap (16#70#);    --  p: rain
+            when Wheel.Share    => Tap (16#6A#);    --  j: clear traffic
+            when Wheel.Options  => Tap (16#6D#);    --  m: sound
+            when Wheel.PS       => Tap (16#68#);    --  h: home
+            when Wheel.L3       => Tap (16#78#);    --  x: stop navigating
+            when Wheel.R3       => Tap (16#72#);    --  r: reset
+            when Wheel.Plus | Wheel.Dial_Right => Zoom_By (1.0 / 1.15);
+            when Wheel.Minus | Wheel.Dial_Left => Zoom_By (1.15);
+            when others => null;
+         end case;
+         <<Next>>
+      end loop;
+   end Wheel_Buttons;
+
+   --  Force feedback: the front wheels pull back to the centre more the
+   --  faster you go, the rim is damped, and kerbs and crashes kick
+   procedure Wheel_Force (Dt : Float) is
+      use Ada.Numerics.Elementary_Functions;
+      In_Car : constant Boolean := Mode = Driving and then not Visiting;
+      Steer  : constant Float := Wheel.State.Steering;
+      Rate   : constant Float := (Steer - Last_Steering) / Float'Max (Dt, 0.001);
+      V      : constant Float := abs Player.Speed;
+      F      : Float;
+   begin
+      Last_Steering := Steer;
+      Force_Time := Force_Time + Dt;
+      if not In_Car then
+         --  A light spring, so the wheel stays put in the air
+         Wheel.Set_Force (-0.25 * Steer);
+         return;
+      end if;
+      F := -(0.12 + 0.55 * Float'Min (1.0, V / 18.0)) * Steer * 2.2;
+      F := F - 0.02 * Rate;                                    --  damping
+      --  Off the road (pavement, cobbles) the rim shivers
+      if not Player.On_Road and then V > 1.0 then
+         F := F + 0.06 * Float'Min (1.0, V / 10.0) * Sin (Force_Time * 70.0);
+      end if;
+      if Jolt_Time > 0.0 then
+         F := F + Jolt * Sin (Jolt_Time * 45.0) * (Jolt_Time / 0.25);
+         Jolt_Time := Float'Max (0.0, Jolt_Time - Dt);
+      end if;
+      Wheel.Set_Force (Float'Max (-0.9, Float'Min (0.9, F)));
+   end Wheel_Force;
+
+   --  The vehicles around the listener, for the sound: distance, side
+   --  and how fast they come closer or move away
+   function Hear_Traffic (X, Z, Ear_Y, Head : Float) return Sound.Voice_List is
+      Near : constant Traffic.Source_List := Traffic.Nearby (X, Z);
+      List : Sound.Voice_List;
+      --  the listener's own movement
+      LV   : constant Float := (if Mode = Driving and then not Visiting then Player.Speed else 0.0);
+      LVX  : constant Float := Sin (Player.Heading) * LV;
+      LVZ  : constant Float := -Cos (Player.Heading) * LV;
+   begin
+      for I in Near'Range loop
+         if Near (I).Id /= 0 then
+            declare
+               N  : Traffic.Sound_Source renames Near (I);
+               DX : constant Float := N.X - X;
+               DZ : constant Float := N.Z - Z;
+               DH : constant Float := Float'Max (0.5, Sqrt (DX * DX + DZ * DZ));
+               D  : constant Float := Sqrt (DH * DH + (Ear_Y - 0.8) ** 2);
+               VX : constant Float := Sin (N.Heading) * N.Speed - LVX;
+               VZ : constant Float := -Cos (N.Heading) * N.Speed - LVZ;
+            begin
+               List (I) := (Id => N.Id, Dist => D,
+                            Pan => (DX * Cos (Head) + DZ * Sin (Head)) / DH,
+                            Radial => (VX * DX + VZ * DZ) / D,
+                            Speed => N.Speed, Kind => N.Kind);
+            end;
+         end if;
+      end loop;
+      return List;
+   end Hear_Traffic;
 
    --  Compass, position read-out and sound, once per frame
    procedure Update_Senses is
@@ -1207,14 +1680,23 @@ package body Game is
       Sound.Set
         ((Mode     => (if Visiting then Sound.Visiting
                        elsif Mode = Flying then Sound.Flying else Sound.Driving),
-          Rpm      => Engine_Rpm (abs Player.Speed * 3.6, Keys.Up or else Keys.W),
+          Rpm      => Player.Rpm,
           Load     => (if Mode = Flying then Aircraft.Throttle
-                       elsif Keys.Up or else Keys.W then 1.0 else 0.15),
+                       elsif Keys.Up or else Keys.W then 1.0
+                       elsif Wheel.Present then Float'Max (0.15, Wheel.State.Throttle)
+                       else 0.15),
           Speed    => (if Mode = Flying then Aircraft.Speed else abs Player.Speed),
           Altitude => Ear_Y,
           Rain     => Rain_Amount,
           Night    => Night,
-          Traffic  => Float'Max (0.0, 1.0 - Traffic.Nearest (Where.X, Where.Z) / 60.0)));
+          Traffic  => Float'Max (0.0, 1.0 - Traffic.Nearest (Where.X, Where.Z) / 60.0),
+          Horn     => Keys.B or else Wheel.Held (Wheel.Enter),
+          Squeal   => (if Mode = Driving and then not Visiting
+                       then Float'Min (1.0, Float'Max (Player.Skid * Float'Min (1.0, abs Player.Speed / 6.0),
+                                                       Player.Spin / 4.0))
+                            * (1.0 - 0.7 * Wetness)
+                       else 0.0),
+          Voices   => Hear_Traffic (Where.X, Where.Z, Ear_Y, Head)));
 
       --  The hour strikes (from Saint-Sulpice, louder the nearer you are)
       declare
@@ -1268,6 +1750,18 @@ package body Game is
             Eye_Yaw := Eye_Yaw + Float'Value (Env ("PARIS_VISIT")) * Ada.Numerics.Pi / 180.0;
          end if;
       end if;
+      if Frame_Number = 2 and then Env ("PARIS_HELP_PNG") /= "" then
+         Set_Key (16#FFBE#, True);
+      end if;
+      if Ready and then Frame_Number = 40 and then Env ("PARIS_PHOTO") /= "" then
+         Take_Photo := True;
+      end if;
+      if Ready and then Frame_Number = 20 and then Env ("PARIS_LIST_PNG") /= "" then
+         Set_Key (16#6C#, True);    --  save here
+         Set_Key (16#6F#, True);    --  open the list
+         Set_Key (16#FF54#, True);  --  choose the next one
+         Set_Key (16#FF54#, False);
+      end if;
       if Ready and then Frame_Number = 3 and then Env ("PARIS_NAV") /= "" then
          declare
             P : constant Place := Places (Integer'Value (Env ("PARIS_NAV")));
@@ -1283,6 +1777,21 @@ package body Game is
       end if;
       if Ready and then Env ("PARIS_AUTODRIVE") /= "" then
          Keys.W := True;
+      end if;
+      --  PARIS_RECORD=<seconds>: record a video from frame 30 (testing)
+      if Ready and then Env ("PARIS_RECORD") /= "" then
+         if Frame_Number = 30 then
+            Start_Recording := True;
+         elsif Recorder.Active and then Recorder.Seconds >= Integer'Value (Env ("PARIS_RECORD")) then
+            Recorder.Stop;
+            Gtk.Main.Main_Quit;
+         end if;
+      end if;
+      --  PARIS_BURNOUT: throttle against the brake, let go, swerve (testing)
+      if Ready and then Env ("PARIS_BURNOUT") /= "" then
+         Keys.W := Frame_Number in 21 .. 200;
+         Keys.S := Frame_Number in 21 .. 80;
+         Keys.Left := Frame_Number in 110 .. 150;
       end if;
 
       --  Weather changes over about ten seconds; streets dry in a minute
@@ -1302,6 +1811,9 @@ package body Game is
       end if;
       Compute_Lighting;
 
+      Wheel.Poll;
+      Wheel_Buttons;
+
       if Ready then
          declare
             T0 : Ada.Real_Time.Time := Clock_Now;
@@ -1310,21 +1822,56 @@ package body Game is
             if Visiting then
                Update_Visit (Dt);
                for I in 1 .. Steps loop
-                  Car.Update (Player, (others => False), Dt / Float (Steps));
+                  Car.Update (Player, (others => <>), Dt / Float (Steps));
                end loop;
             elsif Mode = Driving then
                declare
+                  W     : constant Wheel.Input := Wheel.State;
+                  Analog : constant Boolean := Wheel.Present;
                   Input : constant Car.Controls :=
                     (Throttle  => Keys.Up or else Keys.W,
                      Brake     => Keys.Down or else Keys.S,
                      Left      => Keys.Left or else Keys.A,
                      Right     => Keys.Right or else Keys.D,
-                     Handbrake => Keys.Space);
+                     Handbrake => Keys.Space or else Wheel.Held (Wheel.Cross),
+                     Analog         => Analog,
+                     Throttle_Pedal =>
+                       Float'Max (W.Throttle, (if Keys.Up or else Keys.W then 1.0 else 0.0)),
+                     Brake_Pedal    =>
+                       Float'Max (W.Brake, (if Keys.Down or else Keys.S then 1.0 else 0.0)),
+                     Clutch_Pedal   => W.Clutch,
+                     Steering       =>
+                       Float'Max (-1.0, Float'Min (1.0,
+                         (W.Steering - Steer_Centre / 450.0) * Steer_Gain)),
+                     Manual         => Analog and then Manual_Gearbox,
+                     Gear           => Integer (W.Shifter),
+                     Need_Clutch    => Need_Clutch,
+                     Wet            => Wetness);
+                  Was_Grinding : constant Boolean := Player.Grinding;
+                  Was_Gear     : constant Integer := Player.Gear;
                begin
                   for I in 1 .. Steps loop
                      Car.Update (Player, Input, Dt / Float (Steps));
                      Traffic.Collide_Player (Player);
+                     if Player.Kerb_Jolt /= 0.0 then
+                        Jolt := Player.Kerb_Jolt;
+                        Jolt_Time := 0.25;
+                     elsif Player.Bumped and then abs Player.Speed > 3.0 and then Jolt_Time = 0.0 then
+                        Jolt := 0.6;
+                        Jolt_Time := 0.25;
+                     end if;
                   end loop;
+                  Tyre_Effects.Update (Player, Wetness, Dt);
+                  if Player.Grinding and then not Was_Grinding then
+                     Announce := Ada.Strings.Unbounded.To_Unbounded_String
+                       ("Krrrk! Clutch down to change gear");
+                     Announce_Timer := 1.5;
+                     Street_Timer := 1.0;
+                  elsif Player.Gear /= Was_Gear and then Announce_Timer > 0.0
+                    and then Ada.Strings.Unbounded.Index (Announce, "Krrrk") = 1
+                  then
+                     Announce_Timer := 0.0;
+                  end if;
                end;
             else
                declare
@@ -1357,8 +1904,20 @@ package body Game is
          Hud_Timer := 0.0;
          Hud.Set_Markup
            ("<span font_family='monospace' foreground='white' background='#00000088'> "
-            & (if Mode = Driving then
-                 Integer'Image (Integer (abs Player.Speed * 3.6)) & " km/h   "
+            & (if Recorder.Active then
+                 "<span foreground='#ff4040'>● REC"
+                 & Natural'Image (Recorder.Seconds / 60) & ":"
+                 & Natural'Image (100 + Recorder.Seconds mod 60) (3 .. 4) & "</span>   "
+               else "")
+            & (if Mode = Driving and then Show_Panel and then not Visiting then ""
+               elsif Mode = Driving then
+                 Integer'Image (Integer (abs Player.Speed * 3.6)) & " km/h  "
+                 & (case Player.Gear is
+                      when -1 => "R ", when 0 => "N ",
+                      when others =>
+                        (if Wheel.Present and then Manual_Gearbox then " " else "D")
+                        & Integer'Image (Player.Gear) (2 .. 2))
+                 & Integer'Image (Integer (Player.Rpm / 100.0) * 100) & " rpm   "
                elsif Aircraft.Crashed > 0.0 then
                  " CRASH!   "
                else
@@ -1368,17 +1927,8 @@ package body Game is
             & Integer'Image (Integer (Fps)) & " fps   "
             & Clock_Image & (if Rain_Target > 0.0 then " rain" else "")
             & "   cars" & Natural'Image (Traffic.Count)
-            & "  people" & Natural'Image (Pedestrians.Count) & ASCII.LF & " "
-            & (if Visiting then
-                 "[arrows/W/S] walk and turn  [A/D] step aside  [PgUp/PgDn or mouse drag] look"
-                 & "  [K] kitchen window  [V] back to the car"
-               elsif Mode = Driving then
-                 "[arrows/WASD] drive  [space] handbrake  [C] camera"
-               else
-                 "[W/S] throttle  [up/down] nose down/up  [left/right] bank")
-            & "  [wheel/+/-] zoom  [F] "
-            & (if Mode = Driving then "fly" else "land and drive")
-            & "  [T] +1 hour  [P] rain  [N] street names  [G] compass+map  [M] sound  [1-0] places  [Shift+1-0] navigate  [X] stop  [J] clear traffic  [H] home  [R] reset </span>");
+            & "  people" & Natural'Image (Pedestrians.Count)
+            & "   F1 keys </span>");
       end if;
 
       --  Street name sign: a few times a second, and only touch the label
@@ -1409,8 +1959,34 @@ package body Game is
          end;
       end if;
 
+      --  The instrument panel, in the car
+      declare
+         Want : constant Boolean := Ready and then Show_Panel and then Mode = Driving
+           and then not Visiting;
+      begin
+         if Want /= Panel.Get_Visible then
+            Panel.Set_Visible (Want);
+         end if;
+         if Want then
+            Instruments.Update
+              ((Gear     => Player.Gear,
+                Manual   => Wheel.Present and then Manual_Gearbox,
+                Grinding => Player.Grinding,
+                Lever    => Integer (Wheel.State.Shifter),
+                Rpm      => Player.Rpm,
+                Kmh      => abs Player.Speed * 3.6,
+                Pedals   => Wheel.Present,
+                Clutch   => Wheel.State.Clutch,
+                Brake    => Wheel.State.Brake,
+                Throttle => Wheel.State.Throttle));
+         end if;
+      end;
+
       if Ready then
          Update_Senses;
+         if Wheel.Present then
+            Wheel_Force (Dt);
+         end if;
       end if;
 
       Area.Queue_Render;
@@ -1427,6 +2003,9 @@ package body Game is
       if K in 16#41# .. 16#5A# then   --  upper case letters
          K := K + 16#20#;
       end if;
+      if List_Open and then Down and then List_Key (K) then
+         return;
+      end if;
       case K is
          when 16#FF52# => Keys.Up := Down;
          when 16#FF54# => Keys.Down := Down;
@@ -1437,6 +2016,28 @@ package body Game is
          when 16#61#   => Keys.A := Down;
          when 16#64#   => Keys.D := Down;
          when 16#20#   => Keys.Space := Down;
+         when 16#62#   => Keys.B := Down;                     --  b: horn
+         when 16#69# =>                                       --  i: instruments
+            if Down then
+               Show_Panel := not Show_Panel;
+            end if;
+         when 16#6C# =>                                       --  l: save place
+            if Down then
+               Save_Here;
+            end if;
+         when 16#6F# =>                                       --  o: saved places
+            if Down then
+               Toggle_List;
+            end if;
+         when 16#65# =>                                       --  e: gearbox
+            if Down then
+               Manual_Gearbox := not Manual_Gearbox;
+               Announce := Ada.Strings.Unbounded.To_Unbounded_String
+                 ((if not Wheel.Present then "Gearbox: automatic (manual needs the wheel)"
+                   elsif Manual_Gearbox then "Gearbox: manual" else "Gearbox: automatic"));
+               Announce_Timer := 1.5;
+               Street_Timer := 1.0;
+            end if;
          when 16#66# =>                                       --  f
             if Down and then not Visiting then
                Toggle_Flight;
@@ -1527,9 +2128,40 @@ package body Game is
                   Reset_Car;
                end if;
             end if;
+         when 16#FFC9# =>                                     --  F12: photo
+            if Down then
+               Take_Photo := True;
+            end if;
+         when 16#FFC6# =>                                     --  F9: record
+            if Down then
+               if Recorder.Active then
+                  Recorder.Stop;
+                  Announce := Ada.Strings.Unbounded.To_Unbounded_String (Recorder.Message);
+                  Announce_Timer := 4.0;
+                  Street_Timer := 1.0;
+               else
+                  Start_Recording := True;   --  at the next frame, its size
+               end if;
+            end if;
+         when 16#FFBE# =>                                     --  F1: keys
+            if Down then
+               if Help.Get_Visible then
+                  Help.Hide;
+               else
+                  if List_Open then
+                     Toggle_List;
+                  end if;
+                  Help.Set_Markup (Help_Text);
+                  Help.Show;
+               end if;
+            end if;
          when 16#FF1B# =>                                     --  Escape
             if Down then
-               Gtk.Main.Main_Quit;
+               if Help.Get_Visible then
+                  Help.Hide;
+               else
+                  Gtk.Main.Main_Quit;
+               end if;
             end if;
          when others => null;
       end case;
@@ -1641,7 +2273,6 @@ package body Game is
    ---------------------------------------------------------------------------
 
    procedure Run is
-      Overlay : Gtk.Overlay.Gtk_Overlay;
       Credit  : Gtk.Label.Gtk_Label;
       Id      : Glib.Guint;
    begin
@@ -1651,9 +2282,20 @@ package body Game is
       Clock_Rate := Config.Get ("time_speed", 1.0) / 60.0;
       Show_Compass := Config.Get ("compass", True);
       Show_Street := Config.Get ("street_names", True);
+      Show_Panel := Config.Get ("instruments", True);
       Traffic.Set_Density (Config.Get ("traffic", 1.0));
       Pedestrians.Set_Density (Config.Get ("pedestrians", 1.0));
       Sound.Set_Volume (Config.Get ("volume", 0.8));
+      Saved_Places.Load;
+      Show_Markers;
+      Manual_Gearbox := Config.Get ("manual_gearbox", True);
+      Need_Clutch := Config.Get ("clutch", True);
+      Steer_Gain := Config.Get ("steering", 1.0);
+      Steer_Centre := Config.Get ("wheel_centre", 0.0);
+      Wheel.Set_Gain (Config.Get ("force_feedback", 0.6));
+      if Env ("PARIS_NOWHEEL") = "" then
+         Wheel.Open;
+      end if;
 
       Gtk.Window.Gtk_New (Window);
       Window.Set_Title ("Dérive");
@@ -1686,6 +2328,18 @@ package body Game is
       Hud.Set_Margin_Bottom (10);
       Overlay.Add_Overlay (Hud);
 
+      Gtk.Label.Gtk_New (Help);
+      Help.Set_Halign (Gtk.Widget.Align_Center);
+      Help.Set_Valign (Gtk.Widget.Align_Center);
+      Help.Set_No_Show_All (True);
+      Overlay.Add_Overlay (Help);
+
+      Gtk.Label.Gtk_New (Place_List);
+      Place_List.Set_Halign (Gtk.Widget.Align_Center);
+      Place_List.Set_Valign (Gtk.Widget.Align_Center);
+      Place_List.Set_No_Show_All (True);
+      Overlay.Add_Overlay (Place_List);
+
       --  Street name plaque, top centre: enamel blue, white letters, green frame
       Gtk.Label.Gtk_New (Sign);
       Sign.Set_Halign (Gtk.Widget.Align_Center);
@@ -1701,14 +2355,26 @@ package body Game is
            (".street-sign { background-color: #1d3b72; color: #ffffff;"
             & " font-family: sans-serif; font-weight: bold; font-size: 22px;"
             & " padding: 6px 22px; border: 3px solid #f2f2f2; border-radius: 6px;"
-            & " box-shadow: 0 0 0 3px #2f6b45, 0 3px 8px rgba(0,0,0,0.5); }",
+            & " box-shadow: 0 0 0 3px #2f6b45, 0 3px 8px rgba(0,0,0,0.5); }"
+            & ".help { background-color: rgba(10,14,24,0.88); color: #f2f2f2;"
+            & " font-size: 15px; padding: 18px 26px; border-radius: 10px;"
+            & " border: 1px solid rgba(255,255,255,0.25); }",
             null);
+         Gtk.Style_Context.Get_Style_Context (Help).Add_Provider
+           (Gtk.Css_Provider."+" (Css), Gtk.Style_Provider.Priority_Application);
+         Gtk.Style_Context.Get_Style_Context (Help).Add_Class ("help");
+         Gtk.Style_Context.Get_Style_Context (Place_List).Add_Provider
+           (Gtk.Css_Provider."+" (Css), Gtk.Style_Provider.Priority_Application);
+         Gtk.Style_Context.Get_Style_Context (Place_List).Add_Class ("help");
          Gtk.Style_Context.Get_Style_Context (Sign).Add_Provider
            (Gtk.Css_Provider."+" (Css), Gtk.Style_Provider.Priority_Application);
          Gtk.Style_Context.Get_Style_Context (Sign).Add_Class ("street-sign");
       end;
       Overlay.Add_Overlay (Sign);
 
+      Panel := Instruments.Create;
+      Panel.Set_No_Show_All (True);
+      Overlay.Add_Overlay (Panel);
       Compass_Widget := Compass.Create;
       Overlay.Add_Overlay (Compass_Widget);
       Overlay.Add_Overlay (Navigation.Create_Minimap);
@@ -1737,6 +2403,7 @@ package body Game is
          Sound.Start;
       end if;
       Gtk.Main.Main;
+      Recorder.Stop;   --  quitting while recording keeps the video
       Sound.Stop;
    end Run;
 

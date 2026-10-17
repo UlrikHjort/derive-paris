@@ -34,6 +34,9 @@ package GL is
 
    GL_TRIANGLES          : constant := 16#0004#;
    GL_LINES              : constant := 16#0001#;
+   GL_POINTS             : constant := 16#0000#;
+   GL_ONE                : constant := 1;
+   GL_PROGRAM_POINT_SIZE : constant := 16#8642#;
 
    GL_NEVER              : constant := 16#0200#;
    GL_LESS               : constant := 16#0201#;
@@ -133,6 +136,9 @@ package GL is
    type P_Enum_2 is access procedure (A, B : GLenum) with Convention => C;
    type P_Buffer_Data is access procedure
      (Target : GLenum; Size : GLsizeiptr; Data : System.Address; Usage : GLenum)
+     with Convention => C;
+   type P_Buffer_Sub_Data is access procedure
+     (Target : GLenum; Offset : GLintptr; Size : GLsizeiptr; Data : System.Address)
      with Convention => C;
    type P_Attrib_Pointer is access procedure
      (Index : GLuint; Size : GLint; Kind : GLenum; Normalized : GLboolean;
@@ -282,6 +288,8 @@ package GL is
      with Import, Convention => C, External_Name => "epoxy_glBindBuffer";
    glBufferData : P_Buffer_Data
      with Import, Convention => C, External_Name => "epoxy_glBufferData";
+   glBufferSubData : P_Buffer_Sub_Data
+     with Import, Convention => C, External_Name => "epoxy_glBufferSubData";
    glVertexAttribPointer : P_Attrib_Pointer
      with Import, Convention => C, External_Name => "epoxy_glVertexAttribPointer";
    glEnableVertexAttribArray : P_Uint

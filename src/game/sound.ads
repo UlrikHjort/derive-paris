@@ -11,6 +11,17 @@ package Sound is
 
    type Mode_Kind is (Driving, Flying, Visiting);
 
+   --  A vehicle nearby, as heard by the listener
+   type Voice is record
+      Id     : Natural := 0;     --  0: silent; the same vehicle keeps its Id
+      Dist   : Float := 100.0;   --  metres
+      Pan    : Float := 0.0;     --  -1 left .. 1 right
+      Radial : Float := 0.0;     --  m/s, > 0 moving away (Doppler)
+      Speed  : Float := 0.0;     --  m/s
+      Kind   : Natural := 0;     --  0 car, 1 scooter, 2 motorbike
+   end record;
+   type Voice_List is array (1 .. 8) of Voice;
+
    type Params is record
       Mode     : Mode_Kind := Driving;
       Rpm      : Float := 850.0;   --  engine revolutions per minute
@@ -20,6 +31,9 @@ package Sound is
       Rain     : Float := 0.0;     --  0 .. 1
       Night    : Float := 0.0;     --  0 .. 1
       Traffic  : Float := 0.0;     --  0 .. 1, how close the nearest car is
+      Horn     : Boolean := False; --  the player's horn
+      Squeal   : Float := 0.0;     --  0 .. 1: tyres sliding or spinning
+      Voices   : Voice_List;       --  the traffic around you
    end record;
 
    procedure Start;
@@ -35,6 +49,18 @@ package Sound is
 
    procedure Set_Volume (V : Float);
    --  Master volume 0 .. 1
+
+   procedure Shutter;
+   --  A camera click (a photo was taken)
+
+   procedure Start_Capture (File_Name : String);
+   --  Also write what is played to a raw file (16 bit stereo, 44.1 kHz)
+
+   procedure Stop_Capture;
+   --  Close that file (waits for the mixer, a few milliseconds)
+
+   function Playing return Boolean;
+   --  A sound server was found and sound is being played
 
    procedure Toggle_Mute;
    function Muted return Boolean;

@@ -24,6 +24,8 @@ uniform int uShadows;
 uniform vec3 uAmbSky;        // ambient from the sky dome (linear)
 uniform vec3 uAmbGround;     // ambient bounced from the ground
 uniform float uNight;        // 0 day .. 1 night: lit windows and lamps
+uniform float uTowerLights;  // the Eiffel Tower lit (0 after 23:45)
+uniform float uSparkle;      // 0 .. 1: the tower sparkles
 uniform vec4 uLights[64];    // street lamps: xyz position, w intensity
 uniform int uLightCount;
 uniform vec3 uHeadPos;       // player's headlights
@@ -511,7 +513,21 @@ void main()
         bars = mix(bars, 0.75, smoothstep(0.2, 0.6, max(fw.x, fw.y)));
         gAlpha = bars;
         vec3 iron = vec3(0.44, 0.39, 0.31) * (0.85 + 0.2 * noise(vWorld.xy * 0.3));
-        s = Surface(toLinear(iron), 0.25, 30.0, toLinear(vec3(1.0, 0.72, 0.32)) * 1.6 * uNight, 0.0);
+        s = Surface(toLinear(iron), 0.25, 30.0, toLinear(vec3(1.0, 0.72, 0.32)) * 1.6 * uTowerLights, 0.0);
+        // the sparkle: thousands of flash bulbs going off at random.  The
+        // cells grow with distance (in steps) so a flash stays a dot.
+        if (uSparkle > 0.0) {
+            float dist = length(vWorld - uCamPos);
+            float cell = exp2(ceil(log2(max(0.6, dist * 0.004))));
+            vec3 q = floor(vWorld / cell);
+            float t = floor(uTime * 9.0 + hash(q.xz + q.y) * 7.0);
+            float r = hash(vec2(dot(q, vec3(1.0, 57.0, 113.0)) * 0.013, t * 0.071));
+            vec3 f = fract(vWorld / cell) - 0.5;
+            if (r > 0.9 && length(f) < 0.3) {
+                s.emissive += vec3(6.0, 6.2, 7.0) * uSparkle;
+                gAlpha = 1.0;
+            }
+        }
     } else if (m == 34) {          // wrought-iron balcony railing (see-through)
         vec2 fw = max(fwidth(vUV), vec2(1e-4));
         float y = vUV.y - floor(vUV.y);                   // 0 .. 1 over the railing
