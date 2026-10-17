@@ -28,6 +28,7 @@ uniform float uTowerLights;  // the Eiffel Tower lit (0 after 23:45)
 uniform float uSparkle;      // 0 .. 1: the tower sparkles
 uniform float uSnowCover;    // 0 .. 1: snow lying on the ground, roofs and trees
 uniform float uXmas;         // 1 in the Christmas season: lights in the trees
+uniform float uGallery;      // 1 while drawing the inside of the Louvre
 uniform float uAutumn;       // 0 .. 1: the leaves turning yellow, orange and brown
 uniform float uBare;         // 0 .. 1: the trees losing their leaves (winter)
 uniform float uLitter;       // 0 .. 1: fallen leaves on the ground
@@ -77,6 +78,145 @@ float fpulse(float a, float b, float x, float w)
 }
 
 vec3 toLinear(vec3 c) { return pow(c, vec3(2.2)); }
+
+
+// ---------------------------------------------------------------------------
+//  Paintings in the Louvre, painted here (public domain works, our own
+//  simple renderings).  uv runs across the canvas, v upwards.
+// ---------------------------------------------------------------------------
+
+// soft-edged ellipse mask
+float blob(vec2 p, vec2 c, vec2 r)
+{
+    vec2 q = (p - c) / r;
+    return 1.0 - smoothstep(0.85, 1.0, dot(q, q));
+}
+
+float band(float x, float a, float b, float w) { return smoothstep(a - w, a, x) * (1.0 - smoothstep(b, b + w, x)); }
+
+// Leonardo: the Mona Lisa
+vec3 monaLisa(vec2 uv)
+{
+    float n = fbm(uv * 9.0);
+    // the hazy landscape: blue-green distance, brown rocks, winding road
+    vec3 c = mix(vec3(0.42, 0.46, 0.36), vec3(0.62, 0.66, 0.55), smoothstep(0.55, 1.0, uv.y));
+    c = mix(c, vec3(0.35, 0.3, 0.2), smoothstep(0.62, 0.45, uv.y) * (0.6 + 0.4 * n));
+    c = mix(c, vec3(0.55, 0.45, 0.28),
+            band(abs(uv.x - 0.2 - 0.06 * sin(uv.y * 30.0)), 0.0, 0.02, 0.01) * step(0.45, uv.y) * step(uv.y, 0.6));
+    // hair and veil behind the face, falling to the shoulders
+    float hair = max(blob(uv, vec2(0.5, 0.69), vec2(0.15, 0.17)),
+                     max(blob(uv, vec2(0.38, 0.54), vec2(0.05, 0.13)), blob(uv, vec2(0.62, 0.54), vec2(0.05, 0.13))));
+    c = mix(c, vec3(0.1, 0.07, 0.04), hair);
+    // the dark dress, shoulders and arms
+    float dress = max(blob(uv, vec2(0.5, 0.28), vec2(0.47, 0.3)), step(uv.y, 0.25) * step(abs(uv.x - 0.5), 0.48));
+    c = mix(c, vec3(0.16, 0.12, 0.07) * (0.8 + 0.4 * fbm(uv * vec2(12.0, 4.0))), dress);
+    // neckline and chest
+    float chest = blob(uv, vec2(0.5, 0.5), vec2(0.15, 0.065)) * step(uv.y, 0.53);
+    vec3 skin = vec3(0.8, 0.6, 0.36);
+    c = mix(c, skin * 0.95, chest);
+    c = mix(c, skin * 0.9, blob(uv, vec2(0.5, 0.57), vec2(0.045, 0.06)));          // neck
+    // the face, lit from the left
+    float face = blob(uv, vec2(0.5, 0.68), vec2(0.088, 0.115));
+    c = mix(c, skin * (1.0 - 0.35 * smoothstep(0.45, 0.58, uv.x)), face);
+    // eyes, the nose's shadow, the smile
+    c = mix(c, vec3(0.25, 0.16, 0.08), blob(uv, vec2(0.468, 0.70), vec2(0.016, 0.007)));
+    c = mix(c, vec3(0.25, 0.16, 0.08), blob(uv, vec2(0.532, 0.70), vec2(0.016, 0.007)));
+    c = mix(c, skin * 0.7, blob(uv, vec2(0.515, 0.66), vec2(0.008, 0.02)));
+    c = mix(c, vec3(0.45, 0.25, 0.15), blob(uv, vec2(0.5, 0.627), vec2(0.03, 0.004)));
+    // the hands, one over the other
+    c = mix(c, skin, blob(uv, vec2(0.46, 0.2), vec2(0.13, 0.045)));
+    c = mix(c, skin * 1.04, blob(uv, vec2(0.56, 0.22), vec2(0.12, 0.04)));
+    // old varnish: yellowed, darker at the edges, fine cracks
+    c *= vec3(0.98, 0.88, 0.62) * (0.75 + 0.25 * smoothstep(0.75, 0.2, length(uv - 0.5)));
+    c *= 0.92 + 0.08 * step(0.08, fract(fbm(uv * 60.0) * 4.0));
+    return c;
+}
+
+// Delacroix: Liberty Leading the People
+vec3 liberty(vec2 uv)
+{
+    float n = fbm(uv * 6.0);
+    vec3 c = mix(vec3(0.75, 0.68, 0.5), vec3(0.45, 0.42, 0.38), n);            // smoke and sky
+    c = mix(c, vec3(0.92, 0.85, 0.6), blob(uv, vec2(0.62, 0.62), vec2(0.25, 0.3)) * 0.6);
+    // the barricade and the fallen
+    c = mix(c, vec3(0.2, 0.17, 0.13) * (0.7 + 0.6 * n), step(uv.y, 0.22 + 0.08 * sin(uv.x * 9.0)));
+    c = mix(c, vec3(0.7, 0.62, 0.5), blob(uv, vec2(0.35, 0.12), vec2(0.18, 0.05)));
+    // Liberty: yellow dress, bare shoulder, raised arm with the flag
+    c = mix(c, vec3(0.86, 0.76, 0.48), blob(uv, vec2(0.52, 0.45), vec2(0.07, 0.22)));
+    c = mix(c, vec3(0.8, 0.62, 0.45), blob(uv, vec2(0.53, 0.7), vec2(0.035, 0.05)));
+    c = mix(c, vec3(0.15, 0.1, 0.08), blob(uv, vec2(0.53, 0.73), vec2(0.035, 0.03)));   // Phrygian cap
+    float arm = band(uv.x - 0.53 - (uv.y - 0.65) * 0.25, 0.0, 0.02, 0.005) * band(uv.y, 0.65, 0.85, 0.01);
+    c = mix(c, vec3(0.8, 0.62, 0.45), arm);
+    float pole = band(uv.x - 0.56 - (uv.y - 0.6) * 0.3, 0.0, 0.006, 0.002) * band(uv.y, 0.6, 0.98, 0.01);
+    c = mix(c, vec3(0.2, 0.15, 0.1), pole);
+    float fx = (uv.x - 0.6) / 0.18;
+    float flag = band(uv.y - 0.03 * sin(fx * 6.0), 0.82, 0.96, 0.005) * band(fx, 0.0, 1.0, 0.01);
+    vec3 tri = fx < 0.33 ? vec3(0.15, 0.25, 0.6) : fx < 0.66 ? vec3(0.9, 0.88, 0.8) : vec3(0.75, 0.12, 0.1);
+    c = mix(c, tri, flag);
+    // the man in the top hat, the boy with pistols
+    c = mix(c, vec3(0.08, 0.07, 0.07), blob(uv, vec2(0.33, 0.45), vec2(0.05, 0.16)));
+    c = mix(c, vec3(0.05, 0.05, 0.05), blob(uv, vec2(0.33, 0.66), vec2(0.03, 0.04)));
+    c = mix(c, vec3(0.3, 0.25, 0.2), blob(uv, vec2(0.68, 0.38), vec2(0.04, 0.13)));
+    return c * vec3(0.95, 0.9, 0.78);
+}
+
+// Géricault: The Raft of the Medusa
+vec3 medusa(vec2 uv)
+{
+    float n = fbm(uv * 7.0);
+    vec3 c = mix(vec3(0.15, 0.13, 0.1), vec3(0.55, 0.45, 0.3), smoothstep(0.3, 0.9, uv.y) * (0.5 + 0.6 * n));
+    c = mix(c, vec3(0.85, 0.7, 0.45), blob(uv, vec2(0.85, 0.55), vec2(0.18, 0.12)) * 0.8);   // the light
+    c = mix(c, vec3(0.08, 0.1, 0.09) * (0.7 + 0.5 * n), step(uv.y, 0.25 + 0.05 * sin(uv.x * 14.0)));  // the sea
+    // the raft and its mast and sail
+    c = mix(c, vec3(0.2, 0.15, 0.1), band(uv.y, 0.18, 0.28, 0.01) * band(uv.x, 0.08, 0.9, 0.01));
+    c = mix(c, vec3(0.12, 0.1, 0.08), band(uv.x - 0.33 + uv.y * 0.05, 0.0, 0.008, 0.002) * band(uv.y, 0.25, 0.9, 0.01));
+    float sail = step(0.0, (uv.x - 0.2) - (uv.y - 0.4) * 0.3) * step(uv.x, 0.33) * band(uv.y, 0.4, 0.8, 0.01);
+    c = mix(c, vec3(0.5, 0.42, 0.3), sail);
+    // the bodies, piled up towards the man waving
+    for (int k = 0; k < 9; k++) {
+        float fk = float(k);
+        vec2 p = vec2(0.42 + fk * 0.05, 0.3 + fk * 0.045);
+        c = mix(c, vec3(0.72, 0.58, 0.42) * (0.7 + 0.3 * fract(fk * 0.37)), blob(uv, p, vec2(0.035, 0.06)));
+    }
+    c = mix(c, vec3(0.8, 0.75, 0.65), blob(uv, vec2(0.84, 0.78), vec2(0.03, 0.035)));        // the cloth
+    return c;
+}
+
+// David: The Coronation of Napoleon
+vec3 coronation(vec2 uv)
+{
+    float n = fbm(uv * 10.0);
+    vec3 c = mix(vec3(0.3, 0.26, 0.2), vec3(0.45, 0.38, 0.28), n);                          // the choir of Notre-Dame
+    c = mix(c, vec3(0.2, 0.17, 0.13), band(fract(uv.x * 5.0), 0.4, 0.6, 0.05) * step(0.6, uv.y)); // pillars
+    // the crowd: rows of heads and coats, red, gold and black
+    for (int r = 0; r < 3; r++) {
+        float y = 0.3 + float(r) * 0.12;
+        float cell = floor(uv.x * 28.0);
+        float h = fract(sin(cell * 12.9 + float(r) * 7.0) * 43758.5);
+        vec3 coat = h < 0.35 ? vec3(0.6, 0.1, 0.08) : h < 0.6 ? vec3(0.75, 0.6, 0.25) : vec3(0.1, 0.08, 0.08);
+        c = mix(c, coat, step(uv.y, y) * step(y - 0.12, uv.y) * step(0.15, fract(uv.x * 28.0)));
+        c = mix(c, vec3(0.8, 0.62, 0.48), blob(vec2(fract(uv.x * 28.0), uv.y), vec2(0.55, y + 0.02), vec2(0.25, 0.02)));
+    }
+    // Napoleon in his red cloak, raising the crown; Joséphine kneeling
+    c = mix(c, vec3(0.7, 0.08, 0.08), blob(uv, vec2(0.6, 0.45), vec2(0.05, 0.2)));
+    c = mix(c, vec3(0.8, 0.65, 0.5), blob(uv, vec2(0.6, 0.68), vec2(0.015, 0.025)));
+    c = mix(c, vec3(0.9, 0.75, 0.25), blob(uv, vec2(0.58, 0.75), vec2(0.015, 0.01)));
+    c = mix(c, vec3(0.92, 0.88, 0.8), blob(uv, vec2(0.48, 0.25), vec2(0.06, 0.08)));
+    c = mix(c, vec3(0.65, 0.1, 0.1), blob(uv, vec2(0.42, 0.2), vec2(0.1, 0.04)));
+    return c;
+}
+
+// a still life: fruit and a jug on a table
+vec3 stillLife(vec2 uv)
+{
+    vec3 c = mix(vec3(0.12, 0.1, 0.08), vec3(0.25, 0.2, 0.14), fbm(uv * 5.0));
+    c = mix(c, vec3(0.35, 0.22, 0.12), step(uv.y, 0.35));
+    c = mix(c, vec3(0.85, 0.8, 0.7), blob(uv, vec2(0.3, 0.5), vec2(0.1, 0.17)));
+    c = mix(c, vec3(0.75, 0.15, 0.1), blob(uv, vec2(0.55, 0.42), vec2(0.07, 0.07)));
+    c = mix(c, vec3(0.85, 0.65, 0.15), blob(uv, vec2(0.68, 0.4), vec2(0.06, 0.06)));
+    c = mix(c, vec3(0.3, 0.5, 0.15), blob(uv, vec2(0.62, 0.48), vec2(0.06, 0.05)));
+    return c;
+}
 
 vec3 skyColor(vec3 dir)
 {
@@ -526,6 +666,26 @@ void main()
     } else if (m == 43) {          // the Little Prince's asteroid
         vec3 c = vec3(0.85, 0.72, 0.5) * (0.75 + 0.35 * noise(vWorld.xz * 0.2 + vWorld.y * 0.15));
         s = Surface(toLinear(c), 0.0, 8.0, toLinear(vec3(1.0, 0.85, 0.6)) * 0.6 * uNight, 0.4);
+    } else if (m == 44) {          // a painting in the Louvre
+        int id = int(vSeed + 0.5);
+        vec2 uv = clamp(vUV, 0.0, 1.0);
+        vec3 c = id == 0 ? monaLisa(uv) : id == 1 ? liberty(uv) : id == 2 ? medusa(uv)
+               : id == 3 ? coronation(uv) : stillLife(uv);
+        s = Surface(toLinear(c), 0.15, 30.0, vec3(0), 0.0);
+    } else if (m == 45) {          // marble
+        float n = noise(vWorld.xy * 6.0 + vWorld.zy * 5.0);
+        s = Surface(toLinear(vec3(0.9, 0.88, 0.83) * (0.92 + 0.08 * n)), 0.25, 40.0, vec3(0), 0.35);
+    } else if (m == 46) {          // red damask
+        vec2 q = vec2(vWorld.x + vWorld.z, vWorld.y) * 2.5;
+        float pat = 0.5 + 0.5 * sin(q.x * 3.0) * sin(q.y * 3.0);
+        s = Surface(toLinear(vec3(0.42, 0.08, 0.09) * (0.85 + 0.2 * pat)), 0.05, 10.0, vec3(0), 0.2);
+    } else if (m == 47) {          // skylight
+        s = Surface(vec3(0.0), 0.0, 1.0, toLinear(vec3(1.0, 0.97, 0.9)) * (0.5 + 1.6 * (1.0 - uNight)), 0.0);
+    } else if (m == 48) {          // gilded frame
+        float n = noise(vWorld.xy * 30.0 + vWorld.zy * 30.0);
+        s = Surface(toLinear(vec3(0.75, 0.56, 0.22) * (0.8 + 0.3 * n)), 0.9, 50.0, vec3(0), 0.0);
+    } else if (m == 49) {          // the green SORTIE sign
+        s = Surface(toLinear(vec3(0.1, 0.7, 0.3)), 0.0, 8.0, toLinear(vec3(0.15, 1.0, 0.45)) * 2.0, 0.0);
     } else if (m == 38) {          // the star on top
         s = Surface(toLinear(vec3(1.0, 0.85, 0.35)), 0.8, 40.0,
                     toLinear(vec3(1.0, 0.85, 0.4)) * (0.6 + 4.0 * uNight), 0.0);
@@ -696,9 +856,13 @@ void main()
                                  : max(ndl, 0.0);
     vec3 ambient = mix(uAmbGround, uAmbSky, N.y * 0.5 + 0.5);
     // Inside the apartment: daylight bouncing in through the windows
-    if (m == 35 || m == 36) {
+    if (m == 35 || m == 36 || (m >= 44 && m <= 48)) {
         float day = dot(uSunColor, vec3(0.3, 0.5, 0.2));
         ambient = vec3(1.0, 0.93, 0.84) * (0.05 + 0.22 * day) + 0.3 * uAmbSky;
+    }
+    // In the Louvre: even, warm gallery light, day and night
+    if (uGallery > 0.5) {
+        ambient = vec3(1.0, 0.95, 0.86) * 0.8;
     }
     // Cheap ambient occlusion: darker near the ground for walls
     float ao = (m >= 10 && m <= 11) ? 0.65 + 0.35 * smoothstep(0.0, 6.0, vWorld.y) : 1.0;

@@ -38,6 +38,38 @@ package body Meshes is
       Verts.Append (0.0);
    end Vertex;
 
+   --  A quad with texture coordinates (A: 0,0  B: 1,0  C: 1,1  D: 0,1), a
+   --  seed, and the normal it should have (the corners are ordered so)
+   procedure Quad_UV (A, B, C, D : Vec3; N : Vec3; Mat, Seed : Float;
+                      U_Size, V_Size : Float := 1.0) is
+      Base : constant Interfaces.Unsigned_32 :=
+        Interfaces.Unsigned_32 (Natural (Verts.Length) / 10);
+      procedure Put (P : Vec3; U, V : Float) is
+      begin
+         Verts.Append (P.X);
+         Verts.Append (P.Y);
+         Verts.Append (P.Z);
+         Verts.Append (N.X);
+         Verts.Append (N.Y);
+         Verts.Append (N.Z);
+         Verts.Append (U);
+         Verts.Append (V);
+         Verts.Append (Mat);
+         Verts.Append (Seed);
+      end Put;
+   begin
+      Put (A, 0.0, 0.0);
+      Put (B, U_Size, 0.0);
+      Put (C, U_Size, V_Size);
+      Put (D, 0.0, V_Size);
+      Index.Append (Base);
+      Index.Append (Base + 1);
+      Index.Append (Base + 2);
+      Index.Append (Base);
+      Index.Append (Base + 2);
+      Index.Append (Base + 3);
+   end Quad_UV;
+
    procedure Quad (A, B, C, D : Vec3; Mat : Float) is
       Base : constant Interfaces.Unsigned_32 :=
         Interfaces.Unsigned_32 (Natural (Verts.Length) / 10);

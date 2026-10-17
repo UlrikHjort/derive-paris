@@ -2922,6 +2922,21 @@ package body World_Builder is
                         Mat_Lattice, Seed);
             end;
          end loop;
+         --  Tell the game where the top is (you can go up)
+         declare
+            F : Ada.Text_IO.File_Type;
+            function Img (V : Long_Float) return String is (" " & Long_Float'Image (V));
+         begin
+            Ada.Text_IO.Create (F, Ada.Text_IO.Out_File,
+                                Ada.Strings.Unbounded.To_String (Output_Dir) & "/eiffel.txt");
+            Ada.Text_IO.Put_Line
+              (F, "# centre_x centre_z u_x u_z top_floor_y deck_half spire_half foot_half");
+            Ada.Text_IO.Put_Line
+              (F, Img (C.X) & Img (C.Z) & Img (U.X) & Img (U.Z)
+               & Img (Lift_Y (C.X, 0.86 * H, C.Z)) & Img (W (0.83 * H) + 1.5)
+               & Img (W (0.86 * H)) & Img (W (0.0) - 2.0 * Leg (0.0)));
+            Ada.Text_IO.Close (F);
+         end;
          --  Top: third floor cabin, lantern and antenna
          Frustum (T, U, V, C, W (0.83 * H) + 1.5, W (0.83 * H) + 1.5, 0.83 * H,
                   C, W (0.83 * H) + 1.5, W (0.83 * H) + 1.5, 0.86 * H, Mat_Stone, 0.3, True);

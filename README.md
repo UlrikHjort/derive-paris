@@ -165,6 +165,10 @@ hear.  Other things happen at random, by day or at night, now and then or
 only rarely.  None of them is listed here; drive around, look up at the
 sky, listen, and come back on a special day.
 
+And not every place in Paris is only to be looked at from the street.
+Some can be visited, if you know where to go and how to get in.  Get out
+of the car now and then, and walk.
+
 To play on another day, put it in `~/.deriverc`:
 
     date = 2026-12-24
