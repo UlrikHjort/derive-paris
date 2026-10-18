@@ -387,6 +387,98 @@ vec3 seeded(vec2 uv, float seed)
     return mix(vec3(0.05), c, step(0.012, edge));
 }
 
+
+// ---------------------------------------------------------------------------
+// The city's traces: posters, tags, newspapers (designs from a seed)
+// ---------------------------------------------------------------------------
+
+vec3 posterColour(float k)
+{
+    const vec3 C[8] = vec3[](vec3(0.92, 0.18, 0.15), vec3(0.98, 0.82, 0.15), vec3(0.12, 0.30, 0.70),
+                             vec3(0.08, 0.08, 0.09), vec3(0.95, 0.94, 0.90), vec3(0.15, 0.62, 0.42),
+                             vec3(0.95, 0.45, 0.65), vec3(0.98, 0.55, 0.12));
+    return C[int(mod(k, 8.0))];
+}
+
+// A poster: a coloured ground, a picture block, a big title and lines of
+// small print; now and then torn at a corner.  Alpha 0 where it is gone.
+vec4 poster(vec2 uv, float seed)
+{
+    float s = seed * 3.17;
+    vec3 bg = posterColour(floor(h1(s) * 8.0));
+    vec3 c = bg;
+    vec3 ink = posterColour(floor(h1(s + 1.0) * 8.0));
+    if (length(ink - bg) < 0.3) ink = vec3(1.0) - bg;
+    // the picture: a disc, a band or a face-like oval
+    float kind = h1(s + 2.0);
+    vec2 pc = vec2(0.5, 0.62);
+    if (kind < 0.33)      c = mix(c, posterColour(floor(h1(s + 3.0) * 8.0)), 1.0 - step(0.26, length(uv - pc)));
+    else if (kind < 0.66) c = mix(c, posterColour(floor(h1(s + 3.0) * 8.0)), step(abs(uv.y - 0.62), 0.16));
+    else                  c = mix(c, vec3(0.1), 1.0 - step(0.2, length((uv - pc) * vec2(1.0, 0.75))));
+    // a title in big blocks, and lines of small print
+    float title = step(abs(uv.y - 0.26), 0.055) * step(0.1, uv.x) * step(uv.x, 0.9)
+                * step(0.25, fract(uv.x * (5.0 + floor(h1(s + 4.0) * 5.0))));
+    c = mix(c, ink, title);
+    float small = step(abs(uv.y - 0.12), 0.035) * step(0.15, uv.x) * step(uv.x, 0.85)
+                * step(0.5, fract(uv.y * 60.0)) * step(0.3, fract(uv.x * 23.0));
+    c = mix(c, ink, small * 0.8);
+    // weather and age
+    c *= 0.82 + 0.18 * noise(uv * 25.0 + s);
+    float a = 1.0;
+    if (h1(s + 5.0) < 0.35) {          // torn off from a corner
+        vec2 corner = vec2(step(0.5, h1(s + 6.0)), step(0.5, h1(s + 7.0)));
+        float tear = length(uv - corner) - 0.25 - 0.25 * h1(s + 8.0) - 0.08 * noise(uv * 18.0 + s);
+        a = step(0.0, tear);
+    }
+    return vec4(c, a);
+}
+
+// A tag sprayed on a wall: fat letters made of noise, a dark outline, a
+// light shine, a drip or two; see-through elsewhere
+vec4 graffiti(vec2 uv, float seed)
+{
+    float s = seed * 5.31;
+    vec3 fill = posterColour(floor(h1(s) * 8.0));
+    vec3 line = h1(s + 1.0) < 0.5 ? vec3(0.04) : posterColour(floor(h1(s + 2.0) * 8.0));
+    float n = 3.0 + floor(h1(s + 3.0) * 4.0);             // letters
+    float lx = uv.x * n;
+    float cell = floor(lx);
+    vec2 q = vec2(fract(lx) - 0.5, (uv.y - 0.5) * 1.6);
+    q.x += 0.15 * q.y * (h1(s + 4.0) - 0.3);             // leaning
+    float d = 1.0;
+    // each letter: two or three strokes with bulges
+    for (int k = 0; k < 3; k++) {
+        float r = h1(s + cell * 7.0 + float(k));
+        vec2 a = vec2(r - 0.5, -0.5) * vec2(0.6, 1.0);
+        vec2 b = vec2(h1(s + cell * 11.0 + float(k)) - 0.5, 0.5) * vec2(0.6, 1.0);
+        if (k == 2) { a = vec2(-0.3, h1(s + cell) - 0.5); b = vec2(0.3, a.y); }
+        vec2 pa = q - a, ba = b - a;
+        float t = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+        d = min(d, length(pa - ba * t) - 0.13 - 0.04 * noise(uv * 20.0 + s));
+    }
+    float body = step(d, 0.0);
+    float outline = step(d, 0.045) - body;
+    // drips under the letters
+    float drip = step(fract(uv.x * 37.0 + s), 0.08) * step(0.12, uv.y) * step(uv.y, 0.35)
+               * step(h1(floor(uv.x * 37.0 + s) + s), 0.25);
+    vec3 c = mix(line, fill, body);
+    c = mix(c, vec3(1.0), body * step(0.6, noise(uv * vec2(40.0, 10.0) + s)) * 0.5);
+    float a = max(body + outline, drip * (1.0 - body));
+    if (drip > 0.5 && body < 0.5) c = fill * 0.8;
+    return vec4(c, clamp(a, 0.0, 1.0) * (0.85 + 0.15 * noise(uv * 60.0)));
+}
+
+// A sheet of newspaper: off-white, columns of grey print, a headline
+vec3 newspaper(vec2 uv)
+{
+    vec3 c = vec3(0.86, 0.85, 0.80);
+    float col = step(0.06, fract(uv.x * 3.0)) * step(fract(uv.x * 3.0), 0.94);
+    float print = step(0.5, fract(uv.y * 45.0)) * col * step(uv.y, 0.78);
+    c = mix(c, vec3(0.45), print * 0.6);
+    c = mix(c, vec3(0.1), step(0.83, uv.y) * step(uv.y, 0.93) * step(0.08, uv.x) * step(uv.x, 0.92));
+    return c;
+}
+
 struct Surface { vec3 albedo; float spec; float gloss; vec3 emissive; float wrap; };
 
 vec3 glass(vec3 N, vec3 V, float variation)
@@ -856,6 +948,18 @@ void main()
         s = Surface(toLinear(vec3(0.94, 0.94, 0.93)), 0.0, 8.0, vec3(0), 0.0);
     } else if (m == 54) {          // painted steel indoors, in uCarColor (sculptures, pipes)
         s = Surface(toLinear(uCarColor), 0.6, 70.0, vec3(0), 0.0);
+    } else if (m == 55) {          // a poster, from its seed
+        vec4 p = poster(clamp(vUV, 0.0, 1.0), vSeed);
+        gAlpha = p.a;
+        s = Surface(toLinear(p.rgb), 0.05, 12.0, vec3(0), 0.0);
+    } else if (m == 56) {          // Paris green cast iron
+        s = Surface(toLinear(vec3(0.10, 0.21, 0.15)), 0.35, 30.0, vec3(0), 0.0);
+    } else if (m == 57) {          // a tag sprayed on a wall
+        vec4 g = graffiti(clamp(vUV, 0.0, 1.0), vSeed);
+        gAlpha = g.a;
+        s = Surface(toLinear(g.rgb), 0.2, 20.0, vec3(0), 0.0);
+    } else if (m == 58) {          // newspaper
+        s = Surface(toLinear(newspaper(fract(vUV))), 0.0, 8.0, vec3(0), 0.3);
     } else if (m == 50) {          // a lamp in uExtraColor: the taxi sign, a police light bar
         s = Surface(toLinear(uExtraColor), 0.3, 16.0, toLinear(uExtraColor) * (1.2 + 3.0 * uNight), 0.0);
     } else if (m == 38) {          // the star on top

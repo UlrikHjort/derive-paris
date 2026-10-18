@@ -49,6 +49,11 @@ package World is
 
    function Obstacle_At (X, Y, Z, Radius : Float) return Boolean;
 
+   generic
+      with procedure Visit (AX, AZ, BX, BZ, Bottom, Top : Float);
+   procedure For_Walls_Near (X, Z, Radius : Float);
+   --  Every wall edge of the loaded tiles near (X, Z), each once
+
    function Ray_Free (From, To : Math3D.Vec3) return Float;
    --  How far (0 .. 1) along the line From -> To the view is clear of
    --  walls (1: all the way); small things like trunks and posts don't

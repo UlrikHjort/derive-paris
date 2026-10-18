@@ -58,6 +58,7 @@ with Race;
 with Taxi;
 with Arc_Top;
 with Hall_B;
+with Street_Life;
 with Limit_Sign;
 with Rain;
 with Recorder;
@@ -1134,6 +1135,7 @@ package body Game is
          World.Cull_To (VP);
          glEnable (GL_SAMPLE_ALPHA_TO_COVERAGE);
          World.Draw_Solid;
+         Street_Life.Draw (WU.Model, Cam_Pos);   --  benches, bins, posters, tags, papers
          glDisable (GL_SAMPLE_ALPHA_TO_COVERAGE);
          Landscape.Draw;   --  the hills beyond the loaded tiles
          Set (WU.Model, Car_M);
@@ -3242,6 +3244,7 @@ package body Game is
                      begin
                         Car.Update (Player, (if Race.Frozen then Held else Input), Dt / Float (Steps));
                         Traffic.Collide_Player (Player);
+                        Street_Life.Collide (Player);
                         Loss := Before - abs Player.Speed;
                         if Player.Bumped and then Loss > 0.0 then
                            Race.Impact (Loss);   --  damage, in a race
@@ -3315,6 +3318,7 @@ package body Game is
             Add (C_Physics, T0);
             T0 := Clock_Now;
             Traffic.Update (Dt, Time, Focus.X, Focus.Z, Focus_Heading, Player);
+            Street_Life.Update (Dt, Focus.X, Focus.Z);
             Pedestrians.Update (Dt, Focus.X, Focus.Z, Focus_Heading, Player);
             Add (C_Traffic, T0);
          end;
