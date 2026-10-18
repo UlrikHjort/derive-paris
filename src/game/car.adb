@@ -108,7 +108,7 @@ package body Car is
 
    procedure Drive (S : in out State; C : Controls; Dt : Float) is
       Throttle_In : constant Float :=
-        (if C.Analog then C.Throttle_Pedal elsif C.Throttle then 1.0 else 0.0);
+        (if C.Analog then C.Throttle_Pedal elsif C.Throttle then 1.0 else 0.0) * C.Power;
       Brake_In    : constant Float :=
         (if C.Analog then C.Brake_Pedal elsif C.Brake then 1.0 else 0.0);
       Throttle, Brake : Float;
@@ -313,7 +313,7 @@ package body Car is
       --  a wheel turns the front wheels directly (900 degrees lock to
       --  lock is a ratio of about 14:1, like a real car)
       if C.Analog then
-         Steer_Target := C.Steering * Max_Steer;
+         Steer_Target := (C.Steering + C.Pull) * Max_Steer;
          Approach (S.Steer, Steer_Target, 8.0 * Dt);
       else
          if C.Left then
@@ -321,6 +321,7 @@ package body Car is
          elsif C.Right then
             Steer_Target := Max_Steer / Speed_Factor;
          end if;
+         Steer_Target := Steer_Target + C.Pull * Max_Steer;
          Approach (S.Steer, Steer_Target, 2.5 * Dt);
       end if;
 

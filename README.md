@@ -167,10 +167,15 @@ cheer. Five opponents start with you on the grid (you start at the back),
 and after the 3-2-1 countdown it is two or three laps, depending on the
 length (or choose with left/right in the list of tracks). The GPS follows
 the course and tells you the turns; if you leave the course a warning says
-which way it is, and at the top you see your lap, position and time. After
-the finish the others come in and park after the line, and the results
-come up (Esc closes them); F2 then gives **Race again** or **Back to the
-city**. During a race Esc opens the menu, where you can also give up.
+which way it is, and at the top you see your lap, position and time.
+Knocks do damage (the bar at the top): light scrapes are free, but past 30
+% the car smokes and loses power and the steering pulls, past 60 % the
+engine misfires, and at 100 % you are wrecked and out of the race. A few
+clean seconds at speed and the car slowly mends. Ram an opponent hard
+enough and it is out too. After the finish the others come in and park
+after the line, and the results come up (Esc closes them); F2 then gives
+**Race again** or **Back to the city**. During a race Esc opens the menu,
+where you can also give up.
 
 **Make a track**: drive where you want the race to go and press Enter at
 each checkpoint (Backspace takes the last one back); the race follows the

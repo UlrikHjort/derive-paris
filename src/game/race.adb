@@ -2,6 +2,7 @@
 --  Copyright (c) 2026 Ulrik Hørlyk Hjort
 --  SPDX-License-Identifier: MIT
 --
+with Ada.Containers.Ordered_Maps;
 with Ada.Containers.Vectors;
 with Ada.Directories;
 with Ada.Exceptions;
@@ -17,6 +18,7 @@ with Geo;
 with Meshes;
 with Shaders;
 with Sound;
+with Tyre_Effects;
 with Terrain;
 
 package body Race is
@@ -275,6 +277,39 @@ package body Race is
    package Way_Vectors is new Ada.Containers.Vectors (Natural, Natural);
    Line   : Road_Network.Route_Vectors.Vector;   --  the course street by street
    Line_S : Float_Vectors.Vector;                --  where each point is on the loop
+
+   --  The course in cells of 16 m, to find the nearby stretch quickly
+   Cell : constant := 16.0;
+   package Index_Vectors is new Ada.Containers.Vectors (Positive, Natural);
+   package Cell_Maps is new Ada.Containers.Ordered_Maps
+     (Integer, Index_Vectors.Vector, "<", Index_Vectors."=");
+   Cells : Cell_Maps.Map;
+
+   function Cell_Key (CX, CZ : Integer) return Integer is ((CX + 10_000) * 20_000 + (CZ + 10_000));
+
+   procedure Index_Course is
+   begin
+      Cells.Clear;
+      for I in Course.First_Index .. Course.Last_Index - 1 loop
+         declare
+            K : constant Integer :=
+              Cell_Key (Integer (Float'Floor ((Course (I).X + Course (I + 1).X) / 2.0 / Cell)),
+                        Integer (Float'Floor ((Course (I).Z + Course (I + 1).Z) / 2.0 / Cell)));
+            C : constant Cell_Maps.Cursor := Cells.Find (K);
+         begin
+            if Cell_Maps.Has_Element (C) then
+               Cells.Reference (C).Append (I);
+            else
+               declare
+                  V : Index_Vectors.Vector;
+               begin
+                  V.Append (I);
+                  Cells.Insert (K, V);
+               end;
+            end if;
+         end;
+      end loop;
+   end Index_Course;
    Total  : Float := 0.0;
    Gates  : Float_Vectors.Vector;   --  where the checkpoints are (distance)
    Laps   : Positive := 2;
@@ -585,6 +620,7 @@ package body Race is
          end loop;
          Start_Off := Best_S;
       end;
+      Index_Course;
       Find_Barriers;
       Find_Signs;
       --  a checkpoint every 250 m or so; the first is the start and finish
@@ -597,6 +633,41 @@ package body Race is
       end;
       Ok := True;
    end Build_Course;
+
+   ---------------------------------------------------------------------------
+   --  Damage: knocks add up (the harder, the much worse); past 30 % the car
+   --  smokes and loses power, past 60 % the engine misfires, at 100 % it
+   --  is wrecked and out of the race
+   ---------------------------------------------------------------------------
+
+   Me_Damage  : Float := 0.0;      --  0 .. 1
+   Me_Wrecked : Boolean := False;
+   Pending    : Float := 0.0;      --  speed lost in the knock going on now
+   Pending_Time : Float := 0.0;
+   Critical_Time : Float := 0.0;   --  the warning, for a few seconds
+   Misfire_Time  : Float := 0.0;   --  the engine cut out, for a moment
+   Pull_Side  : Float := 1.0;      --  which way a bent car pulls
+
+   Quiet_Time : Float := 0.0;      --  since the last knock that did harm
+
+   --  How much a knock does: nothing below about 10 km/h lost, and
+   --  growing with the square of it (a crash at 60 km/h is about 13 %,
+   --  at 100 km/h about 40 %)
+   function Harm (Loss : Float) return Float is
+     (if Loss <= 3.0 then 0.0 else ((Loss - 3.0) / 38.0) ** 2);
+
+   procedure Impact (Loss : Float) is
+   begin
+      --  a knock lasts a few steps: add up what is lost in 0.12 s from
+      --  the first touch (a long scrape is many small, harmless knocks)
+      if Pending_Time <= 0.0 then
+         Pending_Time := 0.12;
+      end if;
+      Pending := Pending + Loss;
+   end Impact;
+
+   function Damage return Float is (Me_Damage);
+   function Wrecked return Boolean is (Me_Wrecked);
 
    ---------------------------------------------------------------------------
    --  Barriers: every street leaving the course is closed off, so there is
@@ -838,6 +909,7 @@ package body Race is
    --  Keep the car out of the barriers (its middle, nose and tail)
    procedure Hit_Barriers (Player : in out Car.State) is
       F : constant Vec3 := Car.Forward (Player);
+      Before : constant Float := abs Player.Speed;
    begin
       for B of Barriers loop
          if (B.C.X - Player.X) ** 2 + (B.C.Z - Player.Z) ** 2 < (B.Half + 4.0) ** 2 then
@@ -874,6 +946,9 @@ package body Race is
             end loop;
          end if;
       end loop;
+      if Before - abs Player.Speed > 0.0 then
+         Impact (Before - abs Player.Speed);
+      end if;
    end Hit_Barriers;
 
    ---------------------------------------------------------------------------
@@ -892,6 +967,9 @@ package body Race is
       Done    : Boolean := False;
       Time    : Float := 0.0;
       Place   : Natural := 0;     --  in the finishing order
+      Damage  : Float := 0.0;
+      Retired : Boolean := False; --  wrecked, parked at the side
+      Cool    : Float := 0.0;     --  after a knock from you
       Name    : Unbounded_String;
    end record;
    Racers : array (1 .. Opponents) of Racer;
@@ -922,6 +1000,45 @@ package body Race is
    Cheer    : Float := 0.0;
 
    function Phase return Phase_Kind is (Current);
+
+   --  On the course's road, widened by Margin
+   function Inside (X, Z, Margin : Float) return Boolean is
+      CX : constant Integer := Integer (Float'Floor (X / Cell));
+      CZ : constant Integer := Integer (Float'Floor (Z / Cell));
+   begin
+      if Current = Idle then
+         return False;
+      end if;
+      for DX in -1 .. 1 loop
+         for DZ in -1 .. 1 loop
+            declare
+               C : constant Cell_Maps.Cursor := Cells.Find (Cell_Key (CX + DX, CZ + DZ));
+            begin
+               if Cell_Maps.Has_Element (C) then
+                  for I of Cells.Constant_Reference (C) loop
+                     declare
+                        A  : Vec3 renames Course (I);
+                        B  : Vec3 renames Course (I + 1);
+                        EX : constant Float := B.X - A.X;
+                        EZ : constant Float := B.Z - A.Z;
+                        T  : constant Float := Float'Max (0.0, Float'Min (1.0,
+                          ((X - A.X) * EX + (Z - A.Z) * EZ) / Float'Max (0.0001, EX * EX + EZ * EZ)));
+                        H  : constant Float := Widths (I) / 2.0 + Margin;
+                     begin
+                        if (A.X + T * EX - X) ** 2 + (A.Z + T * EZ - Z) ** 2 < H * H then
+                           return True;
+                        end if;
+                     end;
+                  end loop;
+               end if;
+            end;
+         end loop;
+      end loop;
+      return False;
+   end Inside;
+
+   function On_Course (X, Z : Float) return Boolean is (Inside (X, Z, 0.4));
+   --  (on the road, or within 0.4 m of it)
    function Active return Boolean is (Current /= Idle);
    function Frozen return Boolean is (Current = Countdown);
 
@@ -1099,6 +1216,7 @@ package body Race is
                            Model => (if I = 3 then Car.DS elsif I = 5 then Car.Deux_Chevaux
                                      else Car.Modern),
                            Done => False, Time => 0.0, Place => 0,
+                           Damage => 0.0, Retired => False, Cool => 0.0,
                            Name => Names (Order (I)));
             if Racers (I).Model = Car.Deux_Chevaux then
                Racers (I).Skill := Racers (I).Skill * 0.85;   --  brave but slow
@@ -1122,6 +1240,18 @@ package body Race is
       After := 0.0;
       Off_Time := 0.0;
       Wrong_Time := 0.0;
+      Me_Damage := 0.0;
+      Me_Wrecked := False;
+      Pending := 0.0;
+      Pending_Time := 0.0;
+      Critical_Time := 0.0;
+      Misfire_Time := 0.0;
+      Quiet_Time := 0.0;
+      Pull_Side := (if Rnd < 0.5 then -1.0 else 1.0);
+      --  PARIS_DAMAGE=0.5: start dented (testing)
+      if Ada.Environment_Variables.Exists ("PARIS_DAMAGE") then
+         Me_Damage := Float'Value (Ada.Environment_Variables.Value ("PARIS_DAMAGE"));
+      end if;
       Warn := Null_Unbounded_String;
       Need_Mesh := True;
    end On_Grid;
@@ -1290,11 +1420,117 @@ package body Race is
       end if;
    end Track_Player;
 
+   Smoke_Time : Float := 0.0;
+   From_Done  : Boolean := False;   --  PARIS_RACE_FROM, once
+
+   --  A puff from under the bonnet: white, grey, black as it gets worse
+   procedure Smoke_From (X, Z, Y, Heading, Dmg : Float; Dead : Boolean) is
+      F : constant Vec3 := (Sin (Heading), 0.0, -Cos (Heading));
+   begin
+      Tyre_Effects.Add_Puff
+        (Where    => Vec3'(X, Y + 0.95, Z) + 1.5 * F + Vec3'(0.3 * (Rnd - 0.5), 0.0, 0.3 * (Rnd - 0.5)),
+         Velocity => (0.4 * (Rnd - 0.5), 1.0 + 0.8 * Dmg, 0.4 * (Rnd - 0.5)),
+         Colour   => (if Dead or else Dmg >= 1.0 then 5 elsif Dmg >= 0.6 then 4 else 0),
+         Size     => 0.5 + 0.7 * Dmg,
+         Life     => 2.0 + 1.5 * Dmg);
+   end Smoke_From;
+
+   procedure Wreck is
+   begin
+      Me_Wrecked := True;
+      Me_Damage := 1.0;
+      Me_Done := True;
+      Me_Time := Clock;
+      Me_Place := 0;
+      Current := Finished;
+      After := 0.0;
+      Warn := Null_Unbounded_String;
+      Sound.Effect (Sound.Thud, 1.0, 0.0);
+   end Wreck;
+
+   procedure Wear (Dt : Float; Player : Car.State) is
+   begin
+      --  a knock is over: what did it do?
+      if Pending_Time > 0.0 then
+         Pending_Time := Pending_Time - Dt;
+         if Pending_Time <= 0.0 then
+            if Current = Racing and then not Me_Done then
+               declare
+                  Was : constant Float := Me_Damage;
+               begin
+                  Me_Damage := Float'Min (1.0, Me_Damage + Harm (Pending));
+                  if Harm (Pending) > 0.0 then
+                     Quiet_Time := 0.0;
+                  end if;
+                  if Me_Damage >= 1.0 then
+                     Wreck;
+                  elsif Was < 0.6 and then Me_Damage >= 0.6 then
+                     Critical_Time := 4.0;
+                  end if;
+               end;
+            end if;
+            Pending := 0.0;
+         end if;
+      end if;
+      Critical_Time := Float'Max (0.0, Critical_Time - Dt);
+      --  a few seconds without a knock, and driving fast mends the car
+      --  (the faster, the quicker); a wreck stays a wreck
+      Quiet_Time := Quiet_Time + Dt;
+      if Current = Racing and then not Me_Wrecked and then Quiet_Time > 3.0
+        and then abs Player.Speed > 14.0
+      then
+         Me_Damage := Float'Max (0.0, Me_Damage - Dt * 0.01 * Float'Min (1.5, abs Player.Speed / 22.0));
+      end if;
+      --  the engine coughs now and then when badly hurt
+      if Misfire_Time > 0.0 then
+         Misfire_Time := Misfire_Time - Dt;
+      elsif Me_Damage >= 0.6 and then not Me_Wrecked
+        and then Rnd < Dt * 3.0 * (Me_Damage - 0.45)
+      then
+         Misfire_Time := 0.08 + 0.15 * Rnd;
+      end if;
+      --  smoke
+      Smoke_Time := Smoke_Time + Dt;
+      if Smoke_Time >= 0.09 then
+         Smoke_Time := 0.0;
+         if Me_Damage >= 0.3 then
+            Smoke_From (Player.X, Player.Z, Player.Ground, Player.Heading, Me_Damage, Me_Wrecked);
+         end if;
+         for R of Racers loop
+            if R.Damage >= 0.3 then
+               declare
+                  P : constant Vec3 := Position_Of (R);
+               begin
+                  Smoke_From (P.X, P.Z, Terrain.Height (P.X, P.Z), Heading_Of (R), R.Damage, R.Retired);
+               end;
+            end if;
+         end loop;
+      end if;
+   end Wear;
+
+   function Power return Float is
+     (if Current = Idle then 1.0
+      elsif Me_Wrecked then 0.0
+      elsif Misfire_Time > 0.0 then 0.05
+      else 1.0 - 0.45 * Float'Max (0.0, Me_Damage - 0.3) / 0.7);
+
+   function Steer_Pull return Float is
+     (if Current = Idle then 0.0
+      else Pull_Side * 0.06 * Float'Max (0.0, Me_Damage - 0.3) / 0.7);
+
+   function Shake return Float is
+     (if Current = Idle or else Me_Wrecked or else Me_Damage < 0.6 then 0.0
+      else 0.25 * (Me_Damage - 0.5));
+
+   function Misfiring return Boolean is (Current /= Idle and then Misfire_Time > 0.0);
+
    function Place_Of_Player return Positive is
       Ahead : Natural := 0;
    begin
       for R of Racers loop
-         if (R.Done and then not Me_Done) or else (not Me_Done and then R.S > Me_S) then
+         if (R.Done and then not Me_Done)
+           or else (not Me_Done and then not R.Retired and then R.S > Me_S)
+         then
             Ahead := Ahead + 1;
          end if;
       end loop;
@@ -1355,8 +1591,13 @@ package body Race is
                      R.Speed := 0.0;
                   end if;
                end;
+            elsif R.Retired then
+               --  wrecked: to the side of the road, and stop
+               R.Want := Float'Max (0.0, Rm - 0.3);
+               R.Speed := Float'Max (0.0, R.Speed - 6.0 * Dt);
             else
-               Target := Float'Min (36.0 * R.Skill, Corner_Speed (R.S) * (0.92 + 0.08 * R.Skill));
+               Target := Float'Min (36.0 * R.Skill, Corner_Speed (R.S) * (0.92 + 0.08 * R.Skill))
+                 * (1.0 - 0.45 * Float'Max (0.0, R.Damage - 0.3));
                --  keep the race close: a little slower far ahead of you,
                --  faster far behind
                if R.S - Me_S > 150.0 then
@@ -1425,7 +1666,34 @@ package body Race is
                DZ : constant Float := Player.Z - Q.Z;
                D  : constant Float := Sqrt (DX * DX + DZ * DZ);
             begin
+               R.Cool := Float'Max (0.0, R.Cool - Dt);
                if D < 2.4 and then D > 0.01 then
+                  --  how fast the two came together: that is the knock,
+                  --  for both of you
+                  declare
+                     P, T : Vec3;
+                     F  : constant Vec3 := Car.Forward (Player);
+                     NX : constant Float := DX / D;
+                     NZ : constant Float := DZ / D;
+                     Closing : Float;
+                  begin
+                     At_S (R.S, P, T);
+                     Closing := (R.Speed * T.X - Player.Speed * F.X) * NX
+                       + (R.Speed * T.Z - Player.Speed * F.Z) * NZ;
+                     if Closing > 2.5 and then R.Cool = 0.0 then
+                        Impact (0.8 * Closing);
+                        if not R.Done then
+                           R.Damage := Float'Min (1.0, R.Damage + Harm (0.8 * Closing));
+                           if R.Damage >= 1.0 and then not R.Retired then
+                              R.Retired := True;
+                              Sound.Effect (Sound.Thud, 0.8, 0.0);
+                           end if;
+                        end if;
+                        R.Cool := 0.5;
+                        Player.Speed := Player.Speed * 0.85;
+                        R.Speed := R.Speed * 0.8;
+                     end if;
+                  end;
                   Player.X := Player.X + DX / D * (2.4 - D);
                   Player.Z := Player.Z + DZ / D * (2.4 - D);
                   Player.Bumped := True;
@@ -1437,9 +1705,11 @@ package body Race is
       end loop;
 
       Hit_Barriers (Player);
+      Wear (Dt, Player);
 
       --  PARIS_RACE_FROM=<m>: you start there instead (testing)
-      if Clock < 0.1 and then Ada.Environment_Variables.Exists ("PARIS_RACE_FROM") then
+      if not From_Done and then Ada.Environment_Variables.Exists ("PARIS_RACE_FROM") then
+         From_Done := True;
          declare
             P, T : Vec3;
          begin
@@ -1499,6 +1769,8 @@ package body Race is
                end;
             elsif Wrong_Time > 1.0 then
                Warn := To_Unbounded_String ("WRONG WAY|Turn round");
+            elsif Critical_Time > 0.0 then
+               Warn := To_Unbounded_String ("DAMAGE CRITICAL|One more knock and you are out");
             else
                Warn := Null_Unbounded_String;
             end if;
@@ -1627,6 +1899,17 @@ package body Race is
         & SS (SS'Last - 1 .. SS'Last) & "." & D (D'Last .. D'Last);
    end Time_Image;
 
+   --  0 .. 1 as ten blocks
+   function Bar (V : Float) return String is
+      Full : constant Natural := Natural (Float'Min (10.0, Float'Ceiling (V * 10.0 - 0.001)));
+      R    : Unbounded_String;
+   begin
+      for K in 1 .. 10 loop
+         Append (R, (if K <= Full then "&#x2588;" else "&#x2591;"));
+      end loop;
+      return To_String (R);
+   end Bar;
+
    function Hud_Text return String is
    begin
       if Current = Idle then
@@ -1637,11 +1920,15 @@ package body Race is
         & Ada.Strings.Fixed.Trim (Natural'Image (Natural'Min (Laps, Me_Lap + 1)), Ada.Strings.Left)
         & "/" & Ada.Strings.Fixed.Trim (Natural'Image (Laps), Ada.Strings.Left)
         & "   POS " & Ada.Strings.Fixed.Trim
-          (Natural'Image (if Me_Done then Me_Place else Place_Of_Player), Ada.Strings.Left)
-        & "/" & Ada.Strings.Fixed.Trim (Natural'Image (Opponents + 1), Ada.Strings.Left)
+          ((if Me_Wrecked then "out"
+            else Natural'Image (if Me_Done then Me_Place else Place_Of_Player)), Ada.Strings.Left)
+        & (if Me_Wrecked then ""
+           else "/" & Ada.Strings.Fixed.Trim (Natural'Image (Opponents + 1), Ada.Strings.Left))
         & "   " & Time_Image (if Me_Done then Me_Time else Clock)
         & (if Best_Lap > 0.0 then "   best lap " & Time_Image (Best_Lap) else "")
-        & "  </span>";
+        & "   DAMAGE <span foreground='"
+        & (if Me_Damage < 0.3 then "#7ddc7a" elsif Me_Damage < 0.6 then "#ffb347" else "#ff5040")
+        & "'>" & Bar (Me_Damage) & "</span>  </span>";
    end Hud_Text;
 
    --  Characters, not bytes (for the columns)
@@ -1663,7 +1950,10 @@ package body Race is
          Dist : Float;
          Done : Boolean;
          You  : Boolean;
+         Retired : Boolean;
       end record;
+      function Rank (E : Entry_Rec) return Natural is
+        (if E.Done then 0 elsif E.Retired then 2 else 1);
       List : array (1 .. Opponents + 1) of Entry_Rec;
       Text : Unbounded_String;
       LF   : constant String := (1 => ASCII.LF);
@@ -1672,19 +1962,22 @@ package body Race is
          return "";
       end if;
       for I in Racers'Range loop
-         List (I) := (Racers (I).Name, Racers (I).Time, Racers (I).S, Racers (I).Done, False);
+         List (I) := (Racers (I).Name, Racers (I).Time, Racers (I).S, Racers (I).Done, False,
+                      Racers (I).Retired);
       end loop;
-      List (List'Last) := (To_Unbounded_String ("You"), Me_Time, Me_S, True, True);
-      --  sort: finished by time, then by distance
+      List (List'Last) := (To_Unbounded_String ("You"), Me_Time, Me_S, not Me_Wrecked, True,
+                           Me_Wrecked);
+      --  sort: finished by time, then still racing by distance, then the
+      --  wrecks
       for I in List'Range loop
          for J in I + 1 .. List'Last loop
             declare
                A : Entry_Rec renames List (I);
                B : Entry_Rec renames List (J);
                B_First : constant Boolean :=
-                 (B.Done and then not A.Done)
-                 or else (A.Done and then B.Done and then B.Time < A.Time)
-                 or else (not A.Done and then not B.Done and then B.Dist > A.Dist);
+                 Rank (B) < Rank (A)
+                 or else (Rank (A) = Rank (B)
+                          and then (if A.Done then B.Time < A.Time else B.Dist > A.Dist));
                Tmp : constant Entry_Rec := A;
             begin
                if B_First then
@@ -1701,7 +1994,8 @@ package body Race is
             Line : constant String :=
               Natural'Image (I) & ".  " & To_String (List (I).Name)
               & (1 .. Natural'Max (1, 10 - Letters (To_String (List (I).Name))) => ' ')
-              & (if List (I).Done then Time_Image (List (I).Time) else "racing");
+              & (if List (I).Done then Time_Image (List (I).Time)
+                 elsif List (I).Retired then "out (wrecked)" else "racing");
          begin
             if List (I).You then
                Append (Text, "<span background='#3a6fd8'>" & Line & "  </span>" & LF);
@@ -1735,7 +2029,7 @@ package body Race is
       elsif Current = Racing and then Clock < 1.0 then
          return "GO!";
       elsif Current = Finished and then After < 3.0 then
-         return "FINISHED  " & Ordinal (Me_Place);
+         return (if Me_Wrecked then "WRECKED" else "FINISHED  " & Ordinal (Me_Place));
       end if;
       return "";
    end Banner;
@@ -1784,7 +2078,7 @@ package body Race is
       end if;
       --  the opponents
       for R of Racers loop
-         Shaders.Set (Paint, R.Colour);
+         Shaders.Set (Paint, (1.0 - 0.35 * R.Damage) * R.Colour);   --  dented, dirty
          declare
             P : constant Vec3 := Position_Of (R);
          begin

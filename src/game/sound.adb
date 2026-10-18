@@ -1162,7 +1162,7 @@ package body Sound is
                      E := E + Step (Engine_Grit, Noise, 120.0 + F0 * 1.2) * (0.5 + 0.8 * P.Load);
                      E := Step (Engine_Tone, E, 160.0 + 260.0 * P.Load + F0 * 1.2);
                      E := Step (Engine_Tone2, E, 220.0 + 300.0 * P.Load + F0 * 1.2);
-                     S := E * (0.06 + 0.06 * P.Load);
+                     S := (if P.Engine_Off then 0.0 else E * (0.06 + 0.06 * P.Load));
                      L := L + S;
                      R := R + S;
                   end;

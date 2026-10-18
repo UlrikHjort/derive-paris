@@ -19,7 +19,8 @@ package Tyre_Effects is
    procedure Add_Puff (Where, Velocity : Math3D.Vec3; Colour : Natural;
                        Size, Life : Float);
    --  Any puff of smoke: Colour 0 white (tyres, snow), 1 blue, 2 white,
-   --  3 red (the jets' smoke trails on the 14th of July)
+   --  3 red (the jets' smoke trails on the 14th of July), 4 grey, 5 black
+   --  (a damaged engine)
 
    procedure Draw_Marks (VP : Math3D.Mat4; Cam : Math3D.Vec3);
    --  After the ground

@@ -30,6 +30,10 @@ package Pedestrians is
    procedure Santa_Near (X, Z : Float; Found : out Boolean; SX, SZ : out Float);
    --  A Santa within a few metres of (X, Z) who has not said hello yet
 
+   type Keep_Out_Test is access function (X, Z : Float) return Boolean;
+   procedure Set_Keep_Out (Test : Keep_Out_Test);
+   --  Places walkers must not step on (a race course): they turn round
+
    procedure Set_Density (Factor : Float);
    --  1.0 = normal (160 people), 0 = none, up to 2.5
 

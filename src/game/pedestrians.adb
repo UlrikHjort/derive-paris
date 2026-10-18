@@ -71,6 +71,16 @@ package body Pedestrians is
 
    function Rnd return Float is (Ada.Numerics.Float_Random.Random (Gen));
 
+   Keep_Out : Keep_Out_Test := null;
+
+   procedure Set_Keep_Out (Test : Keep_Out_Test) is
+   begin
+      Keep_Out := Test;
+   end Set_Keep_Out;
+
+   function Forbidden (P : Vec3) return Boolean is
+     (Keep_Out /= null and then Keep_Out (P.X, P.Z));
+
    procedure Set_Density (Factor : Float) is
    begin
       Limit := Natural (Float'Max (0.0, Float'Min (Float (Max_Walkers), 160.0 * Factor)));
@@ -225,8 +235,12 @@ package body Pedestrians is
                            W.X := Pos.X;
                            W.Z := Pos.Z;
                            W.Heading := Arctan (Dir.X, -Dir.Z);
+                           if Forbidden (Pos) then
+                              W.Active := False;   --  not on a race course
+                           else
+                              return;
+                           end if;
                         end;
-                        return;
                      end if;
                   end;
                end;
@@ -240,12 +254,26 @@ package body Pedestrians is
       Len  : Float;
    begin
       Segment (W.Cur, P, Q, Len);
-      W.T := W.T + W.Speed * Dt;
-      while W.T >= Len loop
-         W.T := W.T - Len;
-         Choose_Next (W);
-         Segment (W.Cur, P, Q, Len);
-      end loop;
+      declare
+         Old     : constant Walker := W;
+         Old_Len : constant Float := Len;
+      begin
+         W.T := W.T + W.Speed * Dt;
+         while W.T >= Len loop
+            W.T := W.T - Len;
+            Choose_Next (W);
+            Segment (W.Cur, P, Q, Len);
+         end loop;
+         --  about to walk out onto a race course: turn round where we
+         --  were, on the pavement we came along
+         if Forbidden (Place (W)) and then not Forbidden ((W.X, 0.0, W.Z)) then
+            W.Cur := (Old.Cur.W, Old.Cur.Pos + Old.Cur.Dir, -Old.Cur.Dir);
+            W.T := Float'Max (0.0, Old_Len - Old.T);
+            W.Side := -Old.Side;
+            W.Offset := Old.Offset;
+            Len := Old_Len;
+         end if;
+      end;
       W.Phase := W.Phase + Dt * W.Speed * 4.2;
 
       --  Step aside when the car comes close; drift back afterwards
@@ -307,6 +335,11 @@ package body Pedestrians is
          if W.Active then
             Walk (W, Dt, Player);
             if (W.X - Focus_X) ** 2 + (W.Z - Focus_Z) ** 2 > Retire_Far ** 2 then
+               W.Active := False;
+            --  out on a race course (there when it began): gone, unseen
+            elsif (W.X - Focus_X) ** 2 + (W.Z - Focus_Z) ** 2 > 40.0 ** 2
+              and then Forbidden ((W.X, 0.0, W.Z))
+            then
                W.Active := False;
             end if;
          elsif not Primed or else Spawned < 3 then

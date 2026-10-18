@@ -30,6 +30,11 @@ package Car is
 
       Wet  : Float := 0.0;   --  0 .. 1: less grip in the rain
       Snow : Float := 0.0;   --  0 .. 1: much less on snow
+
+      --  A damaged car: less power (0: the engine is dead), and the
+      --  steering pulls to one side (fraction of full lock, + right)
+      Power : Float := 1.0;
+      Pull  : Float := 0.0;
    end record;
 
    type State is record
