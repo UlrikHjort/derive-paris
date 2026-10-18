@@ -764,6 +764,12 @@ package body World_Builder is
       Landuse   : constant String := Tag (Tags, "landuse");
       Leisure   : constant String := Tag (Tags, "leisure");
    begin
+      --  underground (a canal under a boulevard): nothing to see
+      if (Has (Tags, "tunnel") and then Tag (Tags, "tunnel") /= "no")
+        or else Tag (Tags, "location") = "underground"
+      then
+         return -1.0;
+      end if;
       if Natural_V = "water" or else Tag (Tags, "waterway") = "riverbank"
         or else Leisure = "swimming_pool" or else Tag (Tags, "amenity") = "fountain"
       then
