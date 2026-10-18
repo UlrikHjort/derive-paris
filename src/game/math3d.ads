@@ -35,6 +35,9 @@ package Math3D is
    function Ortho (L, R, B, T, N, F : Float) return Mat4;
    function Look_At (Eye, Target, Up : Vec3) return Mat4;
    function Translation (V : Vec3) return Mat4;
+   function Scale (S : Float) return Mat4 is
+     (S, 0.0, 0.0, 0.0,  0.0, S, 0.0, 0.0,  0.0, 0.0, S, 0.0,  0.0, 0.0, 0.0, 1.0);
+   --  The same in every direction
    function Rotation_Y (Angle : Float) return Mat4;
    function Rotation_X (Angle : Float) return Mat4;
    function Rotation_Z (Angle : Float) return Mat4;

@@ -174,7 +174,7 @@ package body Taxi is
    Warn       : UString;
    Warn_Time  : Float := 0.0;
 
-   Lamp_Mesh, Bar_Mesh : Meshes.Mesh;
+   Lamp_Mesh, Bar_Mesh, Arrow_Mesh : Meshes.Mesh;
    Built : Boolean := False;
 
    function Phase return Phase_Kind is (Current);
@@ -416,9 +416,9 @@ package body Taxi is
       else
          L := 1.4 * Sqrt ((Dest_X - Player.X) ** 2 + (Dest_Z - Player.Z) ** 2);
       end if;
-      --  time at about 23 km/h (Paris, lights, traffic), and a bonus that
-      --  melts away over that time
-      Allowed := L / 6.5 + 30.0;
+      --  time at about 36 km/h on average (the corners, the lights, the
+      --  traffic), and a bonus that melts away over that time
+      Allowed := L / 10.0 + 25.0;
       Bonus_Max := 3.0 + L / 250.0;
       Elapsed := 0.0;
       Driven := 0.0;
@@ -578,7 +578,8 @@ package body Taxi is
       Limit_Wait := Limit_Wait - Dt;
       if Limit_Wait <= 0.0 then
          Limit_Wait := 0.2;
-         Here_Limit := Road_Network.Limit_At (Player.X, Player.Z, Player.Heading);
+         Here_Limit := Road_Network.Limit_At
+           (Player.X, Player.Z, Player.Heading, Arcade => Config.Get ("speed_limits", "game") /= "real");
       end if;
       Too_Fast := Here_Limit > 0 and then Kmh (Player) > Float (Here_Limit) + 2.0;
 
@@ -589,8 +590,8 @@ package body Taxi is
                if Look_Wait <= 0.0 then
                   Look_For_Fare (Hour);
                end if;
-            elsif (Player.X - Fare_X) ** 2 + (Player.Z - Fare_Z) ** 2 < 9.0 ** 2
-              and then abs Player.Speed < 1.5
+            elsif (Player.X - Fare_X) ** 2 + (Player.Z - Fare_Z) ** 2 < 12.0 ** 2
+              and then abs Player.Speed < 2.5
             then
                Board (Player, Hour, Sunday);
             end if;
@@ -781,6 +782,22 @@ package body Taxi is
          Meshes.Start;
          Meshes.Box (-0.6, 0.6, 1.42, 1.55, -0.16, 0.16, 50.0);   --  a light bar
          Meshes.Finish (Bar_Mesh);
+         --  an arrow pointing down: a shaft and a four-sided head
+         Meshes.Start;
+         Meshes.Box (-0.18, 0.18, 0.9, 2.0, -0.18, 0.18, 50.0);
+         declare
+            Tip : constant Vec3 := (0.0, 0.0, 0.0);
+            C   : constant array (0 .. 3) of Vec3 :=
+              ((-0.6, 0.9, -0.6), (0.6, 0.9, -0.6), (0.6, 0.9, 0.6), (-0.6, 0.9, 0.6));
+         begin
+            for K in 0 .. 3 loop
+               Meshes.Quad (C (K), C ((K + 1) mod 4), Tip, Tip, 50.0);
+               Meshes.Quad (C ((K + 1) mod 4), C (K), Tip, Tip, 50.0);
+            end loop;
+            Meshes.Quad (C (0), C (1), C (2), C (3), 50.0);
+            Meshes.Quad (C (3), C (2), C (1), C (0), 50.0);
+         end;
+         Meshes.Finish (Arrow_Mesh);
          Built := True;
       end if;
 
@@ -800,6 +817,24 @@ package body Taxi is
          Shaders.Set (Skin, (if Time - Float'Floor (Time) < 0.5 then Vec3'(0.15, 0.35, 1.0)
                              else Vec3'(0.04, 0.07, 0.3)));
          Meshes.Draw (Bar_Mesh);
+      end if;
+
+      --  an arrow over where to stop: yellow over the fare, green over the
+      --  destination; bigger the farther away, so you see it over the roofs
+      if (Current = Finding and then Waiting) or else Current = Carrying then
+         declare
+            AX : constant Float := (if Current = Carrying then Dest_X else Fare_X);
+            AZ : constant Float := (if Current = Carrying then Dest_Z else Fare_Z);
+            D  : constant Float := Sqrt ((AX - Player.X) ** 2 + (AZ - Player.Z) ** 2);
+            S  : constant Float := 1.0 + Float'Min (3.0, D / 120.0);
+         begin
+            Shaders.Set (Skin, (if Current = Carrying then Vec3'(0.2, 1.0, 0.35)
+                                else Vec3'(1.0, 0.78, 0.1)));
+            Shaders.Set (Model, Translation ((AX, Terrain.Height (AX, AZ) + 3.0 + 0.3 * Sin (Time * 2.5)
+                                              + 7.0 * (S - 1.0), AZ))
+                         * Rotation_Y (Time * 1.5) * Scale (S));
+            Meshes.Draw (Arrow_Mesh);
+         end;
       end if;
 
       Figures.Set_Locations ((Model, Paint, Skin, Legs));

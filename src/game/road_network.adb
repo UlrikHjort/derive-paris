@@ -374,7 +374,7 @@ package body Road_Network is
       return (if Found then Ada.Strings.Unbounded.To_String (Ways (W).Name) else "");
    end Street_At;
 
-   function Limit_At (X, Z : Float; Heading : Float) return Natural is
+   function Limit_At (X, Z : Float; Heading : Float; Arcade : Boolean := False) return Natural is
       HX : constant Float := Sin (Heading);
       HZ : constant Float := -Cos (Heading);
       Best : Float := Float'Last;
@@ -406,6 +406,12 @@ package body Road_Network is
                         if D < Ways (S.W).Width / 2.0 + 3.0 and then Score < Best then
                            Best := Score;
                            Limit := Ways (S.W).Limit;
+                           if Arcade then
+                              Limit := (if Limit <= 20 then 50
+                                        elsif Limit >= 50 or else Ways (S.W).Width >= 12.0
+                                          or else Ways (S.W).Lanes >= 3 then 80
+                                        else 60);
+                           end if;
                         end if;
                      end;
                   end loop;

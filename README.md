@@ -188,8 +188,8 @@ line), so they can be renamed there.
 ### Games: taxi
 
 F2, **Taxi**, **Start a shift**.  Your roof sign shows green: you are
-free.  Someone waves at the kerb a few hundred metres away (the GPS takes
-you there); stop beside them and they get in, the sign turns red, and they
+free.  Someone waves at the kerb a few hundred metres away, under a yellow
+arrow (the GPS takes you there); stop beside them and they get in, the sign turns red, and they
 tell you where to go: a station, a museum, a hotel, a café, all over
 Paris.  The meter runs as in a real Paris taxi (tarif A on weekdays from
 10 to 17, tarif B in the evening, at night and on Sundays), and a bonus
@@ -200,9 +200,13 @@ ride, the tourists don't mind much, and the night owls from Pigalle like
 it fast.  Knocks upset them all.  After the ride: Enter for the next fare,
 Esc to end the shift and see what you earned.
 
-The streets have their real speed limits (30 almost everywhere in Paris,
-20 in shared streets, 50 on the big roads), shown on a sign by the
-speedometer that flashes when you are too fast.  Now and then the police
+A green arrow shows where to stop at the end.
+
+The streets have speed limits at the game's pace: 50 in the small
+streets, 60 in the ordinary ones, 80 on the big roads (from the real
+limits, which are 20, 30 and 50; `speed_limits = real` in `~/.deriverc`
+for those).  A sign by the speedometer shows the limit and flashes when
+you are too fast.  Now and then the police
 stand by the road with a speed gun: 45 € up to 20 km/h too fast, 135 €
 up to 40, 375 € beyond.  How often, and how much, can be changed in
 `~/.deriverc` (`taxi_police = 1.0`, `taxi_fines = 1.0`).
@@ -244,7 +248,8 @@ So far: `traffic`, `pedestrians` (1.0 = normal), `volume` (0 .. 1),
 automatic), `clutch` (no: change gear without the clutch) and
 `force_feedback` (0 .. 1), `steering` (sensitivity) and `wheel_centre`
 (degrees), and for the taxi `taxi_police` and `taxi_fines` (1.0 =
-normal: how often the police check, how much they fine).
+normal: how often the police check, how much they fine) and
+`speed_limits` (`game` or `real`).
 
 ## How it works
 
