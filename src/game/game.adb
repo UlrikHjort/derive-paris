@@ -59,6 +59,7 @@ with Taxi;
 with Arc_Top;
 with Hall_B;
 with Decals;
+with Scenes;
 with Street_Life;
 with Limit_Sign;
 with Rain;
@@ -126,6 +127,7 @@ package body Game is
    Xmas_Setting : Character := 'a';   --  a(uto), y(es), n(o)
    function Christmas return Boolean is
      (Xmas_Setting = 'y' or else (Xmas_Setting = 'a' and then Almanac.Christmas));
+
    Spooky_Setting : Character := 'a';
    function Spooky return Boolean is
      (Spooky_Setting = 'y' or else (Spooky_Setting = 'a' and then Almanac.Halloween));
@@ -732,6 +734,9 @@ package body Game is
          Load_Home (Dir & "/home.txt");
          Tower.Load (Dir & "/eiffel.txt");
          Arc_Top.Load (Dir & "/arc.txt");
+         Scenes.Load;
+         Scenes.Set_Override (Xmas_Setting);
+         Scenes.Create;
          Tower.Create;     --  their railings, now that we know where they are
          Arc_Top.Create;
          --  decals
@@ -1159,6 +1164,8 @@ package body Game is
          glEnable (GL_SAMPLE_ALPHA_TO_COVERAGE);
          World.Draw_Solid;
          Street_Life.Draw (WU.Model, Cam_Pos);   --  benches, bins, posters, tags, papers
+         Scenes.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos.X, Cam_Pos.Z);
+         Set (WU.Car_Color, Car_Color);
          if Walking and then not In_Museum and then not In_Hall_B and then not On_Tower
            and then not On_Arc
          then
@@ -1179,6 +1186,7 @@ package body Game is
             Set (WU.Model, Identity);
             Xmas.Draw;
          end if;
+
          Sleigh.Draw (WU.Model, WU.Car_Color, WU.Extra_Color);
          Halloween.Draw (WU.Model);
          Ufo.Draw (WU.Model, WU.Car_Color);
@@ -2795,6 +2803,29 @@ package body Game is
                        then Taxi.Limit else 0), Taxi.Over_Limit, Time);
    end Taxi_Overlays;
 
+   --  Big text from the scenes in the middle of the screen
+   procedure Scene_Overlays is
+      use Ada.Strings.Unbounded;
+   begin
+      if Race.Active or else Taxi.Active then
+         return;
+      end if;
+      declare
+         B : constant String := Scenes.Banner;
+      begin
+         if To_String (Banner_Shown) /= B then
+            Banner_Shown := To_Unbounded_String (B);
+            if B = "" then
+               Race_Banner.Hide;
+            else
+               Race_Banner.Set_Markup
+                 ("<span font_family='sans' weight='heavy' size='72000' foreground='#ffd27a'>" & B & "</span>");
+               Race_Banner.Show;
+            end if;
+         end if;
+      end;
+   end Scene_Overlays;
+
    --  Racing wheel buttons do what the keys do
    procedure Wheel_Buttons is
       B : Wheel.Button;
@@ -2995,7 +3026,8 @@ package body Game is
           Jingle   => Sleigh.Jingle,
           Jets     => Surprises.Jets,
           Crowd    => (if In_Museum or else In_Hall_B then 0.1
-                       else Float'Max (Surprises.Crowd, Race.Crowd)),   --  the murmur of visitors
+                       else Float'Max (Float'Max (Surprises.Crowd, Race.Crowd),
+                                       Scenes.Crowd (Where.X, Where.Z))),   --  the murmur of visitors
           Busker   => Surprises.Busker,
           Busker_Level => Surprises.Busker_Level,
           Busker_Pan => Surprises.Busker_Pan,
@@ -3328,6 +3360,7 @@ package body Game is
                         Car.Update (Player, (if Race.Frozen then Held else Input), Dt / Float (Steps));
                         Traffic.Collide_Player (Player);
                         Street_Life.Collide (Player);
+                        Scenes.Collide (Player);
                         Loss := Before - abs Player.Speed;
                         if Player.Bumped and then Loss > 0.0 then
                            Race.Impact (Loss);   --  damage, in a race
@@ -3402,12 +3435,14 @@ package body Game is
             T0 := Clock_Now;
             Traffic.Update (Dt, Time, Focus.X, Focus.Z, Focus_Heading, Player);
             Street_Life.Update (Dt, Focus.X, Focus.Z);
+            Scenes.Update (Dt, Hour, Clock_Rate);
             Pedestrians.Update (Dt, Focus.X, Focus.Z, Focus_Heading, Player);
             Add (C_Traffic, T0);
          end;
          Update_Camera (Dt);
          Race_Overlays;
          Taxi_Overlays;
+         Scene_Overlays;
       end if;
 
       Hud_Timer := Hud_Timer + Dt;

@@ -82,6 +82,15 @@ package body Arc_Top is
       return (if V >= 0.0 then 1.0 else -1.0);
    end Champs_Side;
 
+   procedure Front (AX, AZ, BX, BZ, Out_X, Out_Z : out Float) is
+      S : constant Float := Champs_Side;
+   begin
+      From_UV (-HU, S * (HV + 0.4), AX, AZ);
+      From_UV (HU, S * (HV + 0.4), BX, BZ);
+      Out_X := -S * UZ;
+      Out_Z := S * UX;
+   end Front;
+
    function Under (X, Z : Float) return Boolean is
       U, V : Float;
    begin

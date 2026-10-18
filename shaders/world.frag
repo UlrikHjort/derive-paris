@@ -479,6 +479,43 @@ vec3 newspaper(vec2 uv)
     return c;
 }
 
+
+// Moving light on a surface, by pattern (seed) and time; .a is how much
+// light there is (the surface behind shows where it is dark)
+vec4 lightShow(vec2 uv, float seed, float t)
+{
+    float scene = floor(t / 12.0) + seed;
+    int k = int(mod(scene, 6.0));
+    float f = fract(t / 12.0);
+    vec3 c = vec3(0.0);
+    if (k == 0) {             // colour rising in waves
+        float w = sin((uv.y * 6.0 - t * 1.5) * 3.14159 + sin(uv.x * 9.0 + t) * 0.8);
+        c = mix(vec3(0.1, 0.2, 1.0), vec3(1.0, 0.2, 0.6), uv.y) * smoothstep(0.2, 0.9, w);
+    } else if (k == 1) {      // three colours sweeping across
+        float x = fract(uv.x - t * 0.15);
+        c = x < 0.33 ? vec3(0.1, 0.25, 1.0) : x < 0.66 ? vec3(1.0) : vec3(1.0, 0.1, 0.12);
+        c *= 0.8 + 0.2 * sin(uv.y * 40.0 + t * 4.0);
+    } else if (k == 2) {      // stars falling
+        vec2 g = vec2(uv.x * 24.0, uv.y * 12.0 + t * 3.0);
+        vec2 id = floor(g), q = fract(g) - 0.5;
+        float r = hash(id + seed);
+        c = vec3(1.0, 0.9, 0.6) * step(0.75, r) * smoothstep(0.25, 0.0, length(q));
+    } else if (k == 3) {      // a canvas from a seed, fading in and out
+        c = seeded(uv, scene * 17.0 + 3.0) * smoothstep(0.0, 0.15, f) * smoothstep(1.0, 0.85, f);
+    } else if (k == 4) {      // rings from the middle
+        float d = length((uv - 0.5) * vec2(2.0, 1.0));
+        c = 0.5 + 0.5 * cos(vec3(0.0, 2.0, 4.0) + d * 14.0 - t * 3.0);
+        c *= smoothstep(0.0, 0.3, sin(d * 30.0 - t * 5.0));
+    } else {                  // the windows lit one by one
+        vec2 id = floor(uv * vec2(14.0, 6.0));
+        float on = step(0.5, fract(hash(id + seed) + t * 0.4));
+        c = mix(vec3(1.0, 0.75, 0.3), vec3(0.3, 0.6, 1.0), hash(id + 7.0)) * on
+          * step(0.15, fract(uv.x * 14.0)) * step(0.2, fract(uv.y * 6.0));
+    }
+    float a = clamp(max(c.r, max(c.g, c.b)) * 1.3, 0.0, 1.0);
+    return vec4(c, a);
+}
+
 struct Surface { vec3 albedo; float spec; float gloss; vec3 emissive; float wrap; };
 
 vec3 glass(vec3 N, vec3 V, float variation)
@@ -964,6 +1001,31 @@ void main()
         float spray = 0.55 + 0.45 * noise(vWorld.xz * 23.0) * noise(vWorld.xz * 7.0 + 3.0);
         gAlpha = uExtraColor.x * spray;
         s = Surface(toLinear(vec3(0.10, 0.32, 1.0)), 0.0, 8.0, toLinear(vec3(0.02, 0.06, 0.2)), 0.0);
+    } else if (m == 60) {          // the planks of a wooden chalet
+        float board = fract(vWorld.y * 5.0);
+        float n = noise(vec2(vWorld.x + vWorld.z, vWorld.y * 5.0) * vec2(3.0, 1.0));
+        vec3 wood = vec3(0.50, 0.32, 0.17) * (0.8 + 0.3 * n) * (0.75 + 0.25 * smoothstep(0.0, 0.08, board));
+        s = Surface(toLinear(wood), 0.05, 10.0, vec3(0), 0.1);
+    } else if (m == 61) {          // the warm light inside a stall
+        s = Surface(toLinear(vec3(0.95, 0.75, 0.45)), 0.0, 8.0,
+                    toLinear(vec3(1.0, 0.72, 0.38)) * (0.35 + 1.6 * uNight), 0.0);
+    } else if (m == 62) {          // ice
+        float scratch = noise(vWorld.xz * vec2(30.0, 3.0)) * noise(vWorld.zx * vec2(25.0, 4.0));
+        s = Surface(toLinear(vec3(0.82, 0.9, 0.97) * (0.9 + 0.15 * scratch)), 0.9, 140.0, vec3(0), 0.0);
+    } else if (m == 63) {          // moving light, by pattern (seed) and time
+        vec4 l = lightShow(clamp(vUV, 0.0, 1.0), vSeed, uTime);
+        gAlpha = l.a;
+        s = Surface(vec3(0.0), 0.0, 8.0, toLinear(l.rgb) * (0.8 + 4.5 * uNight), 0.0);
+    } else if (m == 65) {          // a striped awning
+        vec3 c1 = posterColour(floor(vSeed));
+        float st = step(0.5, fract(vUV.x * 6.0));
+        s = Surface(toLinear(mix(c1, vec3(0.95, 0.94, 0.9), st)), 0.05, 10.0, vec3(0), 0.3);
+    } else if (m == 66) {          // books standing in a row
+        float col = floor(vUV.x * 40.0);
+        float hgt = 0.65 + 0.35 * hash(vec2(col, vSeed));
+        vec3 c = posterColour(floor(hash(vec2(col, vSeed + 1.0)) * 8.0)) * (0.55 + 0.35 * hash(vec2(col, 3.0)));
+        float gap = step(0.08, fract(vUV.x * 40.0));
+        s = Surface(toLinear(mix(vec3(0.12, 0.1, 0.08), c, gap * step(vUV.y, hgt))), 0.05, 10.0, vec3(0), 0.0);
     } else if (m == 50) {          // a lamp in uExtraColor: the taxi sign, a police light bar
         s = Surface(toLinear(uExtraColor), 0.3, 16.0, toLinear(uExtraColor) * (1.2 + 3.0 * uNight), 0.0);
     } else if (m == 38) {          // the star on top
