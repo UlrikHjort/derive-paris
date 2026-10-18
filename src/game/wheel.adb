@@ -74,6 +74,7 @@ package body Wheel is
      with Import, Convention => C, External_Name => "ioctl";
 
    Fd        : Interfaces.C.int := -1;
+   Alive     : Boolean := False;   --  switched on (see Open)
    Current   : Input;
    Pressed   : array (Button) of Boolean := (others => False);
    Queue     : array (1 .. 32) of Button;
@@ -113,6 +114,7 @@ package body Wheel is
          pragma Unreferenced (R);
       end if;
       Fd := -1;
+      Alive := False;
       Uploaded := False;
       Current := (others => <>);
       Pressed := (others => False);
@@ -196,6 +198,9 @@ package body Wheel is
             end if;
          end;
       end loop;
+      --  A wheel on USB but switched off reports its pedals floored and
+      --  sends nothing: it counts once a pedal rests released or it moves
+      Alive := Current.Throttle < 0.1 or else Current.Brake < 0.1;
       --  Where the shifter is now (it only reports changes)
       declare
          Bits : array (0 .. 95) of Unsigned_8 := (others => 0);
@@ -241,7 +246,7 @@ package body Wheel is
       when others => null;
    end Open;
 
-   function Present return Boolean is (Fd >= 0);
+   function Present return Boolean is (Fd >= 0 and then Alive);
 
 
    procedure Hat (X : Boolean; V : Integer) is
@@ -295,6 +300,12 @@ package body Wheel is
             declare
                E : Event renames Buf (I);
             begin
+               if E.Kind = EV_ABS or else E.Kind = EV_KEY then
+                  if not Alive then
+                     Ada.Text_IO.Put_Line ("Wheel: switched on");
+                  end if;
+                  Alive := True;
+               end if;
                if E.Kind = EV_ABS then
                   case E.Code is
                      when 0 =>
@@ -317,7 +328,7 @@ package body Wheel is
       end loop;
    end Poll;
 
-   function State return Input is (Current);
+   function State return Input is (if Alive then Current else (others => <>));
 
    function Next_Press (B : out Button) return Boolean is
    begin
