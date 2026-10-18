@@ -185,6 +185,28 @@ first.  Then F2 and **Save the track**.  Your tracks are kept in
 `~/.derive_tracks` (`track <name>`, then one `latitude longitude` per
 line), so they can be renamed there.
 
+### Games: taxi
+
+F2, **Taxi**, **Start a shift**.  Your roof sign shows green: you are
+free.  Someone waves at the kerb a few hundred metres away (the GPS takes
+you there); stop beside them and they get in, the sign turns red, and they
+tell you where to go: a station, a museum, a hotel, a café, all over
+Paris.  The meter runs as in a real Paris taxi (tarif A on weekdays from
+10 to 17, tarif B in the evening, at night and on Sundays), and a bonus
+counts down from the moment they get in: the sooner you are there, the
+more of it you keep.  Every passenger is different: the businessman wants
+speed and stops tipping when you are late, the old lady wants a gentle
+ride, the tourists don't mind much, and the night owls from Pigalle like
+it fast.  Knocks upset them all.  After the ride: Enter for the next fare,
+Esc to end the shift and see what you earned.
+
+The streets have their real speed limits (30 almost everywhere in Paris,
+20 in shared streets, 50 on the big roads), shown on a sign by the
+speedometer that flashes when you are too fast.  Now and then the police
+stand by the road with a speed gun: 45 € up to 20 km/h too fast, 135 €
+up to 40, 375 € beyond.  How often, and how much, can be changed in
+`~/.deriverc` (`taxi_police = 1.0`, `taxi_fines = 1.0`).
+
 ### The calendar and its surprises
 
 The game runs on today's date: the sun rises and sets as it does in Paris
@@ -221,7 +243,8 @@ So far: `traffic`, `pedestrians` (1.0 = normal), `volume` (0 .. 1),
 (`modern`, `2cv` or `ds`), and for the wheel `manual_gearbox` (no:
 automatic), `clutch` (no: change gear without the clutch) and
 `force_feedback` (0 .. 1), `steering` (sensitivity) and `wheel_centre`
-(degrees).
+(degrees), and for the taxi `taxi_police` and `taxi_fines` (1.0 =
+normal: how often the police check, how much they fine).
 
 ## How it works
 

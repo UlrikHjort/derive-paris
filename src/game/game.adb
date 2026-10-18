@@ -55,6 +55,8 @@ with Pedestrians;
 with Photo;
 with Plane;
 with Race;
+with Taxi;
+with Limit_Sign;
 with Rain;
 with Recorder;
 with Road_Network;
@@ -155,6 +157,8 @@ package body Game is
    Results_Shown : Ada.Strings.Unbounded.Unbounded_String;
    Results_Up : Boolean := False;     --  shown (once) after the finish
    Results_Open : Boolean := False;   --  and still on the screen
+   Taxi_Goal    : Natural := 0;       --  the taxi goal the GPS has
+   Panel_Shown  : Ada.Strings.Unbounded.Unbounded_String;   --  the taxi's ride panel
    Gate_X, Gate_Z : Float := 0.0;      --  where the GPS points
    Sign    : Gtk.Label.Gtk_Label;      --  street name, like a Paris plaque
 
@@ -1127,6 +1131,10 @@ package body Game is
          Car.Draw;
          Traffic.Draw (WU.Model, WU.Car_Color);
          Race.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos);
+         if Mode = Driving and then not Visiting then
+            Taxi.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Player, Time);
+         end if;
+         Set (WU.Car_Color, Car_Color);
          if Christmas then
             Set (WU.Model, Identity);
             Xmas.Draw;
@@ -1822,7 +1830,7 @@ package body Game is
         & "  T                one hour later" & LF
         & "  P                weather: rain, storm, snow, dry" & LF
         & "  M                sound on / off" & LF
-        & "  F2               games: street races, the track editor" & LF
+        & "  F2               games: street racing, taxi" & LF
         & "  F9               record a video (again: stop)" & LF
         & "  F12              take a photo" & LF
         & (if Wheel.Present and then not Visiting then
@@ -2025,11 +2033,11 @@ package body Game is
    ---------------------------------------------------------------------------
 
    --  The games menu: the games at the top, each with its own menu below
-   type Menu_Level is (Games, Racing, Tracks);
+   type Menu_Level is (Games, Racing, Tracks, Taxi_Menu);
    Level : Menu_Level := Games;
    type Menu_Item is
-     (Go_Racing, Go_Free, Race_Again, Leave_Race, Street_Race, Random_Race,
-      Make_Track, Save_Track, Drop_Track, Up);
+     (Go_Racing, Go_Taxi, Go_Free, Race_Again, Leave_Race, Street_Race, Random_Race,
+      Make_Track, Save_Track, Drop_Track, Start_Shift, Stop_Shift, Up);
    type Item_Array is array (1 .. 8) of Menu_Item;
 
    procedure List_Items (L : out Item_Array; N : out Natural) is
@@ -2044,7 +2052,15 @@ package body Game is
       case Level is
          when Games =>
             Add (Go_Racing);
+            Add (Go_Taxi);
             Add (Go_Free);
+         when Taxi_Menu =>
+            if Taxi.Active then
+               Add (Stop_Shift);
+            else
+               Add (Start_Shift);
+            end if;
+            Add (Up);
          when Racing =>
             if Race.Active then
                Add (Race_Again);
@@ -2092,7 +2108,8 @@ package body Game is
                              & (case Level is
                                   when Games  => "Games",
                                   when Racing => "Street racing",
-                                  when Tracks => "Street racing: choose a track")
+                                  when Tracks => "Street racing: choose a track",
+                                  when Taxi_Menu => "Taxi")
                              & "</span></b>" & LF & LF
                              & (if Level = Tracks then
                                   "  Laps:  &lt; " & (if Race.Laps_Setting = 0 then "as the track suits"
@@ -2121,8 +2138,12 @@ package body Game is
          for I in 1 .. Menu_Items loop
             Line (I, (case Item_At (I) is
                         when Go_Racing    => "Street racing  &gt;",
+                        when Go_Taxi      => "Taxi  &gt;",
+                        when Start_Shift  => "Start a shift",
+                        when Stop_Shift   => "End the shift",
                         when Go_Free      =>
                           (if Race.Active then "Back to the city (leave the race)"
+                           elsif Taxi.Active then "Back to the city (end the shift)"
                            elsif Race.Editing then "Back to the city (drop the track)"
                            else "Free driving"),
                         when Race_Again   => "Race again",
@@ -2157,7 +2178,8 @@ package body Game is
             Toggle_List;
          end if;
          --  in a race (or making a track) straight to its own menu
-         Level := (if Race.Active or else Race.Editing then Racing else Games);
+         Level := (if Race.Active or else Race.Editing then Racing
+                   elsif Taxi.Active then Taxi_Menu else Games);
          Menu_Sel := 1;
          Refresh_Menu;
          Game_Menu.Show;
@@ -2173,6 +2195,7 @@ package body Game is
          when Games  => Toggle_Menu;
          when Racing => Level := Games;
          when Tracks => Level := Racing;
+         when Taxi_Menu => Level := Games;
       end case;
       Menu_Sel := 1;
       if Menu_Open then
@@ -2207,6 +2230,39 @@ package body Game is
       end if;
    end End_Race;
 
+   --  Back to free driving from the taxi
+   procedure End_Taxi is
+   begin
+      if Taxi.Active then
+         Taxi.Close;
+         Navigation.Clear;
+         Race_Shown := Ada.Strings.Unbounded.Null_Unbounded_String;
+         Race_Hud.Hide;
+         Race_Banner.Hide;
+         Limit_Sign.Set (0, False, 0.0);
+         if Game_Menu.Get_Visible and then not Menu_Open then
+            Game_Menu.Hide;
+         end if;
+      end if;
+   end End_Taxi;
+
+   procedure Begin_Taxi is
+   begin
+      if Visiting or else Walking or else Mode /= Driving then
+         Say ("Get back in the car first");
+         return;
+      end if;
+      End_Race;
+      Race.Edit_Cancel;
+      Taxi.Start_Shift (Player);
+      Taxi_Goal := 0;
+      Panel_Shown := Ada.Strings.Unbounded.Null_Unbounded_String;
+      if not Show_Compass then
+         Set_Key (16#67#, True);   --  the minimap, for the way to the fares
+      end if;
+      Race_Hud.Show;
+   end Begin_Taxi;
+
    procedure Begin_Race (Track : Natural) is
       Ok : Boolean;
    begin
@@ -2216,6 +2272,7 @@ package body Game is
       end if;
       End_Race;
       Race.Edit_Cancel;
+      End_Taxi;
       if Track = 0 then
          Race.Start_Random (Player.X, Player.Z, Player, Ok);
       else
@@ -2281,10 +2338,21 @@ package body Game is
             Level := Racing;
             Menu_Sel := 1;
             Refresh_Menu;
+         when Go_Taxi =>
+            Level := Taxi_Menu;
+            Menu_Sel := 1;
+            Refresh_Menu;
+         when Start_Shift =>
+            Toggle_Menu;
+            Begin_Taxi;
+         when Stop_Shift =>
+            Toggle_Menu;
+            Taxi.End_Shift;
          when Go_Free =>
             Toggle_Menu;
             End_Race;
             Race.Edit_Cancel;
+            End_Taxi;
          when Race_Again =>
             Toggle_Menu;
             Begin_Again;
@@ -2393,7 +2461,7 @@ package body Game is
          end;
          return;
       elsif not Race.Active then
-         if Race_Hud.Get_Visible and then Length (Race_Shown) > 0 then
+         if Race_Hud.Get_Visible and then Length (Race_Shown) > 0 and then not Taxi.Active then
             Race_Shown := Null_Unbounded_String;
             Race_Hud.Hide;
          end if;
@@ -2471,6 +2539,74 @@ package body Game is
       end if;
    end Race_Overlays;
 
+   --  Each frame in a taxi shift: the HUD, a fine, the ride's panel, the
+   --  GPS and the speed limit sign
+   procedure Taxi_Overlays is
+      use Ada.Strings.Unbounded;
+   begin
+      if not Taxi.Active then
+         return;
+      end if;
+      declare
+         T : constant String := Taxi.Hud_Text;
+         W : constant String := Taxi.Warning;
+         P : constant String := Taxi.Panel_Text;
+      begin
+         if To_String (Race_Shown) /= T then
+            Race_Shown := To_Unbounded_String (T);
+            if T = "" then
+               Race_Hud.Hide;
+            else
+               Race_Hud.Set_Markup (T);
+               Race_Hud.Show;
+            end if;
+         end if;
+         if To_String (Banner_Shown) /= W then
+            Banner_Shown := To_Unbounded_String (W);
+            if W = "" then
+               Race_Banner.Hide;
+            else
+               declare
+                  Bar : constant Natural := Ada.Strings.Fixed.Index (W, "|");
+               begin
+                  Race_Banner.Set_Markup
+                    ("<span font_family='sans' background='#a01818d8' foreground='white'>"
+                     & "<span weight='heavy' size='30000'>  " & W (W'First + 1 .. Bar - 1)
+                     & "  </span>" & ASCII.LF & "<span size='16000'>  " & W (Bar + 1 .. W'Last)
+                     & "  </span></span>");
+                  Race_Banner.Show;
+               end;
+            end if;
+         end if;
+         if not Menu_Open and then To_String (Panel_Shown) /= P then
+            Panel_Shown := To_Unbounded_String (P);
+            if P = "" then
+               Game_Menu.Hide;
+            else
+               Game_Menu.Set_Markup (P);
+               Game_Menu.Show;
+            end if;
+         end if;
+      end;
+      declare
+         Serial : Natural;
+         X, Z   : Float;
+         Name   : Unbounded_String;
+      begin
+         Taxi.Goal (Serial, X, Z, Name);
+         if Serial /= Taxi_Goal then
+            Taxi_Goal := Serial;
+            if Length (Name) = 0 then
+               Navigation.Clear;
+            else
+               Navigation.Set_Destination (To_String (Name), X, Z);
+            end if;
+         end if;
+      end;
+      Limit_Sign.Set ((if Mode = Driving and then not Visiting and then not Walking
+                       then Taxi.Limit else 0), Taxi.Over_Limit, Time);
+   end Taxi_Overlays;
+
    --  Racing wheel buttons do what the keys do
    procedure Wheel_Buttons is
       B : Wheel.Button;
@@ -2481,6 +2617,14 @@ package body Game is
       end Tap;
    begin
       while Wheel.Next_Press (B) loop
+         if not Menu_Open and then Taxi.Panel_Text /= "" then
+            case B is
+               when Wheel.Cross  => Tap (16#FF0D#);   --  next fare
+               when Wheel.Circle => Tap (16#FF1B#);   --  end the shift
+               when others => null;
+            end case;
+            goto Next;
+         end if;
          if Menu_Open then
             case B is
                when Wheel.Pad_Up   => Tap (16#FF52#);
@@ -2812,6 +2956,27 @@ package body Game is
             Set_Key (16#FF0D#, True);   --  Race on a track
          end if;
       end if;
+      --  PARIS_TAXI_AUTO=1: jump to each fare and destination in turn (testing)
+      if Ready and then Env ("PARIS_TAXI_AUTO") /= "" and then Frame_Number mod 150 = 0 then
+         declare
+            use type Taxi.Phase_Kind;
+            Serial : Natural;
+            X, Z   : Float;
+            Name   : Ada.Strings.Unbounded.Unbounded_String;
+         begin
+            Taxi.Goal (Serial, X, Z, Name);
+            if Taxi.Phase = Taxi.Paid then
+               Set_Key (16#FF0D#, True);
+            elsif Ada.Strings.Unbounded.Length (Name) > 0 then
+               Player := (X => X, Z => Z, Heading => Player.Heading, others => <>);
+               Player.Ground := Terrain.Height (X, Z);
+            end if;
+         end;
+      end if;
+      --  PARIS_TAXI=1: start a taxi shift (testing)
+      if Ready and then Frame_Number = 30 and then Env ("PARIS_TAXI") /= "" then
+         Begin_Taxi;
+      end if;
       --  PARIS_RACE=<track>: on the grid at once (0: a random track; testing)
       if Ready and then Frame_Number = 30 and then Env ("PARIS_RACE") /= "" then
          if Env ("PARIS_RACE_LAPS") /= "" then
@@ -2929,6 +3094,7 @@ package body Game is
                         Loss := Before - abs Player.Speed;
                         if Player.Bumped and then Loss > 0.0 then
                            Race.Impact (Loss);   --  damage, in a race
+                           Taxi.Impact (Loss);   --  an upset passenger
                         end if;
                         if Player.Kerb_Jolt /= 0.0 then
                            Jolt := Player.Kerb_Jolt;
@@ -2977,6 +3143,7 @@ package body Game is
                end;
             end if;
             Race.Update (Dt, Player);
+            Taxi.Update (Dt, Player, Hour, Almanac.Sunday);
             Add (C_Physics, T0);
             T0 := Clock_Now;
             Traffic.Update (Dt, Time, Focus.X, Focus.Z, Focus_Heading, Player);
@@ -2985,6 +3152,7 @@ package body Game is
          end;
          Update_Camera (Dt);
          Race_Overlays;
+         Taxi_Overlays;
       end if;
 
       Hud_Timer := Hud_Timer + Dt;
@@ -3210,6 +3378,26 @@ package body Game is
       if Menu_Open and then Down and then Menu_Key (K) then
          return;
       end if;
+      --  after a taxi ride: on to the next fare, or end the shift
+      if Down and then not Menu_Open
+        and then (K = 16#FF0D# or else K = 16#FF8D# or else K = 16#FF1B#)
+      then
+         declare
+            use type Taxi.Phase_Kind;
+         begin
+            if Taxi.Phase = Taxi.Paid then
+               if K = 16#FF1B# then
+                  Taxi.End_Shift;
+               else
+                  Taxi.Next_Fare (Player);
+               end if;
+               return;
+            elsif Taxi.Phase = Taxi.Summary then
+               End_Taxi;
+               return;
+            end if;
+         end;
+      end if;
       --  the track editor: Enter drops a checkpoint, Backspace takes it back
       if Race.Editing and then Down and then not Walking and then Mode = Driving then
          if K = 16#FF0D# or else K = 16#FF8D# then
@@ -3407,7 +3595,7 @@ package body Game is
                   --  the results away; the race stays (F2 for the menu)
                   Results_Open := False;
                   Game_Menu.Hide;
-               elsif Race.Active and then not (Walking and then Captured) then
+               elsif (Race.Active or else Taxi.Active) and then not (Walking and then Captured) then
                   Toggle_Menu;   --  not out of the game by mistake
                elsif Walking and then Captured then
                   Capture_Mouse (False);   --  the mouse back (click to look again)
@@ -3711,6 +3899,16 @@ package body Game is
          Gtk.Style_Context.Get_Style_Context (Sign).Add_Class ("street-sign");
       end;
       Overlay.Add_Overlay (Sign);
+
+      declare
+         Sign_W : constant Gtk.Widget.Gtk_Widget := Limit_Sign.Create;
+      begin
+         Sign_W.Set_Halign (Gtk.Widget.Align_Start);
+         Sign_W.Set_Valign (Gtk.Widget.Align_End);
+         Sign_W.Set_Margin_Start (272);
+         Sign_W.Set_Margin_Bottom (40);
+         Overlay.Add_Overlay (Sign_W);
+      end;
 
       Panel := Instruments.Create;
       Panel.Set_No_Show_All (True);

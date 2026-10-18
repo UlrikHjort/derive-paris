@@ -686,6 +686,8 @@ void main()
         s = Surface(toLinear(vec3(0.75, 0.56, 0.22) * (0.8 + 0.3 * n)), 0.9, 50.0, vec3(0), 0.0);
     } else if (m == 49) {          // the green SORTIE sign
         s = Surface(toLinear(vec3(0.1, 0.7, 0.3)), 0.0, 8.0, toLinear(vec3(0.15, 1.0, 0.45)) * 2.0, 0.0);
+    } else if (m == 50) {          // a lamp in uExtraColor: the taxi sign, a police light bar
+        s = Surface(toLinear(uExtraColor), 0.3, 16.0, toLinear(uExtraColor) * (1.2 + 3.0 * uNight), 0.0);
     } else if (m == 38) {          // the star on top
         s = Surface(toLinear(vec3(1.0, 0.85, 0.35)), 0.8, 40.0,
                     toLinear(vec3(1.0, 0.85, 0.4)) * (0.6 + 4.0 * uNight), 0.0);
