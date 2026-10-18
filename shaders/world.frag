@@ -960,6 +960,10 @@ void main()
         s = Surface(toLinear(g.rgb), 0.2, 20.0, vec3(0), 0.0);
     } else if (m == 58) {          // newspaper
         s = Surface(toLinear(newspaper(fract(vUV))), 0.0, 8.0, vec3(0), 0.3);
+    } else if (m == 59) {          // a decal; how faint in uExtraColor.x
+        float spray = 0.55 + 0.45 * noise(vWorld.xz * 23.0) * noise(vWorld.xz * 7.0 + 3.0);
+        gAlpha = uExtraColor.x * spray;
+        s = Surface(toLinear(vec3(0.10, 0.32, 1.0)), 0.0, 8.0, toLinear(vec3(0.02, 0.06, 0.2)), 0.0);
     } else if (m == 50) {          // a lamp in uExtraColor: the taxi sign, a police light bar
         s = Surface(toLinear(uExtraColor), 0.3, 16.0, toLinear(uExtraColor) * (1.2 + 3.0 * uNight), 0.0);
     } else if (m == 38) {          // the star on top

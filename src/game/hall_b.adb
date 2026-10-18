@@ -93,6 +93,13 @@ package body Hall_B is
       Origin_Set := True;
    end Place;
 
+   procedure Mark_Point (X, Z : out Float) is
+   begin
+      Place;
+      X := Door_Mid.X + 2.6 * Out_N.X;
+      Z := Door_Mid.Z + 2.6 * Out_N.Z;
+   end Mark_Point;
+
    function Touching_Entrance (X, Z : Float) return Boolean is
       AX, AZ, BX, BZ : Float;
    begin

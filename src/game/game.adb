@@ -58,6 +58,7 @@ with Race;
 with Taxi;
 with Arc_Top;
 with Hall_B;
+with Decals;
 with Street_Life;
 with Limit_Sign;
 with Rain;
@@ -733,6 +734,28 @@ package body Game is
          Arc_Top.Load (Dir & "/arc.txt");
          Tower.Create;     --  their railings, now that we know where they are
          Arc_Top.Create;
+         --  decals
+         declare
+            P : constant Vec3 := Museum.Pyramid;
+            X, Z : Float;
+         begin
+            Decals.Set (Decals.Decal_A, P.X - 32.0, P.Z);
+            if Tower.Known then
+               Tower.Centre (X, Z);
+               Decals.Set (Decals.Decal_B, X, Z);
+            end if;
+            if Arc_Top.Known then
+               Arc_Top.Centre (X, Z);
+               Decals.Set (Decals.Decal_C, X, Z);
+            end if;
+            Hall_B.Mark_Point (X, Z);
+            Decals.Set (Decals.Decal_D, X, Z);
+            if Home.Known then
+               Decals.Set (Decals.Decal_E,
+                          Home.Origin.X + Home.Length / 2.0 * Home.Along.X - 2.2 * Home.Inward.X,
+                          Home.Origin.Z + Home.Length / 2.0 * Home.Along.Z - 2.2 * Home.Inward.Z);
+            end if;
+         end;
          if Home.Known and then Home.Windows > 0 then
             --  a cat walks the railings of the balconies
             declare
@@ -1136,6 +1159,11 @@ package body Game is
          glEnable (GL_SAMPLE_ALPHA_TO_COVERAGE);
          World.Draw_Solid;
          Street_Life.Draw (WU.Model, Cam_Pos);   --  benches, bins, posters, tags, papers
+         if Walking and then not In_Museum and then not In_Hall_B and then not On_Tower
+           and then not On_Arc
+         then
+            Decals.Draw (WU.Model, WU.Extra_Color, Walk_X, Walk_Z);
+         end if;
          glDisable (GL_SAMPLE_ALPHA_TO_COVERAGE);
          Landscape.Draw;   --  the hills beyond the loaded tiles
          Set (WU.Model, Car_M);
@@ -1433,6 +1461,9 @@ package body Game is
    Welcomed : Boolean := False;
 
    --  V: go home to the apartment window, or back to the car
+   procedure Go_Home;
+   --  Up to the window (below)
+
    procedure Toggle_Visit is
    begin
       if Visiting then
@@ -1445,6 +1476,20 @@ package body Game is
                  + (Player.Z - (Home.Origin.Z + Home.Length / 2.0 * Home.Along.Z)) ** 2
                  < 150.0 ** 2
       then
+         Go_Home;
+      end if;
+      if not Visiting then
+         Announce_Timer := 0.0;
+         Street_Timer := 1.0;
+      end if;
+   end Toggle_Visit;
+
+   procedure Go_Home is
+   begin
+      if not Home.Known then
+         return;
+      end if;
+      begin
          Visiting := True;
          --  the first time home, by day, the bells of Saint-Sulpice ring
          if not Welcomed and then Hour > 8.0 and then Hour < 21.0 and then not Sound.Pealing then
@@ -1470,12 +1515,8 @@ package body Game is
          Announce := Ada.Strings.Unbounded.To_Unbounded_String ("76, rue Bonaparte");
          Announce_Timer := 1.0E9;
          Street_Timer := 1.0;
-      end if;
-      if not Visiting then
-         Announce_Timer := 0.0;
-         Street_Timer := 1.0;
-      end if;
-   end Toggle_Visit;
+      end;
+   end Go_Home;
 
    --  K: to the kitchen window, looking out into the courtyard
    procedure Go_To_Kitchen is
@@ -1672,6 +1713,26 @@ package body Game is
       end if;
    end Toggle_Walk;
 
+   function On_A_Decal return Boolean is
+      K : Decals.Decal_Kind;
+   begin
+      if not Decals.Standing_On (Walk_X, Walk_Z, K) then
+         return False;
+      end if;
+      case K is
+         when Decals.Decal_A => Enter_Museum;
+         when Decals.Decal_B => Go_Up;
+         when Decals.Decal_C => Up_The_Arc;
+         when Decals.Decal_D => Enter_Hall_B;
+         when Decals.Decal_E =>
+            Walking := False;
+            Capture_Mouse (False);
+            Traffic.Set_Walker (False, 0.0, 0.0);
+            Go_Home;
+      end case;
+      return True;
+   end On_A_Decal;
+
    procedure Update_Walk (Dt : Float) is
       Speed : constant Float := (if Keys.Shift then 4.2 else 1.5);
       Fwd_X : constant Float := Sin (Walk_Yaw);
@@ -1679,6 +1740,11 @@ package body Game is
       DX, DZ : Float := 0.0;
       Turn  : constant Float := 1.8 * Dt;
    begin
+      if not In_Museum and then not In_Hall_B and then not On_Tower and then not On_Arc
+        and then On_A_Decal
+      then
+         return;
+      end if;
       --  the arrows turn too, for those without a mouse
       if Keys.Left then
          Walk_Yaw := Walk_Yaw - Turn;
@@ -3120,6 +3186,23 @@ package body Game is
                Player := (X => X, Z => Z, Heading => Player.Heading, others => <>);
                Player.Ground := Terrain.Height (X, Z);
             end if;
+         end;
+      end if;
+      --  PARIS_DECAL=A..E: on foot a few steps from it (testing)
+      if Ready and then Frame_Number = 30 and then Env ("PARIS_DECAL") /= "" then
+         declare
+            K : constant Decals.Decal_Kind := Decals.Decal_Kind'Value ("Decal_" & Env ("PARIS_DECAL"));
+            X, Z : Float;
+            D : constant Float := Float'Value (Env ("PARIS_DECAL_D", "3.0"));
+         begin
+            Decals.Position (K, X, Z);
+            if not Walking then
+               Toggle_Walk;
+            end if;
+            Walk_X := X + D * 0.6;
+            Walk_Z := Z + D * 0.8;
+            Walk_Yaw := Arctan (X - Walk_X, -(Z - Walk_Z));
+            Walk_Pitch := -0.45;
          end;
       end if;
       --  PARIS_HEADING=<degrees>: turn the car that way (testing)

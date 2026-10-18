@@ -28,6 +28,12 @@ package body Arc_Top is
    function Known return Boolean is (Is_Known);
    function Roof_Y return Float is (Top_Y);
 
+   procedure Centre (X, Z : out Float) is
+   begin
+      X := CX;
+      Z := CZ;
+   end Centre;
+
    procedure Load (File_Name : String) is
       F : Ada.Text_IO.File_Type;
       package F_IO is new Ada.Text_IO.Float_IO (Float);

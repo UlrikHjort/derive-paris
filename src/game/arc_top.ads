@@ -22,6 +22,9 @@ package Arc_Top is
 
    function Roof_Y return Float;
 
+   procedure Centre (X, Z : out Float);
+   --  Under the middle of the vault
+
    procedure Arrival (X, Z, Yaw : out Float);
    --  On the roof, looking down the Champs-Élysées
 

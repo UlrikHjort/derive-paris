@@ -11,6 +11,9 @@ with GL;
 package Hall_B is
 
    function Touching_Entrance (X, Z : Float) return Boolean;
+
+   procedure Mark_Point (X, Z : out Float);
+   --  A step out from the way in
    --  On foot, at the way in
 
    procedure New_Exhibition;

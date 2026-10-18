@@ -21,6 +21,9 @@ package Tower is
 
    function Top_Floor_Y return Float;
 
+   procedure Centre (X, Z : out Float);
+   --  The middle, between the legs
+
    procedure Arrival (X, Z, Yaw : out Float);
    --  Where the lift lets you out at the top, looking out over Paris
 
