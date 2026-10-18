@@ -147,7 +147,6 @@ package body Game is
    List_Sel   : Positive := 1;
    Game_Menu  : Gtk.Label.Gtk_Label;   --  F2: the games
    Menu_Open  : Boolean := False;
-   Menu_Tracks : Boolean := False;     --  the list of tracks, not the games
    Menu_Sel   : Positive := 1;
    Race_Hud   : Gtk.Label.Gtk_Label;   --  lap, position, time
    Race_Banner : Gtk.Label.Gtk_Label;  --  3, 2, 1, GO!
@@ -2025,24 +2024,63 @@ package body Game is
    --  one around you, and a track editor
    ---------------------------------------------------------------------------
 
-   --  The games menu, top level
+   --  The games menu: the games at the top, each with its own menu below
+   type Menu_Level is (Games, Racing, Tracks);
+   Level : Menu_Level := Games;
    type Menu_Item is
-     (Race_Again, Free_Driving, Street_Race, Random_Race, Make_Track, Save_Track, Drop_Track);
+     (Go_Racing, Go_Free, Race_Again, Leave_Race, Street_Race, Random_Race,
+      Make_Track, Save_Track, Drop_Track, Up);
+   type Item_Array is array (1 .. 8) of Menu_Item;
+
+   procedure List_Items (L : out Item_Array; N : out Natural) is
+      procedure Add (I : Menu_Item) is
+      begin
+         N := N + 1;
+         L (N) := I;
+      end Add;
+   begin
+      N := 0;
+      L := (others => Up);
+      case Level is
+         when Games =>
+            Add (Go_Racing);
+            Add (Go_Free);
+         when Racing =>
+            if Race.Active then
+               Add (Race_Again);
+               Add (Leave_Race);
+            end if;
+            Add (Street_Race);
+            Add (Random_Race);
+            if Race.Editing then
+               Add (Save_Track);
+               Add (Drop_Track);
+            else
+               Add (Make_Track);
+            end if;
+            Add (Up);
+         when Tracks =>
+            null;   --  the tracks themselves (see Menu_Items)
+      end case;
+   end List_Items;
 
    function Menu_Items return Natural is
-     (if Menu_Tracks then Race.Track_Count + 1 elsif Race.Active then 5 else 4);
+      L : Item_Array;
+      N : Natural;
+   begin
+      if Level = Tracks then
+         return Race.Track_Count + 1;
+      end if;
+      List_Items (L, N);
+      return N;
+   end Menu_Items;
 
    function Item_At (I : Positive) return Menu_Item is
+      L : Item_Array;
+      N : Natural;
    begin
-      if Race.Active then
-         return (case I is when 1 => Race_Again, when 2 => Free_Driving, when 3 => Street_Race,
-                           when 4 => Random_Race, when others => Make_Track);
-      elsif Race.Editing then
-         return (case I is when 1 => Free_Driving, when 2 => Street_Race,
-                           when 3 => Save_Track, when others => Drop_Track);
-      end if;
-      return (case I is when 1 => Free_Driving, when 2 => Street_Race,
-                        when 3 => Random_Race, when others => Make_Track);
+      List_Items (L, N);
+      return L (Positive'Min (I, Positive'Max (1, N)));
    end Item_At;
 
    procedure Refresh_Menu is
@@ -2051,9 +2089,12 @@ package body Game is
       LF : constant String := (1 => ASCII.LF);
       T  : Unbounded_String :=
         To_Unbounded_String ("<span font_family='monospace'><b><span foreground='#ffd27a'>"
-                             & (if Menu_Tracks then "Street race: choose a track" else "Games")
+                             & (case Level is
+                                  when Games  => "Games",
+                                  when Racing => "Street racing",
+                                  when Tracks => "Street racing: choose a track")
                              & "</span></b>" & LF & LF
-                             & (if Menu_Tracks then
+                             & (if Level = Tracks then
                                   "  Laps:  &lt; " & (if Race.Laps_Setting = 0 then "as the track suits"
                                                       else Ada.Strings.Fixed.Trim
                                                         (Natural'Image (Race.Laps_Setting), Ada.Strings.Left))
@@ -2071,7 +2112,7 @@ package body Game is
       end Line;
    begin
       Menu_Sel := Positive'Min (Menu_Sel, Menu_Items);
-      if Menu_Tracks then
+      if Level = Tracks then
          for I in 1 .. Race.Track_Count loop
             Line (I, Escape (Race.Track_Name (I)));
          end loop;
@@ -2079,23 +2120,29 @@ package body Game is
       else
          for I in 1 .. Menu_Items loop
             Line (I, (case Item_At (I) is
+                        when Go_Racing    => "Street racing  &gt;",
+                        when Go_Free      =>
+                          (if Race.Active then "Back to the city (leave the race)"
+                           elsif Race.Editing then "Back to the city (drop the track)"
+                           else "Free driving"),
                         when Race_Again   => "Race again",
-                        when Free_Driving =>
+                        when Leave_Race   =>
                           (if Race.Phase = Race.Finished then "Back to the city"
-                           elsif Race.Active then "Give up the race, drive freely" else "Free driving"),
-                        when Street_Race  => "Street race ...",
+                           else "Give up the race"),
+                        when Street_Race  => "Race on a track  &gt;",
                         when Random_Race  => "Random race around here",
                         when Make_Track   => "Make a track",
                         when Save_Track   =>
                           "Save the track (" & Ada.Strings.Fixed.Trim
                             (Natural'Image (Race.Edit_Points), Ada.Strings.Left) & " checkpoints)",
-                        when Drop_Track   => "Throw the track away"));
+                        when Drop_Track   => "Throw the track away",
+                        when Up           => "back"));
          end loop;
       end if;
       Append (T, LF & "<span foreground='#aab'>"
-              & "  up/down  choose      Enter  start" & LF
-              & "  F2 / Esc close"
-              & (if Wheel.Present then LF & "  wheel: d-pad choose, X start, circle close" else "")
+              & "  up/down  choose    Enter  select" & LF
+              & "  Backspace  back    F2 / Esc  close"
+              & (if Wheel.Present then LF & "  wheel: d-pad choose, X select, circle close" else "")
               & "</span></span>");
       Game_Menu.Set_Markup (To_String (T));
    end Refresh_Menu;
@@ -2109,7 +2156,8 @@ package body Game is
          if List_Open then
             Toggle_List;
          end if;
-         Menu_Tracks := False;
+         --  in a race (or making a track) straight to its own menu
+         Level := (if Race.Active or else Race.Editing then Racing else Games);
          Menu_Sel := 1;
          Refresh_Menu;
          Game_Menu.Show;
@@ -2117,6 +2165,20 @@ package body Game is
          Game_Menu.Hide;
       end if;
    end Toggle_Menu;
+
+   --  Up a level (or close at the top)
+   procedure Menu_Back is
+   begin
+      case Level is
+         when Games  => Toggle_Menu;
+         when Racing => Level := Games;
+         when Tracks => Level := Racing;
+      end case;
+      Menu_Sel := 1;
+      if Menu_Open then
+         Refresh_Menu;
+      end if;
+   end Menu_Back;
 
    procedure Say (Text : String; Seconds : Float := 3.0) is
    begin
@@ -2205,11 +2267,9 @@ package body Game is
 
    procedure Menu_Choose is
    begin
-      if Menu_Tracks then
+      if Level = Tracks then
          if Menu_Sel > Race.Track_Count then
-            Menu_Tracks := False;
-            Menu_Sel := 2;
-            Refresh_Menu;
+            Menu_Back;
          else
             Toggle_Menu;
             Begin_Race (Menu_Sel);
@@ -2217,15 +2277,23 @@ package body Game is
          return;
       end if;
       case Item_At (Menu_Sel) is
+         when Go_Racing =>
+            Level := Racing;
+            Menu_Sel := 1;
+            Refresh_Menu;
+         when Go_Free =>
+            Toggle_Menu;
+            End_Race;
+            Race.Edit_Cancel;
          when Race_Again =>
             Toggle_Menu;
             Begin_Again;
-         when Free_Driving =>
+         when Leave_Race =>
             Toggle_Menu;
             End_Race;
          when Street_Race =>
             Race.Load_Saved;
-            Menu_Tracks := True;
+            Level := Tracks;
             Menu_Sel := 1;
             Refresh_Menu;
          when Random_Race =>
@@ -2246,12 +2314,14 @@ package body Game is
                   Say ("A track needs at least two checkpoints");
                else
                   Say ("Saved as """ & Ada.Strings.Unbounded.To_String (Name)
-                       & """ (F2, Street race)", 4.0);
+                       & """ (F2, Street racing, Race on a track)", 4.0);
                end if;
             end;
          when Drop_Track =>
             Race.Edit_Cancel;
             Toggle_Menu;
+         when Up =>
+            Menu_Back;
       end case;
    end Menu_Choose;
 
@@ -2277,18 +2347,17 @@ package body Game is
             end if;
             return True;
          when 16#FF08# =>                                     --  Backspace
-            if Menu_Tracks then
-               Menu_Tracks := False;
-               Menu_Sel := 2;
-            end if;
+            Menu_Back;
+            return True;
          when 16#FF51# | 16#61# =>                            --  left, a
-            if Menu_Tracks then
+            if Level = Tracks then
                Race.Set_Laps (if Race.Laps_Setting = 0 then 5 else Race.Laps_Setting - 1);
             else
+               Menu_Back;
                return True;
             end if;
          when 16#FF53# | 16#64# =>                            --  right, d
-            if Menu_Tracks then
+            if Level = Tracks then
                Race.Set_Laps (if Race.Laps_Setting = 5 then 0 else Race.Laps_Setting + 1);
             else
                return True;
@@ -2417,7 +2486,8 @@ package body Game is
                when Wheel.Pad_Up   => Tap (16#FF52#);
                when Wheel.Pad_Down => Tap (16#FF54#);
                when Wheel.Cross    => Tap (16#FF0D#);
-               when Wheel.Circle | Wheel.Pad_Left => Tap (16#FFBF#);
+               when Wheel.Pad_Left => Tap (16#FF08#);   --  back
+               when Wheel.Circle   => Tap (16#FFBF#);
                when others => null;
             end case;
             goto Next;
@@ -2732,12 +2802,14 @@ package body Game is
             Walk_Yaw := Float'Value (S (P2 + 1 .. S'Last - 1)) * Ada.Numerics.Pi / 180.0;
          end;
       end if;
-      --  PARIS_MENU=1|tracks: the games menu open (testing)
+      --  PARIS_MENU=1|racing|tracks: the games menu open (testing)
       if Ready and then Frame_Number = 20 and then Env ("PARIS_MENU") /= "" then
          Set_Key (16#FFBF#, True);
+         if Env ("PARIS_MENU") /= "1" then
+            Set_Key (16#FF0D#, True);   --  Street racing
+         end if;
          if Env ("PARIS_MENU") = "tracks" then
-            Set_Key (16#FF54#, True);
-            Set_Key (16#FF0D#, True);
+            Set_Key (16#FF0D#, True);   --  Race on a track
          end if;
       end if;
       --  PARIS_RACE=<track>: on the grid at once (0: a random track; testing)
