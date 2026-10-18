@@ -161,6 +161,19 @@ package body Almanac is
 
    function Christmas return Boolean is
      (Month = 12 or else (Month = 1 and then Day <= 6));
+   --  The first Sunday of Advent: four Sundays before Christmas (27 November
+   --  .. 3 December)
+   function Advent return Boolean is
+      use Ada.Calendar.Formatting;
+      Eve   : constant Ada.Calendar.Time := Ada.Calendar.Time_Of (Year, 12, 24, 43_200.0);
+      Back  : constant Integer := (Day_Name'Pos (Day_Of_Week (Eve)) + 1) mod 7;   --  to the Sunday before
+      First : constant Integer := 24 - Back - 21;    --  in December; 0 and below in November
+   begin
+      return (Month = 1 and then Day <= 6)
+        or else (Month = 12 and then Day >= First)
+        or else (Month = 11 and then Day - 30 >= First);
+   end Advent;
+
    function Bastille_Day return Boolean is (Month = 7 and then Day = 14);
    function New_Years_Eve return Boolean is (Month = 12 and then Day = 31);
 

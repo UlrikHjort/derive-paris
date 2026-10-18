@@ -964,6 +964,14 @@ void main()
         float spray = 0.55 + 0.45 * noise(vWorld.xz * 23.0) * noise(vWorld.xz * 7.0 + 3.0);
         gAlpha = uExtraColor.x * spray;
         s = Surface(toLinear(vec3(0.10, 0.32, 1.0)), 0.0, 8.0, toLinear(vec3(0.02, 0.06, 0.2)), 0.0);
+    } else if (m == 60) {          // the planks of a wooden chalet
+        float board = fract(vWorld.y * 5.0);
+        float n = noise(vec2(vWorld.x + vWorld.z, vWorld.y * 5.0) * vec2(3.0, 1.0));
+        vec3 wood = vec3(0.50, 0.32, 0.17) * (0.8 + 0.3 * n) * (0.75 + 0.25 * smoothstep(0.0, 0.08, board));
+        s = Surface(toLinear(wood), 0.05, 10.0, vec3(0), 0.1);
+    } else if (m == 61) {          // the warm light inside a stall
+        s = Surface(toLinear(vec3(0.95, 0.75, 0.45)), 0.0, 8.0,
+                    toLinear(vec3(1.0, 0.72, 0.38)) * (0.35 + 1.6 * uNight), 0.0);
     } else if (m == 50) {          // a lamp in uExtraColor: the taxi sign, a police light bar
         s = Surface(toLinear(uExtraColor), 0.3, 16.0, toLinear(uExtraColor) * (1.2 + 3.0 * uNight), 0.0);
     } else if (m == 38) {          // the star on top

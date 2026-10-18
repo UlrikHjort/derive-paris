@@ -59,6 +59,7 @@ with Taxi;
 with Arc_Top;
 with Hall_B;
 with Decals;
+with Market;
 with Street_Life;
 with Limit_Sign;
 with Rain;
@@ -126,6 +127,8 @@ package body Game is
    Xmas_Setting : Character := 'a';   --  a(uto), y(es), n(o)
    function Christmas return Boolean is
      (Xmas_Setting = 'y' or else (Xmas_Setting = 'a' and then Almanac.Christmas));
+   function Advent return Boolean is
+     (Xmas_Setting = 'y' or else (Xmas_Setting = 'a' and then Almanac.Advent));
    Spooky_Setting : Character := 'a';
    function Spooky return Boolean is
      (Spooky_Setting = 'y' or else (Spooky_Setting = 'a' and then Almanac.Halloween));
@@ -732,6 +735,7 @@ package body Game is
          Load_Home (Dir & "/home.txt");
          Tower.Load (Dir & "/eiffel.txt");
          Arc_Top.Load (Dir & "/arc.txt");
+         Market.Create;
          Tower.Create;     --  their railings, now that we know where they are
          Arc_Top.Create;
          --  decals
@@ -1178,6 +1182,10 @@ package body Game is
          if Christmas then
             Set (WU.Model, Identity);
             Xmas.Draw;
+         end if;
+         if Advent then
+            Market.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2);
+            Set (WU.Car_Color, Car_Color);
          end if;
          Sleigh.Draw (WU.Model, WU.Car_Color, WU.Extra_Color);
          Halloween.Draw (WU.Model);
@@ -2995,7 +3003,8 @@ package body Game is
           Jingle   => Sleigh.Jingle,
           Jets     => Surprises.Jets,
           Crowd    => (if In_Museum or else In_Hall_B then 0.1
-                       else Float'Max (Surprises.Crowd, Race.Crowd)),   --  the murmur of visitors
+                       else Float'Max (Float'Max (Surprises.Crowd, Race.Crowd),
+                                       (if Advent then 0.45 * Market.Nearness (Where.X, Where.Z) else 0.0))),   --  the murmur of visitors
           Busker   => Surprises.Busker,
           Busker_Level => Surprises.Busker_Level,
           Busker_Pan => Surprises.Busker_Pan,
@@ -3402,6 +3411,7 @@ package body Game is
             T0 := Clock_Now;
             Traffic.Update (Dt, Time, Focus.X, Focus.Z, Focus_Heading, Player);
             Street_Life.Update (Dt, Focus.X, Focus.Z);
+            Market.Update (Dt);
             Pedestrians.Update (Dt, Focus.X, Focus.Z, Focus_Heading, Player);
             Add (C_Traffic, T0);
          end;
