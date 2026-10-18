@@ -226,6 +226,167 @@ vec3 skyColor(vec3 dir)
 
 // ------------------------------------------------------------ materials ---
 
+
+// ---------------------------------------------------------------------------
+// Canvases from a seed: the pattern (seed mod 16), the colours (next 3
+// bits) and a variant; uv runs over the canvas.
+// ---------------------------------------------------------------------------
+
+float h1(float n) { return fract(sin(n * 12.9898 + 4.1414) * 43758.5453); }
+
+vec3 seedPalette(float p, int k)
+{
+    const vec3 P[40] = vec3[](
+        // 0 Bauhaus
+        vec3(0.93, 0.90, 0.82), vec3(0.85, 0.15, 0.12), vec3(0.10, 0.25, 0.60), vec3(0.95, 0.75, 0.10), vec3(0.08, 0.08, 0.08),
+        // 1 deep reds
+        vec3(0.45, 0.08, 0.06), vec3(0.80, 0.30, 0.10), vec3(0.95, 0.55, 0.20), vec3(0.25, 0.05, 0.08), vec3(0.65, 0.12, 0.15),
+        // 2 the sea
+        vec3(0.02, 0.10, 0.20), vec3(0.05, 0.35, 0.55), vec3(0.30, 0.70, 0.80), vec3(0.85, 0.95, 0.95), vec3(0.95, 0.60, 0.40),
+        // 3 pastels
+        vec3(0.97, 0.88, 0.85), vec3(0.75, 0.85, 0.95), vec3(0.80, 0.92, 0.80), vec3(0.98, 0.93, 0.70), vec3(0.85, 0.75, 0.92),
+        // 4 neon night
+        vec3(0.03, 0.02, 0.08), vec3(0.95, 0.10, 0.55), vec3(0.10, 0.90, 0.95), vec3(0.60, 0.20, 0.95), vec3(0.95, 0.95, 0.30),
+        // 5 earth
+        vec3(0.90, 0.85, 0.75), vec3(0.60, 0.42, 0.25), vec3(0.25, 0.18, 0.12), vec3(0.40, 0.45, 0.30), vec3(0.82, 0.70, 0.50),
+        // 6 terracotta
+        vec3(0.96, 0.94, 0.90), vec3(0.85, 0.47, 0.34), vec3(0.20, 0.18, 0.16), vec3(0.94, 0.78, 0.62), vec3(0.55, 0.30, 0.22),
+        // 7 Klein blue
+        vec3(0.95, 0.95, 0.97), vec3(0.0, 0.18, 0.65), vec3(0.05, 0.08, 0.35), vec3(0.30, 0.45, 0.85), vec3(0.0, 0.03, 0.12));
+    return P[k * 5 + int(clamp(p, 0.0, 4.0))];
+}
+
+vec3 seeded(vec2 uv, float seed)
+{
+    int style = int(mod(seed, 16.0));
+    int pk = int(mod(floor(seed / 16.0), 8.0));
+    float s = floor(seed / 128.0) * 7.13 + float(style) * 1.7 + float(pk) * 0.37;
+    vec3 c = seedPalette(0.0, pk);
+    vec3 ink = seedPalette(4.0, pk);
+    float r1 = h1(s + 2.0), r2 = h1(s + 3.0), r3 = h1(s + 4.0);
+    if (style == 0) {             // a grid of cells
+        vec2 lo = vec2(0.0), hi = vec2(1.0);
+        float line = 1.0;
+        for (int k = 0; k < 7; k++) {
+            float cut = mix(0.28, 0.72, h1(s + 10.0 + float(k) * 3.7));
+            if (h1(s + 30.0 + float(k)) < 0.5) {
+                float x = mix(lo.x, hi.x, cut);
+                line = min(line, abs(uv.x - x));
+                if (uv.x < x) hi.x = x; else lo.x = x;
+            } else {
+                float y = mix(lo.y, hi.y, cut);
+                line = min(line, abs(uv.y - y));
+                if (uv.y < y) hi.y = y; else lo.y = y;
+            }
+        }
+        float cell = h1(dot(lo + hi, vec2(13.1, 7.7)) + s);
+        c = cell < 0.5 ? seedPalette(0.0, pk) : seedPalette(1.0 + floor((cell - 0.5) * 6.0), pk);
+        c = mix(vec3(0.04), c, smoothstep(0.004, 0.009, line));
+    } else if (style == 1) {      // soft-edged fields
+        float w = 0.012 + 0.03 * r1;
+        float wob = 0.01 * (noise(uv * 30.0 + s) - 0.5);
+        float x = smoothstep(0.07, 0.07 + w, uv.x + wob) * (1.0 - smoothstep(0.93 - w, 0.93, uv.x + wob));
+        float split = 0.35 + 0.3 * r2;
+        float a = x * smoothstep(0.06, 0.06 + w, uv.y + wob) * (1.0 - smoothstep(split - 0.03 - w, split - 0.03, uv.y + wob));
+        float b = x * smoothstep(split + 0.03, split + 0.03 + w, uv.y + wob) * (1.0 - smoothstep(0.94 - w, 0.94, uv.y + wob));
+        c = mix(seedPalette(0.0, pk), seedPalette(1.0, pk), a);
+        c = mix(c, seedPalette(2.0 + floor(r3 * 2.0), pk), b);
+        c *= 0.92 + 0.08 * noise(uv * 80.0);
+    } else if (style == 2) {      // circles and lines
+        for (int k = 0; k < 8; k++) {
+            vec2 ctr = vec2(h1(s + float(k) * 5.1), h1(s + float(k) * 5.1 + 1.0));
+            float rad = 0.04 + 0.22 * h1(s + float(k) * 5.1 + 2.0);
+            float d = length(uv - ctr);
+            vec3 col = seedPalette(1.0 + mod(float(k), 4.0), pk);
+            if (h1(s + float(k) * 9.3) < 0.6) c = mix(c, col, 1.0 - smoothstep(rad - 0.004, rad, d));
+            else c = mix(c, col, 1.0 - smoothstep(0.004, 0.009, abs(d - rad)));
+        }
+        for (int k = 0; k < 4; k++) {
+            vec2 a = vec2(h1(s + 50.0 + float(k)), h1(s + 60.0 + float(k)));
+            vec2 b = vec2(h1(s + 70.0 + float(k)), h1(s + 80.0 + float(k)));
+            vec2 pa = uv - a, ba = b - a;
+            float t = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+            c = mix(c, ink, 1.0 - smoothstep(0.002, 0.005, length(pa - ba * t)));
+        }
+    } else if (style == 3) {      // arcs on tiles
+        float n = 4.0 + floor(r1 * 9.0);
+        vec2 g = uv * n;
+        vec2 id = floor(g), f = fract(g);
+        if (hash(id + s) < 0.5) f.x = 1.0 - f.x;
+        float d = min(abs(length(f) - 0.5), abs(length(f - 1.0) - 0.5));
+        float band = smoothstep(0.09 + 0.1 * r2, 0.07 + 0.1 * r2, d);
+        c = mix(seedPalette(0.0, pk), seedPalette(1.0 + floor(hash(id + s + 3.0) * 2.0), pk), band);
+    } else if (style == 4) {      // waves
+        float v = 0.0;
+        for (int k = 0; k < 3; k++) {
+            vec2 ctr = vec2(h1(s + float(k) * 3.3), h1(s + float(k) * 3.3 + 1.0)) * 1.4 - 0.2;
+            v += sin(length(uv - ctr) * (30.0 + 40.0 * r1));
+        }
+        v = v / 6.0 + 0.5;
+        c = mix(seedPalette(1.0, pk), seedPalette(2.0, pk), smoothstep(0.3, 0.7, v));
+        c = mix(c, seedPalette(3.0, pk), smoothstep(0.75, 0.95, v));
+    } else if (style == 5) {      // cells
+        float best = 9.0, second = 9.0, id = 0.0;
+        for (int k = 0; k < 16; k++) {
+            vec2 p = vec2(h1(s + float(k) * 2.7), h1(s + float(k) * 2.7 + 1.0));
+            float d = length(uv - p);
+            if (d < best) { second = best; best = d; id = float(k); }
+            else if (d < second) second = d;
+        }
+        c = seedPalette(1.0 + mod(id, 4.0), pk) * (0.85 + 0.15 * h1(id + s));
+        c = mix(ink, c, smoothstep(0.006, 0.014, second - best));
+    } else if (style == 6) {      // bent stripes
+        float x = uv.x + 0.06 * sin(uv.y * (8.0 + 10.0 * r1) + s) * (0.5 + length(uv - 0.5));
+        float st = step(0.5, fract(x * (14.0 + 20.0 * r2)));
+        float disc = step(length(uv - vec2(0.3 + 0.4 * r3, 0.5)), 0.25);
+        st = abs(st - disc);
+        c = mix(seedPalette(0.0, pk), seedPalette(1.0 + floor(r3 * 3.0), pk), st);
+    } else if (style == 7) {      // hills and a sun
+        c = mix(seedPalette(3.0, pk), seedPalette(1.0, pk), uv.y);
+        vec2 sun = vec2(0.3 + 0.4 * r1, 0.55 + 0.2 * r2);
+        c = mix(c, seedPalette(2.0, pk), 1.0 - smoothstep(0.09, 0.1, length((uv - sun) * vec2(1.0, 1.3))));
+        for (int k = 0; k < 4; k++) {
+            float hgt = 0.15 + 0.12 * float(3 - k) + 0.12 * fbm(vec2(uv.x * (2.0 + float(k)) + s + float(k) * 9.0, float(k)));
+            c = mix(c, mix(seedPalette(4.0, pk), seedPalette(3.0, pk), float(k) * 0.22), step(uv.y, hgt));
+        }
+    } else if (style == 8) {      // dots
+        float n = 18.0 + floor(r1 * 22.0);
+        vec2 g = uv * n;
+        vec2 f = fract(g) - 0.5;
+        vec2 ctr = (floor(g) + 0.5) / n;
+        float v = fbm(ctr * (2.0 + 3.0 * r2) + s);
+        c = mix(seedPalette(0.0, pk), seedPalette(1.0 + floor(v * 3.0), pk),
+                1.0 - smoothstep(0.42 * v - 0.03, 0.42 * v, length(f)));
+    } else if (style == 9) {      // shapes
+        vec2 p = uv - vec2(0.35 + 0.3 * r1, 0.6);
+        c = mix(c, seedPalette(1.0, pk), 1.0 - smoothstep(0.24, 0.245, length(p)));
+        vec2 q = uv - vec2(0.62, 0.32);
+        c = mix(c, seedPalette(2.0, pk), step(abs(q.x) + 0.0, 0.17) * step(abs(q.y), 0.17));
+        float tri = step(uv.y, 0.75 - 1.7 * abs(uv.x - 0.25 - 0.3 * r2)) * step(0.15, uv.y);
+        c = mix(c, seedPalette(3.0, pk), tri * 0.95);
+        c = mix(c, ink, step(abs(uv.y - 0.15), 0.008));
+    } else if (style == 10) {     // a grid with a diagonal
+        float n = 12.0 + floor(r1 * 20.0);
+        vec2 id = floor(uv * n);
+        float d = abs(id.x - (n - 1.0 - id.y));
+        float v = exp(-d * (0.3 + r2)) + 0.6 * step(hash(id + s), 0.06 + 0.06 * r3) + 0.15 * hash(id + s + 1.0);
+        v = clamp(v, 0.0, 1.0);
+        c = v < 0.5 ? mix(seedPalette(4.0, pk), seedPalette(1.0, pk), v * 2.0)
+                    : mix(seedPalette(1.0, pk), seedPalette(3.0, pk), v * 2.0 - 1.0);
+        vec2 f = fract(uv * n);
+        c *= 0.85 + 0.15 * step(0.06, min(f.x, f.y));
+    } else {                      // noise in big pixels
+        float n = 10.0 + floor(r1 * 30.0);
+        vec2 ctr = (floor(uv * n) + 0.5) / n;
+        float v = fbm(ctr * (1.5 + 3.0 * r2) + s * 1.3);
+        c = seedPalette(floor(v * 5.0), pk);
+    }
+    // canvas grain, and a thin dark frame
+    c *= 0.95 + 0.05 * noise(uv * 400.0);
+    float edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+    return mix(vec3(0.05), c, step(0.012, edge));
+}
+
 struct Surface { vec3 albedo; float spec; float gloss; vec3 emissive; float wrap; };
 
 vec3 glass(vec3 N, vec3 V, float variation)
@@ -686,6 +847,15 @@ void main()
         s = Surface(toLinear(vec3(0.75, 0.56, 0.22) * (0.8 + 0.3 * n)), 0.9, 50.0, vec3(0), 0.0);
     } else if (m == 49) {          // the green SORTIE sign
         s = Surface(toLinear(vec3(0.1, 0.7, 0.3)), 0.0, 8.0, toLinear(vec3(0.15, 1.0, 0.45)) * 2.0, 0.0);
+    } else if (m == 51) {          // a canvas from its seed
+        s = Surface(toLinear(seeded(clamp(vUV, 0.0, 1.0), vSeed)), 0.1, 24.0, vec3(0), 0.0);
+    } else if (m == 52) {          // polished concrete
+        float n = noise(vWorld.xz * 1.7) * 0.6 + noise(vWorld.xz * 9.0) * 0.4;
+        s = Surface(toLinear(vec3(0.58, 0.58, 0.56) * (0.9 + 0.12 * n)), 0.5, 60.0, vec3(0), 0.0);
+    } else if (m == 53) {          // a white gallery wall
+        s = Surface(toLinear(vec3(0.94, 0.94, 0.93)), 0.0, 8.0, vec3(0), 0.0);
+    } else if (m == 54) {          // painted steel indoors, in uCarColor (sculptures, pipes)
+        s = Surface(toLinear(uCarColor), 0.6, 70.0, vec3(0), 0.0);
     } else if (m == 50) {          // a lamp in uExtraColor: the taxi sign, a police light bar
         s = Surface(toLinear(uExtraColor), 0.3, 16.0, toLinear(uExtraColor) * (1.2 + 3.0 * uNight), 0.0);
     } else if (m == 38) {          // the star on top
@@ -858,12 +1028,14 @@ void main()
                                  : max(ndl, 0.0);
     vec3 ambient = mix(uAmbGround, uAmbSky, N.y * 0.5 + 0.5);
     // Inside the apartment: daylight bouncing in through the windows
-    if (m == 35 || m == 36 || (m >= 44 && m <= 48)) {
+    if (m == 35 || m == 36 || (m >= 44 && m <= 48) || (m >= 51 && m <= 54)) {
         float day = dot(uSunColor, vec3(0.3, 0.5, 0.2));
         ambient = vec3(1.0, 0.93, 0.84) * (0.05 + 0.22 * day) + 0.3 * uAmbSky;
     }
     // In the Louvre: even, warm gallery light, day and night
-    if (uGallery > 0.5) {
+    if (uGallery > 1.5) {          // hall B: cool, bright, white
+        ambient = vec3(0.95, 0.97, 1.0) * 0.95;
+    } else if (uGallery > 0.5) {
         ambient = vec3(1.0, 0.95, 0.86) * 0.8;
     }
     // Cheap ambient occlusion: darker near the ground for walls
@@ -877,6 +1049,14 @@ void main()
     vec3 lamps = localLightSpec(N, V, wetGloss, lampSpec);
     vec3 col = s.albedo * (uSunColor * diffuse * shadow + ambient * ao + lamps)
              + uSunColor * spec + s.emissive + lampSpec;
+    // Hall B is underground: no sun, no city shadows, but an even light
+    // from the ceiling, the same by day and by night
+    if (uGallery > 1.5) {
+        vec3 Lg = normalize(vec3(0.15, 1.0, 0.1));
+        vec3 Hg = normalize(Lg + V);
+        float sg = s.spec * pow(max(dot(N, Hg), 0.0), s.gloss);
+        col = s.albedo * (ambient * ao + vec3(0.35) * max(dot(N, Lg), 0.0)) + vec3(0.25) * sg + s.emissive;
+    }
     if (puddle > 0.0) {
         vec3 R = reflect(-V, N);
         float fres = 0.04 + 0.96 * pow(1.0 - max(dot(N, V), 0.0), 5.0);

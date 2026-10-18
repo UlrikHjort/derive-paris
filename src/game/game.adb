@@ -57,6 +57,7 @@ with Plane;
 with Race;
 with Taxi;
 with Arc_Top;
+with Hall_B;
 with Limit_Sign;
 with Rain;
 with Recorder;
@@ -223,6 +224,9 @@ package body Game is
    Walk_Step  : Float := 0.0;      --  the bob of the steps
    Captured   : Boolean := False;  --  the mouse turns the head
    In_Museum  : Boolean := False;  --  inside the Louvre (through the Pyramid)
+   In_Hall_B : Boolean := False;   --  in hall B
+   Caption    : Gtk.Label.Gtk_Label;   --  the label of the work you look at
+   Caption_Shown : Ada.Strings.Unbounded.Unbounded_String;
    On_Tower   : Boolean := False;  --  on top of the Eiffel Tower
    On_Arc     : Boolean := False;  --  on the roof of the Arc de Triomphe
 
@@ -764,6 +768,7 @@ package body Game is
 
    function Walk_Eye return Vec3 is
      ((Walk_X, (if In_Museum then Museum.Floor_Y
+                elsif In_Hall_B then Hall_B.Floor_Y
                 elsif On_Tower then Tower.Top_Floor_Y
                 elsif On_Arc then Arc_Top.Roof_Y
                 else Terrain.Height (Walk_X, Walk_Z))
@@ -1156,6 +1161,9 @@ package body Game is
             end if;
             glDisable (GL_SAMPLE_ALPHA_TO_COVERAGE);
          end if;
+         if In_Hall_B then
+            Hall_B.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, WU.Gallery);
+         end if;
          if In_Museum then
             Museum.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, WU.Gallery);
             Set (WU.Car_Color, Car_Color);
@@ -1180,11 +1188,11 @@ package body Game is
          Ufo.Draw_Beam (VP, Cam_Pos);
          Surprises.Draw_Lights (VP, Cam_Pos);
          Sky_Life.Draw (VP, Float (H) / (2.0 * Tan (0.525)), Night);
-         Rain.Draw (VP, Cam_Pos, Time, (if In_Museum then 0.0 else Float'Max (Rain_Amount, Snow_Amount)),
+         Rain.Draw (VP, Cam_Pos, Time, (if In_Museum or else In_Hall_B then 0.0 else Float'Max (Rain_Amount, Snow_Amount)),
                     Snow_Amount > Rain_Amount, Float (H) / (2.0 * Tan (0.525)),
                     Mix (Vec3'(0.30, 0.32, 0.36), Vec3'(0.75, 0.78, 0.82), 1.0 - Night));
          if (Mode = Driving or else Visiting or else Walking)
-           and then not In_Museum and then not On_Tower and then not On_Arc
+           and then not In_Museum and then not In_Hall_B and then not On_Tower and then not On_Arc
          then
             Rain.Draw_Leaves (VP, Cam_Pos, Time, Almanac.Leaves_Falling * (1.0 - Snow_Amount),
                               Float (H) / (2.0 * Tan (0.525)), 0.15 + 0.85 * (1.0 - Night));
@@ -1535,6 +1543,28 @@ package body Game is
       Street_Timer := 1.0;
    end Leave_Museum;
 
+   procedure Enter_Hall_B is
+   begin
+      Hall_B.New_Exhibition;
+      In_Hall_B := True;
+      Hall_B.Entrance (Walk_X, Walk_Z, Walk_Yaw);
+      Walk_Pitch := 0.0;
+      Traffic.Set_Walker (False, 0.0, 0.0);
+      Announce := Ada.Strings.Unbounded.To_Unbounded_String (Hall_B.Artist & ": " & Hall_B.Title);
+      Announce_Timer := 5.0;
+      Street_Timer := 1.0;
+   end Enter_Hall_B;
+
+   procedure Leave_Hall_B is
+   begin
+      In_Hall_B := False;
+      Hall_B.Way_Out (Walk_X, Walk_Z, Walk_Yaw);
+      Walk_Pitch := 0.15;
+      Announce := Ada.Strings.Unbounded.To_Unbounded_String (Hall_B.Exit_Name);
+      Announce_Timer := 2.0;
+      Street_Timer := 1.0;
+   end Leave_Hall_B;
+
    procedure Go_Up is
    begin
       On_Tower := True;
@@ -1607,6 +1637,8 @@ package body Game is
          Street_Timer := 1.0;
       elsif In_Museum then
          Leave_Museum;
+      elsif In_Hall_B then
+         Leave_Hall_B;
       elsif On_Tower then
          Go_Down;
       elsif On_Arc then
@@ -1688,6 +1720,14 @@ package body Game is
                Walk_Step := Walk_Step + Dt * Speed * 4.2;
                return;
             end if;
+            if In_Hall_B then
+               Hall_B.Keep_Inside (Walk_X, Walk_Z);
+               Walk_Step := Walk_Step + Dt * Speed * 4.2;
+               if Hall_B.At_Exit (Walk_X, Walk_Z) then
+                  Leave_Hall_B;
+               end if;
+               return;
+            end if;
             if In_Museum then
                Museum.Keep_Inside (Walk_X, Walk_Z);
                Walk_Step := Walk_Step + Dt * Speed * 4.2;
@@ -1700,6 +1740,10 @@ package body Game is
             World.Collide (Walk_X, Walk_Z, 0.35, Hit, NX, NZ);
             if Museum.Touching_Pyramid (Walk_X, Walk_Z) then
                Enter_Museum;
+               return;
+            end if;
+            if Hall_B.Touching_Entrance (Walk_X, Walk_Z) then
+               Enter_Hall_B;
                return;
             end if;
             if Tower.Under (Walk_X, Walk_Z) then
@@ -1849,6 +1893,12 @@ package body Game is
              & "  mouse            look all round" & LF
              & "  W / S, A / D     walk round the roof" & LF
              & "  Q                the stairs down" & LF & LF
+           elsif Walking and then In_Hall_B then
+             Head (Hall_B.Heading)
+             & "  mouse            look all round" & LF
+             & "  W / S, A / D     walk, step aside" & LF
+             & "  stand before a work to read its label" & LF
+             & "  the SORTIE door  out (or Q)" & LF & LF
            elsif Walking and then In_Museum then
              Head ("In the Louvre")
              & "  mouse            look all round" & LF
@@ -2866,7 +2916,7 @@ package body Game is
                        elsif Wheel.Present then Float'Max (0.15, Wheel.State.Throttle)
                        else 0.15),
           Speed    => (if Mode = Flying then Aircraft.Speed else abs Player.Speed),
-          Altitude => (if In_Museum then 400.0 elsif On_Tower then 280.0
+          Altitude => (if In_Museum or else In_Hall_B then 400.0 elsif On_Tower then 280.0
                        elsif On_Arc then 50.0 else Ear_Y),
           Rain     => Rain_Amount,
           Night    => Night,
@@ -2876,7 +2926,7 @@ package body Game is
           Church   => Church_Near,
           Jingle   => Sleigh.Jingle,
           Jets     => Surprises.Jets,
-          Crowd    => (if In_Museum then 0.1
+          Crowd    => (if In_Museum or else In_Hall_B then 0.1
                        else Float'Max (Surprises.Crowd, Race.Crowd)),   --  the murmur of visitors
           Busker   => Surprises.Busker,
           Busker_Level => Surprises.Busker_Level,
@@ -3006,6 +3056,24 @@ package body Game is
          end if;
          Go_Up;
          Walk_Yaw := Walk_Yaw + Float'Value (Env ("PARIS_TOWER")) * Ada.Numerics.Pi / 180.0;
+      end if;
+      --  PARIS_HALL="x z yaw": in hall B (testing)
+      if Ready and then Frame_Number = 30 and then Env ("PARIS_HALL") /= "" then
+         if not Walking then
+            Toggle_Walk;
+         end if;
+         Enter_Hall_B;
+         declare
+            S  : constant String := Env ("PARIS_HALL") & " ";
+            P1 : constant Natural := Index_Of (S, ' ', S'First);
+            P2 : constant Natural := Index_Of (S, ' ', P1 + 1);
+            EX, EZ, EY : Float;
+         begin
+            Hall_B.Entrance (EX, EZ, EY);
+            Walk_X := EX - 3.0 + Float'Value (S (S'First .. P1 - 1));
+            Walk_Z := EZ + Float'Value (S (P1 + 1 .. P2 - 1));
+            Walk_Yaw := Float'Value (S (P2 + 1 .. S'Last - 1)) * Ada.Numerics.Pi / 180.0;
+         end;
       end if;
       --  PARIS_LOUVRE="x z yaw": stand in the gallery (testing)
       if Ready and then Frame_Number = 30 and then Env ("PARIS_LOUVRE") /= "" then
@@ -3227,6 +3295,23 @@ package body Game is
             end if;
             Race.Update (Dt, Player);
             Taxi.Update (Dt, Player, Hour, Almanac.Sunday);
+            Hall_B.Update (Dt);
+            --  the label of the work you stand before
+            declare
+               use Ada.Strings.Unbounded;
+               T : constant String :=
+                 (if In_Hall_B and then Walking then Hall_B.Caption (Walk_X, Walk_Z, Walk_Yaw) else "");
+            begin
+               if T /= To_String (Caption_Shown) then
+                  Caption_Shown := To_Unbounded_String (T);
+                  if T = "" then
+                     Caption.Hide;
+                  else
+                     Caption.Set_Markup (T);
+                     Caption.Show;
+                  end if;
+               end if;
+            end;
             Add (C_Physics, T0);
             T0 := Clock_Now;
             Traffic.Update (Dt, Time, Focus.X, Focus.Z, Focus_Heading, Player);
@@ -3285,7 +3370,7 @@ package body Game is
             use Ada.Strings.Unbounded;
             Name : constant String :=
               (if Announce_Timer > 0.0 then To_String (Announce)
-               elsif not Show_Street or else In_Museum then ""
+               elsif not Show_Street or else In_Museum or else In_Hall_B then ""
                elsif On_Arc then "Arc de Triomphe"
                elsif On_Tower then "Tour Eiffel"
                elsif Walking then Road_Network.Street_At (Walk_X, Walk_Z)
@@ -3930,6 +4015,14 @@ package body Game is
       Place_List.Set_No_Show_All (True);
       Overlay.Add_Overlay (Place_List);
 
+      Gtk.Label.Gtk_New (Caption);
+      Caption.Set_Halign (Gtk.Widget.Align_Center);
+      Caption.Set_Valign (Gtk.Widget.Align_End);
+      Caption.Set_Margin_Bottom (60);
+      Caption.Set_Justify (Gtk.Enums.Justify_Center);
+      Caption.Set_No_Show_All (True);
+      Overlay.Add_Overlay (Caption);
+
       Gtk.Label.Gtk_New (Game_Menu);
       Game_Menu.Set_Halign (Gtk.Widget.Align_Center);
       Game_Menu.Set_Valign (Gtk.Widget.Align_Center);
@@ -3967,6 +4060,9 @@ package body Game is
             & " font-family: sans-serif; font-weight: bold; font-size: 22px;"
             & " padding: 6px 22px; border: 3px solid #f2f2f2; border-radius: 6px;"
             & " box-shadow: 0 0 0 3px #2f6b45, 0 3px 8px rgba(0,0,0,0.5); }"
+            & ".caption { background-color: rgba(250,250,248,0.94); color: #1a1a1a;"
+            & " font-size: 15px; padding: 10px 20px; border-radius: 2px;"
+            & " border-left: 4px solid #d97757; }"
             & ".help { background-color: rgba(10,14,24,0.88); color: #f2f2f2;"
             & " font-size: 15px; padding: 18px 26px; border-radius: 10px;"
             & " border: 1px solid rgba(255,255,255,0.25); }",
@@ -3980,6 +4076,9 @@ package body Game is
          Gtk.Style_Context.Get_Style_Context (Game_Menu).Add_Provider
            (Gtk.Css_Provider."+" (Css), Gtk.Style_Provider.Priority_Application);
          Gtk.Style_Context.Get_Style_Context (Game_Menu).Add_Class ("help");
+         Gtk.Style_Context.Get_Style_Context (Caption).Add_Provider
+           (Gtk.Css_Provider."+" (Css), Gtk.Style_Provider.Priority_Application);
+         Gtk.Style_Context.Get_Style_Context (Caption).Add_Class ("caption");
          Gtk.Style_Context.Get_Style_Context (Sign).Add_Provider
            (Gtk.Css_Provider."+" (Css), Gtk.Style_Provider.Priority_Application);
          Gtk.Style_Context.Get_Style_Context (Sign).Add_Class ("street-sign");
