@@ -111,6 +111,7 @@ fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 | 1 .. 9, 0 | jump to Saint-Sulpice, Notre-Dame, Louvre, Tour Eiffel, Arc de Triomphe, Sacré-Cœur, Panthéon, Concorde, Opéra, Bastille |
 | H | home: Place Saint-Sulpice (also where the game starts) |
 | R | reset |
+| F2 | games: street races and the track editor |
 | F9 | record a video with sound; F9 again stops (saved in `~/Videos/Derive`) |
 | F12 | take a photo (saved in `~/Pictures/Derive`) |
 | F1 | show these keys in the game |
@@ -152,6 +153,31 @@ saved places: Enter sets the GPS to it, Space takes you there, Delete
 forgets it.  They are kept in `~/.derive_places`, one per line as
 `latitude longitude name`, so the names can be changed there.  Saved
 places show as green diamonds on the minimap.
+
+### Games: street races
+
+F2 opens the games menu. **Street race** has five ready-made tracks (the
+Champs-Élysées, the quays of the Seine, Saint-Germain, Montmartre and the
+Marais) and the ones you made; **Random race around here** lays out a new
+loop through the streets near you. The streets are closed for the race: no
+traffic, one-way streets go both ways, every side street is closed off
+with red and white barriers so there is only one way to go, chevron boards
+show the way at the turns, and the spectators line up at the gates and
+cheer. Five opponents start with you on the grid (you start at the back),
+and after the 3-2-1 countdown it is two or three laps, depending on the
+length (or choose with left/right in the list of tracks). The GPS follows
+the course and tells you the turns; if you leave the course a warning says
+which way it is, and at the top you see your lap, position and time. After
+the finish the others come in and park after the line, and the results
+come up (Esc closes them); F2 then gives **Race again** or **Back to the
+city**. During a race Esc opens the menu, where you can also give up.
+
+**Make a track**: drive where you want the race to go and press Enter at
+each checkpoint (Backspace takes the last one back); the race follows the
+streets from one checkpoint to the next and from the last back to the
+first.  Then F2 and **Save the track**.  Your tracks are kept in
+`~/.derive_tracks` (`track <name>`, then one `latitude longitude` per
+line), so they can be renamed there.
 
 ### The calendar and its surprises
 

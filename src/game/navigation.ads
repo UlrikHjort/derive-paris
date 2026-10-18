@@ -7,12 +7,17 @@
 
 with Gtk.Widget;
 
+with Road_Network;
+
 package Navigation is
 
    function Create_Minimap return Gtk.Widget.Gtk_Widget;
    function Create_Instructions return Gtk.Widget.Gtk_Widget;
 
    procedure Set_Destination (Name : String; X, Z : Float);
+   procedure Follow (Name : String; Path : Road_Network.Route_Vectors.Vector);
+   --  Guide along this route as it is (no planning of our own, no
+   --  "arrived"): a race course
    procedure Clear;
    function Active return Boolean;
 

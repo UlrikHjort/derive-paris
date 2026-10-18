@@ -331,7 +331,7 @@ package body Sound is
 
    --  A sound event with an envelope: passing car, horn, bird, bell stroke
    type Event_Kind is (None, Passing, Horn, Bird, Bell, Click, Boom, Crackle, Jingle, Laugh, Ghost, Thunder,
-                       Cat, Wings, Snowball, Pipe, Note);
+                       Cat, Wings, Snowball, Pipe, Note, Tone);
 
    type Event is record
       Kind     : Event_Kind := None;
@@ -566,6 +566,10 @@ package body Sound is
                Src := Sin (Two_Pi * E.Phase) + 0.3 * Sin (2.0 * Two_Pi * E.Phase) + 0.15 * Noise;
                S := 2.5 * Resonate (Src, 380.0, 120.0, E.R1a, E.R1b) + 0.5 * Src;
             end;
+         when Tone =>
+            --  a race start light's beep: a clean square-ish tone
+            Env := Float'Min (1.0, E.T / 0.005) * Float'Min (1.0, (E.Dur - E.T) / 0.03);
+            S := Sin (Two_Pi * E.Freq * E.T) + 0.25 * Sin (Two_Pi * E.Freq * 3.0 * E.T);
          when Click =>
             --  a shutter: a short bright tick
             Env := Exp (-E.T * 160.0);
@@ -969,6 +973,12 @@ package body Sound is
                when Thud =>
                   Add ((Kind => Snowball, Dur => 0.3, Volume => 0.5 * Loud, Pan => 0.5 * Where,
                         others => <>));
+               when Beep =>
+                  Add ((Kind => Tone, Dur => 0.22, Volume => 0.18 * Loud, Freq => 660.0,
+                        Pan => 0.5 * Where, others => <>));
+               when Go_Beep =>
+                  Add ((Kind => Tone, Dur => 0.7, Volume => 0.2 * Loud, Freq => 1320.0,
+                        Pan => 0.5 * Where, others => <>));
                when Organ =>
                   --  the opening of Bach's Toccata in D minor, in octaves
                   declare

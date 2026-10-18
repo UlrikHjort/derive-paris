@@ -28,6 +28,7 @@ with Gdk.Frame_Clock;
 with Gdk.Types;
 with Glib;
 with Gtk.Css_Provider;
+with Gtk.Enums;
 with Gtk.Label;
 with Gtk.Main;
 with Gtk.Overlay;
@@ -53,6 +54,7 @@ with Navigation;
 with Pedestrians;
 with Photo;
 with Plane;
+with Race;
 with Rain;
 with Recorder;
 with Road_Network;
@@ -143,6 +145,18 @@ package body Game is
    Place_List : Gtk.Label.Gtk_Label;   --  saved places, shown with O
    List_Open  : Boolean := False;
    List_Sel   : Positive := 1;
+   Game_Menu  : Gtk.Label.Gtk_Label;   --  F2: the games
+   Menu_Open  : Boolean := False;
+   Menu_Tracks : Boolean := False;     --  the list of tracks, not the games
+   Menu_Sel   : Positive := 1;
+   Race_Hud   : Gtk.Label.Gtk_Label;   --  lap, position, time
+   Race_Banner : Gtk.Label.Gtk_Label;  --  3, 2, 1, GO!
+   Race_Shown : Ada.Strings.Unbounded.Unbounded_String;
+   Banner_Shown : Ada.Strings.Unbounded.Unbounded_String;
+   Results_Shown : Ada.Strings.Unbounded.Unbounded_String;
+   Results_Up : Boolean := False;     --  shown (once) after the finish
+   Results_Open : Boolean := False;   --  and still on the screen
+   Gate_X, Gate_Z : Float := 0.0;      --  where the GPS points
    Sign    : Gtk.Label.Gtk_Label;      --  street name, like a Paris plaque
 
    Show_Street  : Boolean := True;     --  N toggles
@@ -1113,6 +1127,7 @@ package body Game is
          Set (WU.Car_Color, Car_Color);
          Car.Draw;
          Traffic.Draw (WU.Model, WU.Car_Color);
+         Race.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos);
          if Christmas then
             Set (WU.Model, Identity);
             Xmas.Draw;
@@ -1335,11 +1350,17 @@ package body Game is
    end Update_Camera;
 
    --  Jump to a place: the car onto the nearest road, the plane above it
+   procedure End_Race;
+   --  Back to the city from a race (below, with the games menu)
+
    procedure Teleport (P : Place) is
       X, Z : Long_Float;
       Found : Boolean;
       RX, RZ, H : Float;
    begin
+      if Race.Active then
+         End_Race;
+      end if;
       Geo.To_Local (P.Lat, P.Lon, X, Z);
       if Mode = Flying then
          Plane.Start (Aircraft, Float (X), Float (Z), Aircraft.Heading);
@@ -1802,6 +1823,7 @@ package body Game is
         & "  T                one hour later" & LF
         & "  P                weather: rain, storm, snow, dry" & LF
         & "  M                sound on / off" & LF
+        & "  F2               games: street races, the track editor" & LF
         & "  F9               record a video (again: stop)" & LF
         & "  F12              take a photo" & LF
         & (if Wheel.Present and then not Visiting then
@@ -1998,6 +2020,388 @@ package body Game is
       return True;
    end List_Key;
 
+   ---------------------------------------------------------------------------
+   --  F2: the games.  For now street races: ready-made tracks, a random
+   --  one around you, and a track editor
+   ---------------------------------------------------------------------------
+
+   --  The games menu, top level
+   type Menu_Item is
+     (Race_Again, Free_Driving, Street_Race, Random_Race, Make_Track, Save_Track, Drop_Track);
+
+   function Menu_Items return Natural is
+     (if Menu_Tracks then Race.Track_Count + 1 elsif Race.Active then 5 else 4);
+
+   function Item_At (I : Positive) return Menu_Item is
+   begin
+      if Race.Active then
+         return (case I is when 1 => Race_Again, when 2 => Free_Driving, when 3 => Street_Race,
+                           when 4 => Random_Race, when others => Make_Track);
+      elsif Race.Editing then
+         return (case I is when 1 => Free_Driving, when 2 => Street_Race,
+                           when 3 => Save_Track, when others => Drop_Track);
+      end if;
+      return (case I is when 1 => Free_Driving, when 2 => Street_Race,
+                        when 3 => Random_Race, when others => Make_Track);
+   end Item_At;
+
+   procedure Refresh_Menu is
+      use Ada.Strings.Unbounded;
+      use type Race.Phase_Kind;
+      LF : constant String := (1 => ASCII.LF);
+      T  : Unbounded_String :=
+        To_Unbounded_String ("<span font_family='monospace'><b><span foreground='#ffd27a'>"
+                             & (if Menu_Tracks then "Street race: choose a track" else "Games")
+                             & "</span></b>" & LF & LF
+                             & (if Menu_Tracks then
+                                  "  Laps:  &lt; " & (if Race.Laps_Setting = 0 then "as the track suits"
+                                                      else Ada.Strings.Fixed.Trim
+                                                        (Natural'Image (Race.Laps_Setting), Ada.Strings.Left))
+                                  & " &gt;   (left/right)" & LF & LF
+                                else ""));
+      procedure Line (I : Positive; Text : String) is
+         Num : constant String := Natural'Image (I);
+         L   : constant String := (if Num'Length < 3 then " " else "") & Num & "  " & Text;
+      begin
+         if I = Menu_Sel then
+            Append (T, "<span background='#3a6fd8'>" & L & "  </span>" & LF);
+         else
+            Append (T, L & LF);
+         end if;
+      end Line;
+   begin
+      Menu_Sel := Positive'Min (Menu_Sel, Menu_Items);
+      if Menu_Tracks then
+         for I in 1 .. Race.Track_Count loop
+            Line (I, Escape (Race.Track_Name (I)));
+         end loop;
+         Line (Race.Track_Count + 1, "back");
+      else
+         for I in 1 .. Menu_Items loop
+            Line (I, (case Item_At (I) is
+                        when Race_Again   => "Race again",
+                        when Free_Driving =>
+                          (if Race.Phase = Race.Finished then "Back to the city"
+                           elsif Race.Active then "Give up the race, drive freely" else "Free driving"),
+                        when Street_Race  => "Street race ...",
+                        when Random_Race  => "Random race around here",
+                        when Make_Track   => "Make a track",
+                        when Save_Track   =>
+                          "Save the track (" & Ada.Strings.Fixed.Trim
+                            (Natural'Image (Race.Edit_Points), Ada.Strings.Left) & " checkpoints)",
+                        when Drop_Track   => "Throw the track away"));
+         end loop;
+      end if;
+      Append (T, LF & "<span foreground='#aab'>"
+              & "  up/down  choose      Enter  start" & LF
+              & "  F2 / Esc close"
+              & (if Wheel.Present then LF & "  wheel: d-pad choose, X start, circle close" else "")
+              & "</span></span>");
+      Game_Menu.Set_Markup (To_String (T));
+   end Refresh_Menu;
+
+   procedure Toggle_Menu is
+   begin
+      Menu_Open := not Menu_Open;
+      Results_Open := False;   --  the menu takes the results' place
+      if Menu_Open then
+         Help.Hide;
+         if List_Open then
+            Toggle_List;
+         end if;
+         Menu_Tracks := False;
+         Menu_Sel := 1;
+         Refresh_Menu;
+         Game_Menu.Show;
+      else
+         Game_Menu.Hide;
+      end if;
+   end Toggle_Menu;
+
+   procedure Say (Text : String; Seconds : Float := 3.0) is
+   begin
+      Announce := Ada.Strings.Unbounded.To_Unbounded_String (Text);
+      Announce_Timer := Seconds;
+      Street_Timer := 1.0;
+   end Say;
+
+   --  Back to the city: the race (or the editor) away, the traffic back
+   procedure End_Race is
+   begin
+      if Race.Active then
+         Race.Stop;
+         Traffic.Set_Density (Config.Get ("traffic", 1.0));
+         Navigation.Clear;
+      end if;
+      Results_Up := False;
+      Results_Open := False;
+      Race_Shown := Ada.Strings.Unbounded.Null_Unbounded_String;
+      Banner_Shown := Ada.Strings.Unbounded.Null_Unbounded_String;
+      Results_Shown := Ada.Strings.Unbounded.Null_Unbounded_String;
+      Race_Hud.Hide;
+      Race_Banner.Hide;
+      if Game_Menu.Get_Visible and then not Menu_Open then
+         Game_Menu.Hide;
+      end if;
+   end End_Race;
+
+   procedure Begin_Race (Track : Natural) is
+      Ok : Boolean;
+   begin
+      if Visiting or else Walking or else Mode /= Driving then
+         Say ("Get back in the car first");
+         return;
+      end if;
+      End_Race;
+      Race.Edit_Cancel;
+      if Track = 0 then
+         Race.Start_Random (Player.X, Player.Z, Player, Ok);
+      else
+         Race.Start (Track, Player, Ok);
+      end if;
+      if not Ok then
+         Say ((if Track = 0 then "No good track around here, try somewhere else"
+               else "This track cannot be driven"));
+         return;
+      end if;
+      --  no traffic, only the racers
+      Traffic.Set_Density (0.0);
+      Traffic.Reset;
+      Player.Ground := Terrain.Height (Player.X, Player.Z);
+      Cam_Pos := (Player.X, 6.0 + Player.Ground, Player.Z) - 10.0 * Car.Forward (Player);
+      Cam_Look := (Player.X, 1.2 + Player.Ground, Player.Z);
+      Pending_Load := True;
+      Gate_X := 0.0;
+      Gate_Z := 0.0;
+      if not Show_Compass then
+         Set_Key (16#67#, True);   --  the minimap, for the way to the gates
+      end if;
+      Race_Hud.Show;
+   end Begin_Race;
+
+   procedure Begin_Again is
+      Ok : Boolean;
+   begin
+      if Visiting or else Walking or else Mode /= Driving then
+         Say ("Get back in the car first");
+         return;
+      end if;
+      Race.Restart (Player, Ok);
+      if not Ok then
+         return;
+      end if;
+      Results_Up := False;
+      Results_Open := False;
+      Results_Shown := Ada.Strings.Unbounded.Null_Unbounded_String;
+      Banner_Shown := Ada.Strings.Unbounded.Null_Unbounded_String;
+      Player.Ground := Terrain.Height (Player.X, Player.Z);
+      Cam_Pos := (Player.X, 6.0 + Player.Ground, Player.Z) - 10.0 * Car.Forward (Player);
+      Cam_Look := (Player.X, 1.2 + Player.Ground, Player.Z);
+      Pending_Load := True;
+      Gate_X := 0.0;
+      Gate_Z := 0.0;
+      Race_Hud.Show;
+   end Begin_Again;
+
+   procedure Menu_Choose is
+   begin
+      if Menu_Tracks then
+         if Menu_Sel > Race.Track_Count then
+            Menu_Tracks := False;
+            Menu_Sel := 2;
+            Refresh_Menu;
+         else
+            Toggle_Menu;
+            Begin_Race (Menu_Sel);
+         end if;
+         return;
+      end if;
+      case Item_At (Menu_Sel) is
+         when Race_Again =>
+            Toggle_Menu;
+            Begin_Again;
+         when Free_Driving =>
+            Toggle_Menu;
+            End_Race;
+         when Street_Race =>
+            Race.Load_Saved;
+            Menu_Tracks := True;
+            Menu_Sel := 1;
+            Refresh_Menu;
+         when Random_Race =>
+            Toggle_Menu;
+            Begin_Race (0);
+         when Make_Track =>
+            Toggle_Menu;
+            End_Race;
+            Race.Edit_Start;
+            Say ("Track editor: drive, and press Enter at each checkpoint", 6.0);
+         when Save_Track =>
+            declare
+               Name : Ada.Strings.Unbounded.Unbounded_String;
+            begin
+               Race.Edit_Save (Name);
+               Toggle_Menu;
+               if Ada.Strings.Unbounded.Length (Name) = 0 then
+                  Say ("A track needs at least two checkpoints");
+               else
+                  Say ("Saved as """ & Ada.Strings.Unbounded.To_String (Name)
+                       & """ (F2, Street race)", 4.0);
+               end if;
+            end;
+         when Drop_Track =>
+            Race.Edit_Cancel;
+            Toggle_Menu;
+      end case;
+   end Menu_Choose;
+
+   --  Keys while the menu is open; True when the key was used
+   function Menu_Key (K : Gdk.Types.Gdk_Key_Type) return Boolean is
+   begin
+      case K is
+         when 16#FF52# | 16#77# =>                            --  up, w
+            if Menu_Sel > 1 then
+               Menu_Sel := Menu_Sel - 1;
+            end if;
+         when 16#FF54# | 16#73# =>                            --  down, s
+            if Menu_Sel < Menu_Items then
+               Menu_Sel := Menu_Sel + 1;
+            end if;
+         when 16#FF0D# | 16#FF8D# | 16#20# =>                 --  Enter, space
+            Menu_Choose;
+            return True;
+         when 16#31# .. 16#39# =>                             --  1 .. 9
+            if Natural (K - 16#30#) <= Menu_Items then
+               Menu_Sel := Positive (K - 16#30#);
+               Menu_Choose;
+            end if;
+            return True;
+         when 16#FF08# =>                                     --  Backspace
+            if Menu_Tracks then
+               Menu_Tracks := False;
+               Menu_Sel := 2;
+            end if;
+         when 16#FF51# | 16#61# =>                            --  left, a
+            if Menu_Tracks then
+               Race.Set_Laps (if Race.Laps_Setting = 0 then 5 else Race.Laps_Setting - 1);
+            else
+               return True;
+            end if;
+         when 16#FF53# | 16#64# =>                            --  right, d
+            if Menu_Tracks then
+               Race.Set_Laps (if Race.Laps_Setting = 5 then 0 else Race.Laps_Setting + 1);
+            else
+               return True;
+            end if;
+         when 16#FFBF# | 16#FF1B# =>                          --  F2, Escape
+            Toggle_Menu;
+            return True;
+         when others =>
+            return False;
+      end case;
+      Refresh_Menu;
+      return True;
+   end Menu_Key;
+
+   --  Each frame: the race's labels and the GPS to the next gate
+   procedure Race_Overlays is
+      use Ada.Strings.Unbounded;
+      use type Race.Phase_Kind;
+      X, Z : Float;
+   begin
+      if Race.Editing then
+         declare
+            T : constant String :=
+              "<span font_family='sans' weight='bold' foreground='white' background='#000000a0'>"
+              & "  Track editor: " & Ada.Strings.Fixed.Trim (Natural'Image (Race.Edit_Points), Ada.Strings.Left)
+              & " checkpoints   Enter: drop one here   Backspace: undo   F2: save  </span>";
+         begin
+            if To_String (Race_Shown) /= T then
+               Race_Shown := To_Unbounded_String (T);
+               Race_Hud.Set_Markup (T);
+               Race_Hud.Show;
+            end if;
+         end;
+         return;
+      elsif not Race.Active then
+         if Race_Hud.Get_Visible and then Length (Race_Shown) > 0 then
+            Race_Shown := Null_Unbounded_String;
+            Race_Hud.Hide;
+         end if;
+         return;
+      end if;
+      declare
+         T : constant String := Race.Hud_Text;
+         W : constant String := Race.Warning;
+         B : constant String := (if Race.Banner /= "" then Race.Banner
+                                 elsif W /= "" then "!" & W else "");
+      begin
+         if To_String (Race_Shown) /= T then
+            Race_Shown := To_Unbounded_String (T);
+            Race_Hud.Set_Markup (T);
+         end if;
+         if To_String (Banner_Shown) /= B then
+            Banner_Shown := To_Unbounded_String (B);
+            if B = "" then
+               Race_Banner.Hide;
+            else
+               if B (B'First) = '!' then
+                  --  a warning: "!TITLE|what to do"
+                  declare
+                     Bar : constant Natural := Ada.Strings.Fixed.Index (B, "|");
+                  begin
+                     Race_Banner.Set_Markup
+                       ("<span font_family='sans' background='#a01818d8' foreground='white'>"
+                        & "<span weight='heavy' size='36000'>  " & B (B'First + 1 .. Bar - 1)
+                        & "  </span>" & ASCII.LF & "<span size='18000'>  " & B (Bar + 1 .. B'Last)
+                        & "  </span></span>");
+                  end;
+               else
+                  Race_Banner.Set_Markup
+                    ("<span font_family='sans' weight='heavy' size='72000' foreground='"
+                     & (if B = "GO!" then "#5cff7a" else "#ffd27a") & "'>" & B & "</span>");
+               end if;
+               Race_Banner.Show;
+            end if;
+         end if;
+      end;
+      if Race.Next_Gate (X, Z) then
+         if abs (X - Gate_X) + abs (Z - Gate_Z) > 1.0 then
+            Gate_X := X;
+            Gate_Z := Z;
+            declare
+               Way : Road_Network.Route_Vectors.Vector;
+            begin
+               Race.Route_To_Gate (Player.X, Player.Z, Way);
+               Navigation.Follow ("Next checkpoint", Way);
+            end;
+         end if;
+      end if;
+      if Race.Phase = Race.Finished then
+         if not Results_Up then
+            Navigation.Clear;
+         end if;
+         --  the results once the FINISHED banner has been seen
+         if not Results_Up and then Race.Seconds_Since_Finish >= 3.0 and then not Menu_Open then
+            Results_Up := True;
+            Results_Open := True;
+            Results_Shown := Null_Unbounded_String;
+            Game_Menu.Show;
+         end if;
+         --  the others come in one by one
+         if Results_Open then
+            declare
+               R : constant String := Race.Results_Text;
+            begin
+               if To_String (Results_Shown) /= R then
+                  Results_Shown := To_Unbounded_String (R);
+                  Game_Menu.Set_Markup (R);
+               end if;
+            end;
+         end if;
+      end if;
+   end Race_Overlays;
+
    --  Racing wheel buttons do what the keys do
    procedure Wheel_Buttons is
       B : Wheel.Button;
@@ -2008,6 +2412,16 @@ package body Game is
       end Tap;
    begin
       while Wheel.Next_Press (B) loop
+         if Menu_Open then
+            case B is
+               when Wheel.Pad_Up   => Tap (16#FF52#);
+               when Wheel.Pad_Down => Tap (16#FF54#);
+               when Wheel.Cross    => Tap (16#FF0D#);
+               when Wheel.Circle | Wheel.Pad_Left => Tap (16#FFBF#);
+               when others => null;
+            end case;
+            goto Next;
+         end if;
          if List_Open then
             case B is
                when Wheel.Pad_Up   => Tap (16#FF52#);
@@ -2170,7 +2584,8 @@ package body Game is
           Church   => Church_Near,
           Jingle   => Sleigh.Jingle,
           Jets     => Surprises.Jets,
-          Crowd    => (if In_Museum then 0.1 else Surprises.Crowd),   --  the murmur of visitors
+          Crowd    => (if In_Museum then 0.1
+                       else Float'Max (Surprises.Crowd, Race.Crowd)),   --  the murmur of visitors
           Busker   => Surprises.Busker,
           Busker_Level => Surprises.Busker_Level,
           Busker_Pan => Surprises.Busker_Pan,
@@ -2310,6 +2725,21 @@ package body Game is
             Walk_Yaw := Float'Value (S (P2 + 1 .. S'Last - 1)) * Ada.Numerics.Pi / 180.0;
          end;
       end if;
+      --  PARIS_MENU=1|tracks: the games menu open (testing)
+      if Ready and then Frame_Number = 20 and then Env ("PARIS_MENU") /= "" then
+         Set_Key (16#FFBF#, True);
+         if Env ("PARIS_MENU") = "tracks" then
+            Set_Key (16#FF54#, True);
+            Set_Key (16#FF0D#, True);
+         end if;
+      end if;
+      --  PARIS_RACE=<track>: on the grid at once (0: a random track; testing)
+      if Ready and then Frame_Number = 30 and then Env ("PARIS_RACE") /= "" then
+         if Env ("PARIS_RACE_LAPS") /= "" then
+            Race.Set_Laps (Natural'Value (Env ("PARIS_RACE_LAPS")));
+         end if;
+         Begin_Race (Natural'Value (Env ("PARIS_RACE")));
+      end if;
       if Ready and then Frame_Number = 30 and then Env ("PARIS_PEAL") /= "" then
          Sound.Peal (Float'Value (Env ("PARIS_PEAL")));
       end if;
@@ -2404,13 +2834,16 @@ package body Game is
                      Snow           => Snow_Cover);
                   Was_Grinding : constant Boolean := Player.Grinding;
                   Was_Gear     : constant Integer := Player.Gear;
+                  --  on the grid: rev all you like, but the handbrake is on
+                  Held  : Car.Controls := Input;
                begin
+                  Held.Handbrake := True;
                   for I in 1 .. Steps loop
                      declare
                         Before : constant Float := abs Player.Speed;
                         Loss   : Float;
                      begin
-                        Car.Update (Player, Input, Dt / Float (Steps));
+                        Car.Update (Player, (if Race.Frozen then Held else Input), Dt / Float (Steps));
                         Traffic.Collide_Player (Player);
                         Loss := Before - abs Player.Speed;
                         if Player.Kerb_Jolt /= 0.0 then
@@ -2459,6 +2892,7 @@ package body Game is
                   end loop;
                end;
             end if;
+            Race.Update (Dt, Player);
             Add (C_Physics, T0);
             T0 := Clock_Now;
             Traffic.Update (Dt, Time, Focus.X, Focus.Z, Focus_Heading, Player);
@@ -2466,6 +2900,7 @@ package body Game is
             Add (C_Traffic, T0);
          end;
          Update_Camera (Dt);
+         Race_Overlays;
       end if;
 
       Hud_Timer := Hud_Timer + Dt;
@@ -2688,6 +3123,29 @@ package body Game is
       if List_Open and then Down and then List_Key (K) then
          return;
       end if;
+      if Menu_Open and then Down and then Menu_Key (K) then
+         return;
+      end if;
+      --  the track editor: Enter drops a checkpoint, Backspace takes it back
+      if Race.Editing and then Down and then not Walking and then Mode = Driving then
+         if K = 16#FF0D# or else K = 16#FF8D# then
+            declare
+               Ok : Boolean;
+            begin
+               Race.Edit_Drop (Player.X, Player.Z, Ok);
+               if Ok then
+                  Say ("Checkpoint" & Natural'Image (Race.Edit_Points), 1.5);
+               else
+                  Say ("Too close to the last checkpoint", 1.5);
+               end if;
+            end;
+            return;
+         elsif K = 16#FF08# then
+            Race.Edit_Undo;
+            Say ("Checkpoint taken back", 1.5);
+            return;
+         end if;
+      end if;
       case K is
          when 16#FF52# => Keys.Up := Down;
          when 16#FF54# => Keys.Down := Down;
@@ -2855,9 +3313,19 @@ package body Game is
                   Help.Show;
                end if;
             end if;
+         when 16#FFBF# =>                                     --  F2: games
+            if Down then
+               Toggle_Menu;   --  (over the results, if they are up)
+            end if;
          when 16#FF1B# =>                                     --  Escape
             if Down then
-               if Walking and then Captured then
+               if Results_Open then
+                  --  the results away; the race stays (F2 for the menu)
+                  Results_Open := False;
+                  Game_Menu.Hide;
+               elsif Race.Active and then not (Walking and then Captured) then
+                  Toggle_Menu;   --  not out of the game by mistake
+               elsif Walking and then Captured then
                   Capture_Mouse (False);   --  the mouse back (click to look again)
                elsif Help.Get_Visible then
                   Help.Hide;
@@ -3103,6 +3571,27 @@ package body Game is
       Place_List.Set_No_Show_All (True);
       Overlay.Add_Overlay (Place_List);
 
+      Gtk.Label.Gtk_New (Game_Menu);
+      Game_Menu.Set_Halign (Gtk.Widget.Align_Center);
+      Game_Menu.Set_Valign (Gtk.Widget.Align_Center);
+      Game_Menu.Set_No_Show_All (True);
+      Overlay.Add_Overlay (Game_Menu);
+
+      Gtk.Label.Gtk_New (Race_Hud);
+      Race_Hud.Set_Halign (Gtk.Widget.Align_Center);
+      Race_Hud.Set_Valign (Gtk.Widget.Align_Start);
+      Race_Hud.Set_Margin_Top (70);
+      Race_Hud.Set_No_Show_All (True);
+      Overlay.Add_Overlay (Race_Hud);
+
+      Gtk.Label.Gtk_New (Race_Banner);
+      Race_Banner.Set_Halign (Gtk.Widget.Align_Center);
+      Race_Banner.Set_Valign (Gtk.Widget.Align_Start);   --  above the car
+      Race_Banner.Set_Margin_Top (120);
+      Race_Banner.Set_Justify (Gtk.Enums.Justify_Center);
+      Race_Banner.Set_No_Show_All (True);
+      Overlay.Add_Overlay (Race_Banner);
+
       --  Street name plaque, top centre: enamel blue, white letters, green frame
       Gtk.Label.Gtk_New (Sign);
       Sign.Set_Halign (Gtk.Widget.Align_Center);
@@ -3129,6 +3618,9 @@ package body Game is
          Gtk.Style_Context.Get_Style_Context (Place_List).Add_Provider
            (Gtk.Css_Provider."+" (Css), Gtk.Style_Provider.Priority_Application);
          Gtk.Style_Context.Get_Style_Context (Place_List).Add_Class ("help");
+         Gtk.Style_Context.Get_Style_Context (Game_Menu).Add_Provider
+           (Gtk.Css_Provider."+" (Css), Gtk.Style_Provider.Priority_Application);
+         Gtk.Style_Context.Get_Style_Context (Game_Menu).Add_Class ("help");
          Gtk.Style_Context.Get_Style_Context (Sign).Add_Provider
            (Gtk.Css_Provider."+" (Css), Gtk.Style_Provider.Priority_Application);
          Gtk.Style_Context.Get_Style_Context (Sign).Add_Class ("street-sign");
@@ -3166,6 +3658,7 @@ package body Game is
          Sound.Start;
       end if;
       Gtk.Main.Main;
+      Race.Stop;
       Recorder.Stop;   --  quitting while recording keeps the video
       Sound.Stop;
    end Run;
