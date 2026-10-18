@@ -25,6 +25,7 @@ package Road_Network is
       Oneway : Integer;      --  0 both ways, 1 along, -1 against node order
       Lanes  : Positive;
       Width  : Float;
+      Limit  : Positive;     --  speed limit, km/h
       First  : Natural;      --  into Way_Nodes
       Count  : Natural;
       Name   : Ada.Strings.Unbounded.Unbounded_String;
@@ -79,6 +80,12 @@ package Road_Network is
    --  (in an allowed driving direction)
 
    function Street_At (X, Z : Float; Max_Distance : Float := 14.0) return String;
+
+   function Limit_At (X, Z : Float; Heading : Float; Arcade : Boolean := False) return Natural;
+   --  The speed limit (km/h) of the street at (X, Z), the one going the
+   --  way of Heading where streets meet; 0 off the streets.  Arcade: the
+   --  game's pace instead of the real limits (50 in the small streets, 60
+   --  in the ordinary ones, 80 on the big roads)
    --  Name of the nearest named street within Max_Distance, "" if none
 
    --  Routing ---------------------------------------------------------------

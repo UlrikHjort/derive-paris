@@ -132,9 +132,16 @@ package body Tower is
          Meshes.Quad_UV (A, B, B + Vec3'(0.0, 1.25, 0.0), A + Vec3'(0.0, 1.25, 0.0),
                          Normalize (Cross (B - A, (0.0, 1.0, 0.0))), Mat_Railing, 0.0,
                          Length (B - A), 1.25);
-         Meshes.Box (Float'Min (X0, X1) - 0.04, Float'Max (X0, X1) + 0.04,
-                     Floor_Y + 1.22, Floor_Y + 1.3,
-                     Float'Min (Z0, Z1) - 0.04, Float'Max (Z0, Z1) + 0.04, Mat_Iron);
+         --  the rail: a flat top and two faces, along the side
+         declare
+            N  : constant Vec3 := 0.05 * Normalize (Cross (B - A, (0.0, 1.0, 0.0)));
+            Lo : constant Vec3 := (0.0, 1.22, 0.0);
+            Hi : constant Vec3 := (0.0, 1.22 + 0.08, 0.0);
+         begin
+            Meshes.Quad (A + Hi - N, A + Hi + N, B + Hi + N, B + Hi - N, Mat_Iron);
+            Meshes.Quad (A + Lo + N, B + Lo + N, B + Hi + N, A + Hi + N, Mat_Iron);
+            Meshes.Quad (B + Lo - N, A + Lo - N, A + Hi - N, B + Hi - N, Mat_Iron);
+         end;
       end Side;
       D : constant Float := Deck;
    begin

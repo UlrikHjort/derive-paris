@@ -331,6 +331,61 @@ package body World is
       glBindVertexArray (0);
    end Draw_Solid;
 
+   function Ray_Free (From, To : Math3D.Vec3) return Float is
+      DX : constant Float := To.X - From.X;
+      DZ : constant Float := To.Z - From.Z;
+      Best : Float := 1.0;
+   begin
+      for TX in Geo.Tile_Of (Long_Float (Float'Min (From.X, To.X)))
+             .. Geo.Tile_Of (Long_Float (Float'Max (From.X, To.X)))
+      loop
+         for TZ in Geo.Tile_Of (Long_Float (Float'Min (From.Z, To.Z)))
+                .. Geo.Tile_Of (Long_Float (Float'Max (From.Z, To.Z)))
+         loop
+            declare
+               C : constant Tile_Maps.Cursor := Tiles.Find ((TX, TZ));
+            begin
+               if Tile_Maps.Has_Element (C) and then Tile_Maps.Element (C).Present then
+                  declare
+                     E : Float_Array renames Tile_Maps.Element (C).Edges.all;
+                     I : Natural := E'First;
+                  begin
+                     while I + Floats_Per_Edge - 1 <= E'Last loop
+                        declare
+                           AX : constant Float := E (I);
+                           AZ : constant Float := E (I + 1);
+                           EX : constant Float := E (I + 2) - AX;
+                           EZ : constant Float := E (I + 3) - AZ;
+                           Den : constant Float := DX * EZ - DZ * EX;
+                        begin
+                           --  a wall (not a trunk or a post) crossing the line
+                           if abs Den > 1.0E-6 and then EX * EX + EZ * EZ > 1.5 ** 2 then
+                              declare
+                                 T : constant Float := ((AX - From.X) * EZ - (AZ - From.Z) * EX) / Den;
+                                 U : constant Float := ((AX - From.X) * DZ - (AZ - From.Z) * DX) / Den;
+                              begin
+                                 if T >= 0.0 and then T < Best and then U >= 0.0 and then U <= 1.0 then
+                                    declare
+                                       Y : constant Float := From.Y + T * (To.Y - From.Y);
+                                    begin
+                                       if Y >= E (I + 4) and then Y <= E (I + 5) then
+                                          Best := T;
+                                       end if;
+                                    end;
+                                 end if;
+                              end;
+                           end if;
+                        end;
+                        I := I + Floats_Per_Edge;
+                     end loop;
+                  end;
+               end if;
+            end;
+         end loop;
+      end loop;
+      return Best;
+   end Ray_Free;
+
    procedure Collide
      (X, Z      : in out Float;
       Radius    : Float;

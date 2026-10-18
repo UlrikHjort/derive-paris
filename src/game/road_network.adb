@@ -81,7 +81,7 @@ package body Road_Network is
       Open (F, In_File, File_Name);
       S := Stream (F);
       String'Read (S, Magic);
-      if Magic /= "PRD4" then
+      if Magic /= "PRD4" and then Magic /= "PRD5" then
          Ada.Text_IO.Put_Line (File_Name & ": old format, run make tiles");
          Close (F);
          return;
@@ -112,6 +112,7 @@ package body Road_Network is
             declare
                Way_Id       : Integer_64;
                One, Ln, Cnt : Integer_32;
+               Lim          : Integer_32 := 30;   --  (not in PRD4)
                Width        : Float;
                V            : Integer_32;
             begin
@@ -119,6 +120,9 @@ package body Road_Network is
                Integer_32'Read (S, One);
                Integer_32'Read (S, Ln);
                Float'Read (S, Width);
+               if Magic = "PRD5" then
+                  Integer_32'Read (S, Lim);
+               end if;
                Integer_32'Read (S, Cnt);
                declare
                   Pts  : array (1 .. Integer (Cnt)) of Natural;
@@ -141,6 +145,7 @@ package body Road_Network is
                           ((Oneway => Integer (One),
                             Lanes  => Positive'Max (1, Integer (Ln)),
                             Width  => Width,
+                            Limit  => Positive'Max (5, Integer (Lim)),
                             First  => Natural (All_Points.Length),
                             Count  => Pts'Length,
                             Name   => Ada.Strings.Unbounded.To_Unbounded_String (Name)));
@@ -368,6 +373,54 @@ package body Road_Network is
       Closest (X, Z, Max_Distance, True, Found, W, Pos, PX, PZ);
       return (if Found then Ada.Strings.Unbounded.To_String (Ways (W).Name) else "");
    end Street_At;
+
+   function Limit_At (X, Z : Float; Heading : Float; Arcade : Boolean := False) return Natural is
+      HX : constant Float := Sin (Heading);
+      HZ : constant Float := -Cos (Heading);
+      Best : Float := Float'Last;
+      Limit : Natural := 0;
+   begin
+      if not Loaded then
+         return 0;
+      end if;
+      for CX in Cell_Of (X - 15.0) .. Cell_Of (X + 15.0) loop
+         for CZ in Cell_Of (Z - 15.0) .. Cell_Of (Z + 15.0) loop
+            declare
+               C : constant Cell_Maps.Cursor := Grid.Find ((CX, CZ));
+            begin
+               if Cell_Maps.Has_Element (C) then
+                  for S of Grid.Constant_Reference (C).Element.all loop
+                     declare
+                        A  : constant Node := Point (S.W, S.Pos);
+                        B  : constant Node := Point (S.W, S.Pos + 1);
+                        EX : constant Float := B.X - A.X;
+                        EZ : constant Float := B.Z - A.Z;
+                        L  : constant Float := Float'Max (0.01, Sqrt (EX * EX + EZ * EZ));
+                        T  : constant Float := Float'Max (0.0, Float'Min (1.0,
+                          ((X - A.X) * EX + (Z - A.Z) * EZ) / (L * L)));
+                        D  : constant Float := Sqrt ((A.X + T * EX - X) ** 2 + (A.Z + T * EZ - Z) ** 2);
+                        --  at a junction the street going your way counts
+                        Score : constant Float :=
+                          D + 6.0 * (1.0 - abs (EX * HX + EZ * HZ) / L);
+                     begin
+                        if D < Ways (S.W).Width / 2.0 + 3.0 and then Score < Best then
+                           Best := Score;
+                           Limit := Ways (S.W).Limit;
+                           if Arcade then
+                              Limit := (if Limit <= 20 then 50
+                                        elsif Limit >= 50 or else Ways (S.W).Width >= 12.0
+                                          or else Ways (S.W).Lanes >= 3 then 80
+                                        else 60);
+                           end if;
+                        end if;
+                     end;
+                  end loop;
+               end if;
+            end;
+         end loop;
+      end loop;
+      return Limit;
+   end Limit_At;
 
    procedure For_Segments_Near (X, Z, Radius : Float) is
    begin
