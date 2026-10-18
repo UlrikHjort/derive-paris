@@ -44,7 +44,6 @@ package Almanac is
    function Christmas_Eve return Boolean; --  24 December
    function Halloween return Boolean;     --  25 October .. 1 November
    function Christmas return Boolean;    --  1 December .. 6 January
-   function Advent return Boolean;       --  the first Sunday of Advent .. 6 January
    function Bastille_Day return Boolean;  --  14 July
    function New_Years_Eve return Boolean; --  31 December
 

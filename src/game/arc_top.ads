@@ -23,6 +23,10 @@ package Arc_Top is
    function Roof_Y return Float;
 
    procedure Centre (X, Z : out Float);
+
+   procedure Front (AX, AZ, BX, BZ, Out_X, Out_Z : out Float);
+   --  The face towards the long avenue: its two ends on the ground, and
+   --  the way it faces
    --  Under the middle of the vault
 
    procedure Arrival (X, Z, Yaw : out Float);
