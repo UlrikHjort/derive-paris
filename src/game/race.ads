@@ -62,6 +62,9 @@ package Race is
    --  Give up (or tidy away after the finish)
 
    function Phase return Phase_Kind;
+
+   function On_Course (X, Z : Float) return Boolean;
+   --  On the race's road (False when there is no race)
    function Active return Boolean;   --  not Idle
 
    procedure Update (Dt : Float; Player : in out Car.State);

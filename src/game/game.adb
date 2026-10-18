@@ -3526,6 +3526,7 @@ package body Game is
       end;
       Traffic.Set_Density (Config.Get ("traffic", 1.0));
       Pedestrians.Set_Density (Config.Get ("pedestrians", 1.0));
+      Pedestrians.Set_Keep_Out (Race.On_Course'Access);
       Sound.Set_Volume (Config.Get ("volume", 0.8));
       Saved_Places.Load;
       Ada.Numerics.Float_Random.Reset (Dice);

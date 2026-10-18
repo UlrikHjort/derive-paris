@@ -2,6 +2,7 @@
 --  Copyright (c) 2026 Ulrik Hørlyk Hjort
 --  SPDX-License-Identifier: MIT
 --
+with Ada.Containers.Ordered_Maps;
 with Ada.Containers.Vectors;
 with Ada.Directories;
 with Ada.Exceptions;
@@ -276,6 +277,39 @@ package body Race is
    package Way_Vectors is new Ada.Containers.Vectors (Natural, Natural);
    Line   : Road_Network.Route_Vectors.Vector;   --  the course street by street
    Line_S : Float_Vectors.Vector;                --  where each point is on the loop
+
+   --  The course in cells of 16 m, to find the nearby stretch quickly
+   Cell : constant := 16.0;
+   package Index_Vectors is new Ada.Containers.Vectors (Positive, Natural);
+   package Cell_Maps is new Ada.Containers.Ordered_Maps
+     (Integer, Index_Vectors.Vector, "<", Index_Vectors."=");
+   Cells : Cell_Maps.Map;
+
+   function Cell_Key (CX, CZ : Integer) return Integer is ((CX + 10_000) * 20_000 + (CZ + 10_000));
+
+   procedure Index_Course is
+   begin
+      Cells.Clear;
+      for I in Course.First_Index .. Course.Last_Index - 1 loop
+         declare
+            K : constant Integer :=
+              Cell_Key (Integer (Float'Floor ((Course (I).X + Course (I + 1).X) / 2.0 / Cell)),
+                        Integer (Float'Floor ((Course (I).Z + Course (I + 1).Z) / 2.0 / Cell)));
+            C : constant Cell_Maps.Cursor := Cells.Find (K);
+         begin
+            if Cell_Maps.Has_Element (C) then
+               Cells.Reference (C).Append (I);
+            else
+               declare
+                  V : Index_Vectors.Vector;
+               begin
+                  V.Append (I);
+                  Cells.Insert (K, V);
+               end;
+            end if;
+         end;
+      end loop;
+   end Index_Course;
    Total  : Float := 0.0;
    Gates  : Float_Vectors.Vector;   --  where the checkpoints are (distance)
    Laps   : Positive := 2;
@@ -586,6 +620,7 @@ package body Race is
          end loop;
          Start_Off := Best_S;
       end;
+      Index_Course;
       Find_Barriers;
       Find_Signs;
       --  a checkpoint every 250 m or so; the first is the start and finish
@@ -613,10 +648,13 @@ package body Race is
    Misfire_Time  : Float := 0.0;   --  the engine cut out, for a moment
    Pull_Side  : Float := 1.0;      --  which way a bent car pulls
 
+   Quiet_Time : Float := 0.0;      --  since the last knock that did harm
+
    --  How much a knock does: nothing below about 10 km/h lost, and
-   --  growing with the square of it (a crash at 80 km/h is about 60 %)
+   --  growing with the square of it (a crash at 60 km/h is about 13 %,
+   --  at 100 km/h about 40 %)
    function Harm (Loss : Float) return Float is
-     (if Loss <= 2.5 then 0.0 else ((Loss - 2.5) / 25.0) ** 2);
+     (if Loss <= 3.0 then 0.0 else ((Loss - 3.0) / 38.0) ** 2);
 
    procedure Impact (Loss : Float) is
    begin
@@ -962,6 +1000,45 @@ package body Race is
    Cheer    : Float := 0.0;
 
    function Phase return Phase_Kind is (Current);
+
+   --  On the course's road, widened by Margin
+   function Inside (X, Z, Margin : Float) return Boolean is
+      CX : constant Integer := Integer (Float'Floor (X / Cell));
+      CZ : constant Integer := Integer (Float'Floor (Z / Cell));
+   begin
+      if Current = Idle then
+         return False;
+      end if;
+      for DX in -1 .. 1 loop
+         for DZ in -1 .. 1 loop
+            declare
+               C : constant Cell_Maps.Cursor := Cells.Find (Cell_Key (CX + DX, CZ + DZ));
+            begin
+               if Cell_Maps.Has_Element (C) then
+                  for I of Cells.Constant_Reference (C) loop
+                     declare
+                        A  : Vec3 renames Course (I);
+                        B  : Vec3 renames Course (I + 1);
+                        EX : constant Float := B.X - A.X;
+                        EZ : constant Float := B.Z - A.Z;
+                        T  : constant Float := Float'Max (0.0, Float'Min (1.0,
+                          ((X - A.X) * EX + (Z - A.Z) * EZ) / Float'Max (0.0001, EX * EX + EZ * EZ)));
+                        H  : constant Float := Widths (I) / 2.0 + Margin;
+                     begin
+                        if (A.X + T * EX - X) ** 2 + (A.Z + T * EZ - Z) ** 2 < H * H then
+                           return True;
+                        end if;
+                     end;
+                  end loop;
+               end if;
+            end;
+         end loop;
+      end loop;
+      return False;
+   end Inside;
+
+   function On_Course (X, Z : Float) return Boolean is (Inside (X, Z, 0.4));
+   --  (on the road, or within 0.4 m of it)
    function Active return Boolean is (Current /= Idle);
    function Frozen return Boolean is (Current = Countdown);
 
@@ -1169,6 +1246,7 @@ package body Race is
       Pending_Time := 0.0;
       Critical_Time := 0.0;
       Misfire_Time := 0.0;
+      Quiet_Time := 0.0;
       Pull_Side := (if Rnd < 0.5 then -1.0 else 1.0);
       --  PARIS_DAMAGE=0.5: start dented (testing)
       if Ada.Environment_Variables.Exists ("PARIS_DAMAGE") then
@@ -1381,6 +1459,9 @@ package body Race is
                   Was : constant Float := Me_Damage;
                begin
                   Me_Damage := Float'Min (1.0, Me_Damage + Harm (Pending));
+                  if Harm (Pending) > 0.0 then
+                     Quiet_Time := 0.0;
+                  end if;
                   if Me_Damage >= 1.0 then
                      Wreck;
                   elsif Was < 0.6 and then Me_Damage >= 0.6 then
@@ -1392,6 +1473,14 @@ package body Race is
          end if;
       end if;
       Critical_Time := Float'Max (0.0, Critical_Time - Dt);
+      --  a few seconds without a knock, and driving fast mends the car
+      --  (the faster, the quicker); a wreck stays a wreck
+      Quiet_Time := Quiet_Time + Dt;
+      if Current = Racing and then not Me_Wrecked and then Quiet_Time > 3.0
+        and then abs Player.Speed > 14.0
+      then
+         Me_Damage := Float'Max (0.0, Me_Damage - Dt * 0.01 * Float'Min (1.5, abs Player.Speed / 22.0));
+      end if;
       --  the engine coughs now and then when badly hurt
       if Misfire_Time > 0.0 then
          Misfire_Time := Misfire_Time - Dt;
