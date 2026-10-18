@@ -48,6 +48,11 @@ package World is
    --  True on a carriageway (or where no tile is loaded)
 
    function Obstacle_At (X, Y, Z, Radius : Float) return Boolean;
+
+   function Ray_Free (From, To : Math3D.Vec3) return Float;
+   --  How far (0 .. 1) along the line From -> To the view is clear of
+   --  walls (1: all the way); small things like trunks and posts don't
+   --  count
    --  True when a sphere at (X, Y, Z) touches a building, tree, lamp...
 
    Max_Lights : constant := 64;

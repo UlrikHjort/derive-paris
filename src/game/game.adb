@@ -1346,6 +1346,26 @@ package body Game is
       end if;
       Cam_Pos := Lerp (Cam_Pos, Desired, K);
       Cam_Look := Lerp (Cam_Look, Look, 1.0 - Exp (-Dt * 12.0));
+      --  a wall between the car and the camera (a narrow street, turning
+      --  by a building): the camera comes in to this side of it, and up a
+      --  little when that is close, to look down on the car; it eases back
+      --  out once the view is clear
+      if Mode = Driving then
+         declare
+            Target : constant Vec3 := (Player.X, Player.Ground + 1.6, Player.Z);
+            Span   : constant Float := Length (Cam_Pos - Target);
+            Free   : constant Float := World.Ray_Free (Target, Cam_Pos);
+         begin
+            if Free < 1.0 and then Span > 0.5 then
+               declare
+                  D : constant Float := Float'Max (1.5, Free * Span - 0.7);
+               begin
+                  Cam_Pos := Target + (D / Span) * (Cam_Pos - Target);
+                  Cam_Pos.Y := Cam_Pos.Y + Float'Max (0.0, 6.0 - D) * 0.5;
+               end;
+            end if;
+         end;
+      end if;
       --  never below the ground (hills, the plane low over Montmartre)
       declare
          G : constant Float := Terrain.Height (Cam_Pos.X, Cam_Pos.Z) + 1.0;
@@ -2972,6 +2992,10 @@ package body Game is
                Player.Ground := Terrain.Height (X, Z);
             end if;
          end;
+      end if;
+      --  PARIS_HEADING=<degrees>: turn the car that way (testing)
+      if Ready and then Frame_Number = 30 and then Env ("PARIS_HEADING") /= "" then
+         Player.Heading := Float'Value (Env ("PARIS_HEADING")) * Ada.Numerics.Pi / 180.0;
       end if;
       --  PARIS_TAXI=1: start a taxi shift (testing)
       if Ready and then Frame_Number = 30 and then Env ("PARIS_TAXI") /= "" then
