@@ -331,6 +331,40 @@ package body World is
       glBindVertexArray (0);
    end Draw_Solid;
 
+   procedure For_Walls_Near (X, Z, Radius : Float) is
+   begin
+      for TX in Geo.Tile_Of (Long_Float (X - Radius)) .. Geo.Tile_Of (Long_Float (X + Radius)) loop
+         for TZ in Geo.Tile_Of (Long_Float (Z - Radius)) .. Geo.Tile_Of (Long_Float (Z + Radius)) loop
+            declare
+               C : constant Tile_Maps.Cursor := Tiles.Find ((TX, TZ));
+            begin
+               if Tile_Maps.Has_Element (C) and then Tile_Maps.Element (C).Present then
+                  declare
+                     E : Float_Array renames Tile_Maps.Element (C).Edges.all;
+                     I : Natural := E'First;
+                  begin
+                     while I + Floats_Per_Edge - 1 <= E'Last loop
+                        declare
+                           MX : constant Float := 0.5 * (E (I) + E (I + 2));
+                           MZ : constant Float := 0.5 * (E (I + 1) + E (I + 3));
+                        begin
+                           --  an edge is kept in every tile it crosses: take
+                           --  it from the one holding its middle
+                           if Geo.Tile_Of (Long_Float (MX)) = TX and then Geo.Tile_Of (Long_Float (MZ)) = TZ
+                             and then abs (MX - X) <= Radius and then abs (MZ - Z) <= Radius
+                           then
+                              Visit (E (I), E (I + 1), E (I + 2), E (I + 3), E (I + 4), E (I + 5));
+                           end if;
+                        end;
+                        I := I + Floats_Per_Edge;
+                     end loop;
+                  end;
+               end if;
+            end;
+         end loop;
+      end loop;
+   end For_Walls_Near;
+
    function Ray_Free (From, To : Math3D.Vec3) return Float is
       DX : constant Float := To.X - From.X;
       DZ : constant Float := To.Z - From.Z;
