@@ -836,6 +836,7 @@ package body World_Builder is
       Drive  : Boolean;            --  part of the traffic network
       Oneway : Integer;            --  0 two-way, 1 forward, -1 backward
       Lanes  : Natural;
+      Limit  : Natural := 30;      --  maxspeed, km/h
       Name   : Ada.Strings.Unbounded.Unbounded_String;
       Kind   : Ada.Strings.Unbounded.Unbounded_String;   --  highway=*
       Layer  : Integer := 0;
@@ -938,6 +939,28 @@ package body World_Builder is
          end if;
       end if;
    end Classify;
+
+   --  maxspeed in km/h; without it the Paris rule: 30 almost everywhere
+   --  since 2021, 20 in shared streets, 50 on the motorway-like roads
+   function Speed_Limit (Tags : Tag_Maps.Map; HW : String) return Natural is
+      V : constant String := Tag (Tags, "maxspeed");
+      N : constant Long_Float := Num_Value (V);
+   begin
+      if V = "walk" or else V = "FR:walk" then
+         return 10;
+      elsif V = "FR:zone30" then
+         return 30;
+      elsif V = "FR:urban" then
+         return 50;
+      elsif N >= 5.0 and then N <= 130.0 then
+         return Natural (N);
+      elsif HW = "living_street" then
+         return 20;
+      elsif One_Of (HW, "motorway|trunk|motorway_link|trunk_link") then
+         return 50;
+      end if;
+      return 30;
+   end Speed_Limit;
 
    procedure Classify_Highway (W : Way_Rec) is
       HW    : constant String := Tag (W.Tags, "highway");
@@ -1047,6 +1070,7 @@ package body World_Builder is
                     and then Tag (W.Tags, "motor_vehicle") /= "no",
           Oneway => Oneway,
           Lanes  => Lanes,
+          Limit  => Speed_Limit (W.Tags, HW),
           Name   => Ada.Strings.Unbounded.To_Unbounded_String
                       (Tag (W.Tags, "name", Tag (W.Tags, "ref"))),
           Kind   => Ada.Strings.Unbounded.To_Unbounded_String (HW),
@@ -4472,7 +4496,7 @@ package body World_Builder is
       end loop;
       Create (F, Out_File, File_Name);
       S := Stream (F);
-      String'Write (S, "PRD4");
+      String'Write (S, "PRD5");
       Integer_32'Write (S, Integer_32 (Pos.Length));
       for I in Pos.First_Index .. Pos.Last_Index loop
          Integer_64'Write (S, Integer_64 (Ids.Element (I)));
@@ -4494,6 +4518,7 @@ package body World_Builder is
             Integer_32'Write (S, Integer_32 (L.Oneway));
             Integer_32'Write (S, Integer_32 (L.Lanes));
             Float'Write (S, Float (L.Width));
+            Integer_32'Write (S, Integer_32 (L.Limit));
             Integer_32'Write (S, Integer_32 (L.Ids.Length));
             for Id of L.Ids loop
                Integer_32'Write (S, Integer_32 (Index.Element (Id)));
