@@ -13,7 +13,6 @@ with Glib;
 with Gtk.Drawing_Area;
 with Gtk.Label;
 
-with Road_Network;
 
 package body Navigation is
 
@@ -34,6 +33,7 @@ package body Navigation is
    Route        : Route_Vectors.Vector;
    Progress     : Natural := 0;      --  route segment we are on
    Reroute_Wait : Float := 0.0;
+   Fixed        : Boolean := False;  --  a given route (Follow), not planned
    Arrived_Time : Float := 0.0;
    Me_X, Me_Z, Me_H : Float := 0.0;
    Shown_Text   : Unbounded_String;
@@ -66,14 +66,31 @@ package body Navigation is
       Dest_X := X;
       Dest_Z := Z;
       Has_Dest := True;
+      Fixed := False;
       Route.Clear;
       Reroute_Wait := 0.0;
       Arrived_Time := 0.0;
    end Set_Destination;
 
+   procedure Follow (Name : String; Path : Road_Network.Route_Vectors.Vector) is
+   begin
+      if Natural (Path.Length) < 2 then
+         return;
+      end if;
+      Dest_Name := To_Unbounded_String (Name);
+      Dest_X := Path.Last_Element.X;
+      Dest_Z := Path.Last_Element.Z;
+      Has_Dest := True;
+      Fixed := True;
+      Route := Path;
+      Progress := 0;
+      Arrived_Time := 0.0;
+   end Follow;
+
    procedure Clear is
    begin
       Has_Dest := False;
+      Fixed := False;
       Route.Clear;
    end Clear;
 
@@ -231,7 +248,7 @@ package body Navigation is
       end if;
 
       --  only arriving by car counts (not flying over it)
-      if Route_Allowed and then (X - Dest_X) ** 2 + (Z - Dest_Z) ** 2 < 30.0 ** 2 then
+      if Route_Allowed and then not Fixed and then (X - Dest_X) ** 2 + (Z - Dest_Z) ** 2 < 30.0 ** 2 then
          Set_Text ("<span font_family='sans' size='x-large' weight='bold' foreground='white' "
                    & "background='#2f6b45e0'> &#x2691; You have arrived: "
                    & To_String (Dest_Name) & " </span>");
@@ -264,12 +281,12 @@ package body Navigation is
                end;
             end loop;
             Progress := Best_I;
-            if Best > 35.0 and then Reroute_Wait <= 0.0 then
+            if Best > 35.0 and then Reroute_Wait <= 0.0 and then not Fixed then
                Route.Clear;   --  off the route: plan again
             end if;
          end;
       end if;
-      if Natural (Route.Length) < 2 and then Reroute_Wait <= 0.0 then
+      if Natural (Route.Length) < 2 and then Reroute_Wait <= 0.0 and then not Fixed then
          declare
             Found : Boolean;
          begin

@@ -92,9 +92,11 @@ package Road_Network is
 
    procedure Find_Route
      (From_X, From_Z, Heading, To_X, To_Z : Float;
-      Route : out Route_Vectors.Vector; Found : out Boolean);
+      Route : out Route_Vectors.Vector; Found : out Boolean;
+      Any_Way : Boolean := False);
    --  Shortest drivable route (one-way streets respected), starting in the
-   --  direction of Heading if possible.  Route starts at the car.
+   --  direction of Heading if possible.  Route starts at the car.  Any_Way:
+   --  one-way streets both ways (the streets closed for a race)
 
    generic
       with procedure Visit (AX, AZ, BX, BZ, Width : Float; Named : Boolean);

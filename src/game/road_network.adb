@@ -404,7 +404,8 @@ package body Road_Network is
 
    procedure Find_Route
      (From_X, From_Z, Heading, To_X, To_Z : Float;
-      Route : out Route_Vectors.Vector; Found : out Boolean)
+      Route : out Route_Vectors.Vector; Found : out Boolean;
+      Any_Way : Boolean := False)
    is
       type Real_Array is array (Natural range <>) of Float;
       type Nat_Array is array (Natural range <>) of Integer;
@@ -470,6 +471,7 @@ package body Road_Network is
       Hx : constant Float := Sin (Heading);
       Hz : constant Float := -Cos (Heading);
       Best_Goal : Integer := -1;
+      Table : constant Link_Table_Access := (if Any_Way then Walk_Links else Links);
    begin
       Route.Clear;
       Found := False;
@@ -506,9 +508,9 @@ package body Road_Network is
          end Seed;
       begin
          Seed (Node_Index (SW, SP + 1), Sqrt ((B.X - PX) ** 2 + (B.Z - PZ) ** 2),
-               Ways (SW).Oneway >= 0, Along);
+               Any_Way or else Ways (SW).Oneway >= 0, Along);
          Seed (Node_Index (SW, SP), Sqrt ((A.X - PX) ** 2 + (A.Z - PZ) ** 2),
-               Ways (SW).Oneway <= 0, not Along);
+               Any_Way or else Ways (SW).Oneway <= 0, not Along);
       end;
 
       while not Heap.Is_Empty loop
@@ -522,7 +524,7 @@ package body Road_Network is
                   Best_Goal := U;
                   exit;
                end if;
-               for L of Links (U) loop
+               for L of Table (U) loop
                   declare
                      V   : constant Natural := Node_Index (L.W, L.Pos + L.Dir);
                      A   : constant Node := Nodes (U);
