@@ -67,6 +67,16 @@ package Race is
    procedure Update (Dt : Float; Player : in out Car.State);
    --  Opponents, laps, positions; pushes the player out of opponents
 
+   procedure Impact (Loss : Float);
+   --  The player's car lost this much speed (m/s) in a knock this step
+
+   function Damage return Float;      --  0 .. 1
+   function Wrecked return Boolean;
+   function Power return Float;       --  for Car.Controls (1 outside races)
+   function Steer_Pull return Float;  --  for Car.Controls
+   function Shake return Float;       --  0 .. ~0.12: the wheel trembles
+   function Misfiring return Boolean;
+
    function Frozen return Boolean;
    --  The player must stay on the grid (the countdown)
 

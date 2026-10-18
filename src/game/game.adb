@@ -2477,6 +2477,11 @@ package body Game is
       if not Player.On_Road and then V > 1.0 then
          F := F + 0.06 * Float'Min (1.0, V / 10.0) * Sin (Force_Time * 70.0);
       end if;
+      --  a badly damaged car shakes in the hands
+      if Race.Shake > 0.0 and then V > 2.0 then
+         F := F + Race.Shake * Float'Min (1.0, V / 15.0)
+           * (Sin (Force_Time * 31.0) + 0.5 * Sin (Force_Time * 53.0));
+      end if;
       if Jolt_Time > 0.0 then
          declare
             Since : constant Float := Jolt_Length - Jolt_Time;   --  seconds since the hit
@@ -2572,6 +2577,7 @@ package body Game is
                        elsif Mode = Flying then Sound.Flying else Sound.Driving),
           Rpm      => Player.Rpm,
           Load     => (if Mode = Flying then Aircraft.Throttle
+                       elsif Race.Misfiring then 0.0
                        elsif Keys.Up or else Keys.W then 1.0
                        elsif Wheel.Present then Float'Max (0.15, Wheel.State.Throttle)
                        else 0.15),
@@ -2581,6 +2587,7 @@ package body Game is
           Night    => Night,
           Traffic  => Float'Max (0.0, 1.0 - Traffic.Nearest (Where.X, Where.Z) / 60.0),
           Horn     => Keys.B or else Wheel.Held (Wheel.Enter),
+          Engine_Off => Mode = Driving and then not Visiting and then Race.Wrecked,
           Church   => Church_Near,
           Jingle   => Sleigh.Jingle,
           Jets     => Surprises.Jets,
@@ -2831,7 +2838,9 @@ package body Game is
                      Gear           => Integer (W.Shifter),
                      Need_Clutch    => Need_Clutch,
                      Wet            => Wetness,
-                     Snow           => Snow_Cover);
+                     Snow           => Snow_Cover,
+                     Power          => Race.Power,
+                     Pull           => Race.Steer_Pull);
                   Was_Grinding : constant Boolean := Player.Grinding;
                   Was_Gear     : constant Integer := Player.Gear;
                   --  on the grid: rev all you like, but the handbrake is on
@@ -2846,6 +2855,9 @@ package body Game is
                         Car.Update (Player, (if Race.Frozen then Held else Input), Dt / Float (Steps));
                         Traffic.Collide_Player (Player);
                         Loss := Before - abs Player.Speed;
+                        if Player.Bumped and then Loss > 0.0 then
+                           Race.Impact (Loss);   --  damage, in a race
+                        end if;
                         if Player.Kerb_Jolt /= 0.0 then
                            Jolt := Player.Kerb_Jolt;
                            Jolt_Side := 0.0;

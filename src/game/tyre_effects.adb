@@ -218,8 +218,9 @@ package body Tyre_Effects is
    end Draw_Marks;
 
    procedure Draw_Smoke (VP : Mat4; Cam : Vec3; Pixels_Per_Metre : Float; Light : Float) is
-      Tints : constant array (0 .. 3) of Vec3 :=
-        ((1.0, 1.0, 1.0), (0.15, 0.3, 0.95), (1.0, 1.0, 1.0), (0.95, 0.15, 0.15));
+      Tints : constant array (0 .. 5) of Vec3 :=
+        ((1.0, 1.0, 1.0), (0.15, 0.3, 0.95), (1.0, 1.0, 1.0), (0.95, 0.15, 0.15),
+         (0.5, 0.5, 0.5), (0.08, 0.08, 0.08));
    begin
       for C in Tints'Range loop
          declare

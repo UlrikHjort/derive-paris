@@ -32,6 +32,7 @@ package Sound is
       Night    : Float := 0.0;     --  0 .. 1
       Traffic  : Float := 0.0;     --  0 .. 1, how close the nearest car is
       Horn     : Boolean := False; --  the player's horn
+      Engine_Off : Boolean := False;   --  a wrecked car
       Squeal   : Float := 0.0;     --  0 .. 1: tyres sliding or spinning
       Church   : Float := 0.0;     --  0 .. 1: how near Saint-Sulpice is
       Jingle   : Float := 0.0;     --  0 .. 1: sleigh bells going by
