@@ -3032,6 +3032,19 @@ package body World_Builder is
          Side_H  : constant Long_Float := 0.37 * H;
          Pier_U0 : constant Long_Float := Main_W;
          Pier_HU : constant Long_Float := 0.5 * (HU - Main_W);
+         --  Tell the game where the roof is (you can go up)
+         procedure Tell is
+            F : Ada.Text_IO.File_Type;
+            function Img (X : Long_Float) return String is (" " & Long_Float'Image (X));
+         begin
+            Ada.Text_IO.Create (F, Ada.Text_IO.Out_File,
+                                Ada.Strings.Unbounded.To_String (Output_Dir) & "/arc.txt");
+            Ada.Text_IO.Put_Line (F, "# centre_x centre_z u_x u_z roof_y half_u half_v vault_half");
+            Ada.Text_IO.Put_Line
+              (F, Img (C.X) & Img (C.Z) & Img (U.X) & Img (U.Z) & Img (Lift_Y (C.X, H, C.Z))
+               & Img (HU) & Img (HV) & Img (Main_W));
+            Ada.Text_IO.Close (F);
+         end Tell;
          procedure Block (CU, CV, HBU, HBV, Y0, Y1 : Long_Float) is
             Ctr : constant P2 := C + CU * U + CV * V;
          begin
@@ -3067,6 +3080,9 @@ package body World_Builder is
                end;
             end if;
          end loop;
+         if HU > 15.0 then   --  the one at the Étoile (not the Carrousel)
+            Tell;
+         end if;
          --  attic over everything
          Block (0.0, 0.0, HU, HV, Main_H, H);
          --  the vault: slices following a half circle

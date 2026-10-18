@@ -56,6 +56,7 @@ with Photo;
 with Plane;
 with Race;
 with Taxi;
+with Arc_Top;
 with Limit_Sign;
 with Rain;
 with Recorder;
@@ -223,6 +224,7 @@ package body Game is
    Captured   : Boolean := False;  --  the mouse turns the head
    In_Museum  : Boolean := False;  --  inside the Louvre (through the Pyramid)
    On_Tower   : Boolean := False;  --  on top of the Eiffel Tower
+   On_Arc     : Boolean := False;  --  on the roof of the Arc de Triomphe
 
    Player   : Car.State;
    Aircraft : Plane.State;
@@ -704,7 +706,6 @@ package body Game is
       Tyre_Effects.Create;
       Landscape.Create;
       Museum.Create;
-      Tower.Create;
       Beacon.Create;
       Storm.Create;
       Sky_Life.Create;
@@ -724,6 +725,9 @@ package body Game is
          Road_Network.Load (Dir);
          Load_Home (Dir & "/home.txt");
          Tower.Load (Dir & "/eiffel.txt");
+         Arc_Top.Load (Dir & "/arc.txt");
+         Tower.Create;     --  their railings, now that we know where they are
+         Arc_Top.Create;
          if Home.Known and then Home.Windows > 0 then
             --  a cat walks the railings of the balconies
             declare
@@ -761,6 +765,7 @@ package body Game is
    function Walk_Eye return Vec3 is
      ((Walk_X, (if In_Museum then Museum.Floor_Y
                 elsif On_Tower then Tower.Top_Floor_Y
+                elsif On_Arc then Arc_Top.Roof_Y
                 else Terrain.Height (Walk_X, Walk_Z))
                + 1.65 + 0.03 * abs Sin (Walk_Step), Walk_Z));
 
@@ -843,7 +848,7 @@ package body Game is
             Amb_Sky := Amb_Sky + F * Vec3'(0.45, 0.47, 0.6);
          end if;
       end;
-      Fog_Density := Fog_Base * (if Visiting or else On_Tower then 0.4 else 1.0) * (1.0 + 2.5 * Rain_Amount + 3.5 * Snow_Amount);
+      Fog_Density := Fog_Base * (if Visiting or else On_Tower or else On_Arc then 0.4 else 1.0) * (1.0 + 2.5 * Rain_Amount + 3.5 * Snow_Amount);
    end Compute_Lighting;
 
    function Light_View_Proj return Mat4 is
@@ -1142,8 +1147,14 @@ package body Game is
          Sleigh.Draw (WU.Model, WU.Car_Color, WU.Extra_Color);
          Halloween.Draw (WU.Model);
          Ufo.Draw (WU.Model, WU.Car_Color);
-         if On_Tower then
-            Tower.Draw (WU.Model);
+         if On_Tower or else On_Arc then
+            glEnable (GL_SAMPLE_ALPHA_TO_COVERAGE);   --  see through the railing
+            if On_Tower then
+               Tower.Draw (WU.Model);
+            else
+               Arc_Top.Draw (WU.Model);
+            end if;
+            glDisable (GL_SAMPLE_ALPHA_TO_COVERAGE);
          end if;
          if In_Museum then
             Museum.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, WU.Gallery);
@@ -1173,7 +1184,7 @@ package body Game is
                     Snow_Amount > Rain_Amount, Float (H) / (2.0 * Tan (0.525)),
                     Mix (Vec3'(0.30, 0.32, 0.36), Vec3'(0.75, 0.78, 0.82), 1.0 - Night));
          if (Mode = Driving or else Visiting or else Walking)
-           and then not In_Museum and then not On_Tower
+           and then not In_Museum and then not On_Tower and then not On_Arc
          then
             Rain.Draw_Leaves (VP, Cam_Pos, Time, Almanac.Leaves_Falling * (1.0 - Snow_Amount),
                               Float (H) / (2.0 * Tan (0.525)), 0.15 + 0.85 * (1.0 - Night));
@@ -1547,6 +1558,29 @@ package body Game is
       Street_Timer := 1.0;
    end Go_Down;
 
+   procedure Up_The_Arc is
+   begin
+      On_Arc := True;
+      Arc_Top.Arrival (Walk_X, Walk_Z, Walk_Yaw);
+      Walk_Pitch := -0.08;
+      Traffic.Set_Walker (False, 0.0, 0.0);
+      World.Set_Radius (4);   --  you see far from up here
+      Announce := Ada.Strings.Unbounded.To_Unbounded_String ("Arc de Triomphe, la terrasse");
+      Announce_Timer := 3.0;
+      Street_Timer := 1.0;
+   end Up_The_Arc;
+
+   procedure Down_The_Arc is
+   begin
+      On_Arc := False;
+      Arc_Top.Ground (Walk_X, Walk_Z, Walk_Yaw);
+      Walk_Pitch := 0.15;   --  looking up at it
+      World.Set_Radius (3);
+      Announce := Ada.Strings.Unbounded.To_Unbounded_String ("Place Charles-de-Gaulle");
+      Announce_Timer := 2.0;
+      Street_Timer := 1.0;
+   end Down_The_Arc;
+
    procedure Toggle_Walk is
       Side_X : constant Float := -Cos (Player.Heading);   --  the driver's side (left)
       Side_Z : constant Float := -Sin (Player.Heading);
@@ -1575,6 +1609,8 @@ package body Game is
          Leave_Museum;
       elsif On_Tower then
          Go_Down;
+      elsif On_Arc then
+         Down_The_Arc;
       else
          declare
             DX : constant Float := Player.X - Walk_X;
@@ -1647,6 +1683,11 @@ package body Game is
                Walk_Step := Walk_Step + Dt * Speed * 4.2;
                return;
             end if;
+            if On_Arc then
+               Arc_Top.Keep_On_Roof (Walk_X, Walk_Z);
+               Walk_Step := Walk_Step + Dt * Speed * 4.2;
+               return;
+            end if;
             if In_Museum then
                Museum.Keep_Inside (Walk_X, Walk_Z);
                Walk_Step := Walk_Step + Dt * Speed * 4.2;
@@ -1663,6 +1704,10 @@ package body Game is
             end if;
             if Tower.Under (Walk_X, Walk_Z) then
                Go_Up;
+               return;
+            end if;
+            if Arc_Top.Under (Walk_X, Walk_Z) then
+               Up_The_Arc;
                return;
             end if;
             declare
@@ -1799,6 +1844,11 @@ package body Game is
              & "  mouse            look all round" & LF
              & "  W / S, A / D     walk round the platform" & LF
              & "  Q                the lift down" & LF & LF
+           elsif Walking and then On_Arc then
+             Head ("On the Arc de Triomphe")
+             & "  mouse            look all round" & LF
+             & "  W / S, A / D     walk round the roof" & LF
+             & "  Q                the stairs down" & LF & LF
            elsif Walking and then In_Museum then
              Head ("In the Louvre")
              & "  mouse            look all round" & LF
@@ -2816,7 +2866,8 @@ package body Game is
                        elsif Wheel.Present then Float'Max (0.15, Wheel.State.Throttle)
                        else 0.15),
           Speed    => (if Mode = Flying then Aircraft.Speed else abs Player.Speed),
-          Altitude => (if In_Museum then 400.0 elsif On_Tower then 280.0 else Ear_Y),
+          Altitude => (if In_Museum then 400.0 elsif On_Tower then 280.0
+                       elsif On_Arc then 50.0 else Ear_Y),
           Rain     => Rain_Amount,
           Night    => Night,
           Traffic  => Float'Max (0.0, 1.0 - Traffic.Nearest (Where.X, Where.Z) / 60.0),
@@ -2939,6 +2990,14 @@ package body Game is
       if Ready and then Frame_Number = 30 and then Env ("PARIS_WALK") /= "" then
          Toggle_Walk;
          Walk_Yaw := Walk_Yaw + Float'Value (Env ("PARIS_WALK")) * Ada.Numerics.Pi / 180.0;
+      end if;
+      --  PARIS_ARC=yaw: on the roof of the Arc de Triomphe (testing)
+      if Ready and then Frame_Number = 30 and then Env ("PARIS_ARC") /= "" then
+         if not Walking then
+            Toggle_Walk;
+         end if;
+         Up_The_Arc;
+         Walk_Yaw := Walk_Yaw + Float'Value (Env ("PARIS_ARC")) * Ada.Numerics.Pi / 180.0;
       end if;
       --  PARIS_TOWER=yaw: on top of the Eiffel Tower (testing)
       if Ready and then Frame_Number = 30 and then Env ("PARIS_TOWER") /= "" then
@@ -3227,6 +3286,9 @@ package body Game is
             Name : constant String :=
               (if Announce_Timer > 0.0 then To_String (Announce)
                elsif not Show_Street or else In_Museum then ""
+               elsif On_Arc then "Arc de Triomphe"
+               elsif On_Tower then "Tour Eiffel"
+               elsif Walking then Road_Network.Street_At (Walk_X, Walk_Z)
                elsif Mode = Flying then
                  (if Aircraft.Pos.Y < 150.0
                   then Road_Network.Street_At (Aircraft.Pos.X, Aircraft.Pos.Z, 40.0) else "")
