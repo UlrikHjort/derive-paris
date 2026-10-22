@@ -3,6 +3,7 @@
 --  SPDX-License-Identifier: MIT
 --
 with Ada.Calendar;
+with Ada.Calendar.Formatting;
 with Ada.Directories;
 with Ada.Environment_Variables;
 with Ada.Exceptions;
@@ -67,6 +68,7 @@ with Extras;
 with Moulin;
 with Rooms;
 with Gdk.Keyval;
+with Gtkada.Bindings;
 with Glib.Unicode;
 with Street_Life;
 with Limit_Sign;
@@ -3267,7 +3269,39 @@ package body Game is
       end;
    end Update_Senses;
 
-   Tick_Failed : Boolean := False;   --  told about an error already
+   --  Errors are said on the terminal and kept in ~/.derive.log (the
+   --  first few of a session), for when the game runs without a terminal
+   Errors_Logged : Natural := 0;
+
+   procedure Log_Error (Where : String; E : Ada.Exceptions.Exception_Occurrence) is
+      F : Ada.Text_IO.File_Type;
+      Name : constant String := Env ("HOME") & "/.derive.log";
+   begin
+      Ada.Text_IO.Put_Line (Ada.Text_IO.Standard_Error,
+                            Where & ": " & Ada.Exceptions.Exception_Information (E));
+      if Errors_Logged >= 20 then
+         return;
+      end if;
+      Errors_Logged := Errors_Logged + 1;
+      begin
+         Ada.Text_IO.Open (F, Ada.Text_IO.Append_File, Name);
+      exception
+         when Ada.Text_IO.Name_Error =>
+            Ada.Text_IO.Create (F, Ada.Text_IO.Out_File, Name);
+      end;
+      Ada.Text_IO.Put_Line (F, Ada.Calendar.Formatting.Image (Ada.Calendar.Clock) & "  " & Where & ": "
+                            & Ada.Exceptions.Exception_Information (E));
+      Ada.Text_IO.Close (F);
+   exception
+      when others => null;   --  no log then
+   end Log_Error;
+
+   procedure Callback_Failed (E : Ada.Exceptions.Exception_Occurrence) is
+   begin
+      Log_Error ("Error in a callback", E);
+   end Callback_Failed;
+
+   Tick_Failed : Natural := 0;   --  errors in frames told about
 
    function Tick
      (Widget      : not null access Gtk.Widget.Gtk_Widget_Record'Class;
@@ -3899,9 +3933,9 @@ package body Game is
       --  something went wrong in one frame: say so (once), and go on with
       --  the next rather than stopping the game
       when E : others =>
-         if not Tick_Failed then
-            Tick_Failed := True;
-            Ada.Text_IO.Put_Line ("Error in a frame: " & Ada.Exceptions.Exception_Information (E));
+         if Tick_Failed < 5 then
+            Tick_Failed := Tick_Failed + 1;
+            Log_Error ("Error in a frame (" & Clock_Image & (if Mode = Flying then ", flying" else "") & ")", E);
          end if;
          Area.Queue_Render;
          return True;
@@ -4439,6 +4473,7 @@ package body Game is
       Id      : Glib.Guint;
    begin
       Gtk.Main.Init;
+      Gtkada.Bindings.Set_On_Exception (Callback_Failed'Access);
       Config.Load;
       Read_Home;
       Terrain.Load;
