@@ -1026,6 +1026,34 @@ void main()
         vec3 c = posterColour(floor(hash(vec2(col, vSeed + 1.0)) * 8.0)) * (0.55 + 0.35 * hash(vec2(col, 3.0)));
         float gap = step(0.08, fract(vUV.x * 40.0));
         s = Surface(toLinear(mix(vec3(0.12, 0.1, 0.08), c, gap * step(vUV.y, hgt))), 0.05, 10.0, vec3(0), 0.0);
+    } else if (m == 67) {          // a round cast-iron cover in the road
+        vec2 q = vUV * 2.0 - 1.0;
+        float r = length(q);
+        gAlpha = 1.0 - smoothstep(0.96, 1.0, r);
+        float ring = smoothstep(0.86, 0.9, r) * (1.0 - smoothstep(0.94, 0.97, r));
+        float grid = step(0.7, fract(q.x * 6.0)) + step(0.7, fract(q.y * 6.0));
+        float letters = step(0.72, r) * step(r, 0.84) * step(0.5, fract(atan(q.y, q.x) * 6.0));
+        vec3 c = vec3(0.13, 0.13, 0.14) * (0.8 + 0.3 * clamp(grid * step(r, 0.68), 0.0, 1.0) + 0.4 * ring + 0.25 * letters);
+        s = Surface(toLinear(c * (0.85 + 0.2 * noise(vWorld.xz * 9.0))), 0.35, 30.0, vec3(0), 0.0);
+    } else if (m == 68) {          // a grate: bars over the dark
+        float bar = step(0.55, fract(vUV.x * 9.0));
+        vec3 c = mix(vec3(0.015), vec3(0.16, 0.16, 0.17), bar);
+        s = Surface(toLinear(c), 0.3, 30.0, vec3(0), 0.0);
+    } else if (m == 69) {          // water running along the gutter
+        vec2 fd = vec2(cos(vSeed), sin(vSeed));
+        float along = dot(vWorld.xz, fd), across = dot(vWorld.xz, vec2(-fd.y, fd.x));
+        float flow = noise(vec2(along * 3.0 - uTime * 1.6, across * 12.0))
+                   * noise(vec2(along * 7.0 - uTime * 2.3, across * 25.0 + 2.0));
+        float edge = smoothstep(0.0, 0.25, vUV.y) * smoothstep(1.0, 0.6, vUV.y);
+        gAlpha = 0.45 * edge + 0.35 * flow * edge;
+        s = Surface(toLinear(vec3(0.32, 0.37, 0.42) + 0.25 * flow), 1.0, 160.0, vec3(0), 0.0);
+    } else if (m == 70) {          // the dark mouth of an opening
+        s = Surface(vec3(0.004), 0.0, 8.0, vec3(0), 0.0);
+    } else if (m == 71) {          // shiny red rubber
+        s = Surface(toLinear(vec3(0.85, 0.04, 0.05)), 0.9, 90.0, toLinear(vec3(0.05, 0.0, 0.0)), 0.2);
+    } else if (m == 72) {          // two small lights in the dark, now and then
+        float on = step(0.08, fract(uTime * 0.21 + vSeed)) * step(0.5, fract(uTime * 0.05 + vSeed * 0.37));
+        s = Surface(vec3(0.0), 0.0, 8.0, toLinear(vec3(1.0, 0.92, 0.55)) * 1.6 * on, 0.0);
     } else if (m == 50) {          // a lamp in uExtraColor: the taxi sign, a police light bar
         s = Surface(toLinear(uExtraColor), 0.3, 16.0, toLinear(uExtraColor) * (1.2 + 3.0 * uNight), 0.0);
     } else if (m == 38) {          // the star on top

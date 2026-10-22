@@ -4,6 +4,7 @@
 --
 with Ada.Containers.Ordered_Maps;
 with Ada.Containers.Vectors;
+with Ada.Environment_Variables;
 with Ada.Numerics;
 with Ada.Numerics.Elementary_Functions;
 with Ada.Numerics.Float_Random;
@@ -32,6 +33,13 @@ package body Street_Life is
    Mat_Green   : constant := 56.0;   --  Paris green cast iron
    Mat_Tag     : constant := 57.0;
    Mat_Paper   : constant := 58.0;
+   Mat_Kerb    : constant := 2.0;
+   Mat_Cover   : constant := 67.0;
+   Mat_Grate   : constant := 68.0;
+   Mat_Gutter  : constant := 69.0;
+   Mat_Mouth   : constant := 70.0;
+   Mat_Rubber  : constant := 71.0;
+   Mat_Pair    : constant := 72.0;
 
    --  A seed for this game: the tags and posters are somewhere else next time
    Gen : Ada.Numerics.Float_Random.Generator;
@@ -48,6 +56,9 @@ package body Street_Life is
    end Begin_Session;
 
    function Rnd return Float is (Ada.Numerics.Float_Random.Random (Gen));
+
+   --  How often the rarest detail turns up (PARIS_RARE=1: often, testing)
+   Rare : constant Float := (if Ada.Environment_Variables.Exists ("PARIS_RARE") then 0.5 else 0.012);
 
    --  0 .. 1 from a few numbers, always the same for the same numbers
    function Hash (A, B, C, D : Float) return Float is
@@ -324,9 +335,12 @@ package body Street_Life is
    function "<" (A, B : Cell_Key) return Boolean is
      (A.CX < B.CX or else (A.CX = B.CX and then A.CZ < B.CZ));
 
+   package Vec_Vectors is new Ada.Containers.Vectors (Positive, Vec3);
+
    type Cell is record
       Mesh   : Meshes.Mesh;
       Solids : Solid_Vectors.Vector;
+      Floats : Vec_Vectors.Vector;   --  things bobbing in the air (drawn apart)
    end record;
 
    package Cell_Maps is new Ada.Containers.Ordered_Maps (Cell_Key, Cell);
@@ -340,6 +354,107 @@ package body Street_Life is
 
       function Mine (X, Z : Float) return Boolean is
         (X >= X0 and then X < X0 + Cell_Size and then Z >= Z0 and then Z < Z0 + Cell_Size);
+
+      --  In the road: covers, and at the kerbs grates, openings and, on some
+      --  streets, water running in the gutter
+      procedure Ground_Details (AX, AZ, DX, DZ, L, Width : Float) is
+         Up : constant Vec3 := (0.0, 1.0, 0.0);
+         D  : constant Vec3 := (DX, 0.0, DZ);
+         function G (T, Side : Float; Y : Float := 0.0) return Vec3 is
+            X : constant Float := AX + T * DX - Side * DZ;
+            Z : constant Float := AZ + T * DZ + Side * DX;
+         begin
+            return (X, Terrain.Height (X, Z) + Y, Z);
+         end G;
+         Wet : constant Boolean :=
+           Hash (Float'Rounding (AX), Float'Rounding (AZ), Session, 13.0) < 0.3;
+         Downhill : constant Boolean := Terrain.Height (AX + L * DX, AZ + L * DZ) <= Terrain.Height (AX, AZ);
+         T : Float := 9.0;
+      begin
+         if not Mine (AX + 0.5 * L * DX, AZ + 0.5 * L * DZ) then
+            return;
+         end if;
+         --  covers in the carriageway
+         while T < L - 4.0 loop
+            declare
+               H  : constant Float := Hash (Float'Rounding (AX + T), Float'Rounding (AZ), 3.0, T);
+               Sd : constant Float := (H - 0.5) * Width * 0.5;
+            begin
+               if H < 0.5 then
+                  declare
+                     C : constant Vec3 := G (T, Sd, 0.03);
+                  begin
+                     Meshes.Quad_UV (C - 0.4 * D - 0.4 * Vec3'(-DZ, 0.0, DX), C + 0.4 * D - 0.4 * Vec3'(-DZ, 0.0, DX),
+                                     C + 0.4 * D + 0.4 * Vec3'(-DZ, 0.0, DX), C - 0.4 * D + 0.4 * Vec3'(-DZ, 0.0, DX),
+                                     Up, Mat_Cover, 0.0);
+                  end;
+               end if;
+            end;
+            T := T + 23.0;
+         end loop;
+         for Side of Float_List'(-1.0, 1.0) loop
+            declare
+               Edge : constant Float := Width / 2.0;
+               Out_V : constant Vec3 := Side * Vec3'(-DZ, 0.0, DX);   --  towards the pavement
+            begin
+               --  the water, in pieces that follow the ground, flowing downhill
+               if Wet then
+                  declare
+                     U : Float := 3.0;
+                  begin
+                     while U < L - 3.0 loop
+                        declare
+                           U1 : constant Float := Float'Min (L - 3.0, U + 4.0);
+                           A0 : constant Vec3 := G (U, Side * (Edge - 0.36), 0.025);
+                           A1 : constant Vec3 := G (U1, Side * (Edge - 0.36), 0.025);
+                           B0 : constant Vec3 := G (U, Side * (Edge - 0.04), 0.025);
+                           B1 : constant Vec3 := G (U1, Side * (Edge - 0.04), 0.025);
+                           --  the seed is the way it flows (the shader runs it on
+                           --  from piece to piece)
+                           Flow : constant Float :=
+                             (if Downhill then Arctan (DZ, DX) else Arctan (-DZ, -DX));
+                        begin
+                           Meshes.Quad_UV (A0, A1, B1, B0, Up, Mat_Gutter, Flow, 1.0, 1.0);
+                        end;
+                        U := U + 4.0;
+                     end loop;
+                  end;
+               end if;
+               --  an opening in a kerb stone, a grate in the gutter before it
+               declare
+                  V : Float := 14.0 + 9.0 * Hash (AX, AZ, Side, 2.0);
+                  K : Natural := 0;
+               begin
+                  while V < L - 6.0 loop
+                     declare
+                        Mid  : constant Vec3 := G (V, Side * Edge);
+                        H    : constant Float := Hash (Float'Rounding (Mid.X), Float'Rounding (Mid.Z), Session, 11.0);
+                        F    : constant Frame := (P => Mid, U => D, V => Out_V);   --  V: away from the road
+                     begin
+                        Box (F, -0.5, 0.5, 0.0, 0.17, 0.0, 0.32, Mat_Kerb);
+                        Meshes.Quad (At_F (F, -0.32, 0.03, -0.005), At_F (F, 0.32, 0.03, -0.005),
+                                     At_F (F, 0.32, 0.13, -0.005), At_F (F, -0.32, 0.13, -0.005), Mat_Mouth);
+                        Meshes.Quad_UV (At_F (F, -0.3, 0.03, -0.42), At_F (F, 0.3, 0.03, -0.42),
+                                        At_F (F, 0.3, 0.03, -0.04), At_F (F, -0.3, 0.03, -0.04),
+                                        Up, Mat_Grate, 0.0);
+                        if H < Rare then
+                           --  a rare one: something in there
+                           for E of Float_List'(-0.06, 0.06) loop
+                              Meshes.Quad_UV (At_F (F, E - 0.012, 0.075, -0.008), At_F (F, E + 0.012, 0.075, -0.008),
+                                              At_F (F, E + 0.012, 0.092, -0.008), At_F (F, E - 0.012, 0.092, -0.008),
+                                              (-1.0) * Out_V, Mat_Pair, H * 50.0);
+                           end loop;
+                           C.Floats.Append (At_F (F, 0.15, 0.0, -0.6));
+                        end if;
+                     end;
+                     V := V + 31.0;
+                     K := K + 1;
+                  end loop;
+                  pragma Unreferenced (K);
+               end;
+            end;
+         end loop;
+      end Ground_Details;
 
       --  along a street: every 7 m on each side, a chance of something
       procedure Street (AX, AZ, BX, BZ, Width : Float; Named : Boolean) is
@@ -393,6 +508,7 @@ package body Street_Life is
             T := T + 7.0;
             K2 := K2 + 1;
          end loop;
+         Ground_Details (AX, AZ, DX, DZ, L, Width);
       end Street;
       procedure Streets is new Road_Network.For_Segments_Near (Street);
 
@@ -490,6 +606,8 @@ package body Street_Life is
    end record;
    Sheets : array (1 .. 10) of Sheet;
    Sheet_Mesh : Meshes.Mesh;
+   Float_Mesh : Meshes.Mesh;
+   Float_Built : Boolean := False;
    Sheet_Built : Boolean := False;
    Wind_Time : Float := 0.0;
 
@@ -631,6 +749,41 @@ package body Street_Life is
                Meshes.Draw (Element (C).Mesh);
             end if;
          end;
+      end loop;
+
+      --  what bobs in the air: a ball on a string
+      if not Float_Built then
+         Meshes.Start;
+         declare
+            R : constant Float := 0.23;
+            function P (I, J : Integer) return Vec3 is
+               Phi : constant Float := 2.0 * Pi * Float (I) / 14.0;
+               Th  : constant Float := Pi * Float (J) / 8.0;
+            begin
+               return (R * Sin (Th) * Cos (Phi), 0.95 - R * 1.15 * Cos (Th), R * Sin (Th) * Sin (Phi));
+            end P;
+         begin
+            for J in 0 .. 7 loop
+               for I in 0 .. 13 loop
+                  Face (P (I, J), P (I, J + 1), P (I + 1, J + 1), P (I + 1, J),
+                        0.25 * (P (I, J) + P (I, J + 1) + P (I + 1, J + 1) + P (I + 1, J)) - Vec3'(0.0, 0.95, 0.0),
+                        Mat_Rubber);
+               end loop;
+            end loop;
+            Meshes.Box (-0.004, 0.004, 0.02, 0.69, -0.004, 0.004, Mat_Mouth);   --  the string
+         end;
+         Meshes.Finish (Float_Mesh);
+         Float_Built := True;
+      end if;
+      for C in Cells.Iterate loop
+         for F of Element (C).Floats loop
+            if (F.X - Cam.X) ** 2 + (F.Z - Cam.Z) ** 2 < 140.0 ** 2 then
+               Shaders.Set (Model, Translation (F + Vec3'(0.05 * Sin (Wind_Time * 0.7 + F.X),
+                                                         0.06 * Sin (Wind_Time * 1.3 + F.Z), 0.0))
+                            * Rotation_Z (0.05 * Sin (Wind_Time * 0.9)));
+               Meshes.Draw (Float_Mesh);
+            end if;
+         end loop;
       end loop;
 
       --  the newspapers

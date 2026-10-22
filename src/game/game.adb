@@ -60,6 +60,7 @@ with Arc_Top;
 with Hall_B;
 with Decals;
 with Scenes;
+with Birds;
 with Street_Life;
 with Limit_Sign;
 with Rain;
@@ -1178,6 +1179,10 @@ package body Game is
          Set (WU.Car_Color, Car_Color);
          Car.Draw;
          Traffic.Draw (WU.Model, WU.Car_Color);
+         if not In_Museum and then not In_Hall_B then
+            Birds.Draw (WU.Model, WU.Car_Color, Cam_Pos);
+            Set (WU.Car_Color, Car_Color);
+         end if;
          Race.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos);
          if Mode = Driving and then not Visiting then
             Taxi.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Player, Time);
@@ -3139,6 +3144,7 @@ package body Game is
       if Ready and then Frame_Number = 30 and then Env ("PARIS_WALK") /= "" then
          Toggle_Walk;
          Walk_Yaw := Walk_Yaw + Float'Value (Env ("PARIS_WALK")) * Ada.Numerics.Pi / 180.0;
+         Walk_Pitch := -Float'Value (Env ("PARIS_WALK_PITCH", "0")) * Ada.Numerics.Pi / 180.0;
       end if;
       --  PARIS_ARC=yaw: on the roof of the Arc de Triomphe (testing)
       if Ready and then Frame_Number = 30 and then Env ("PARIS_ARC") /= "" then
@@ -3434,6 +3440,8 @@ package body Game is
             T0 := Clock_Now;
             Traffic.Update (Dt, Time, Focus.X, Focus.Z, Focus_Heading, Player);
             Street_Life.Update (Dt, Focus.X, Focus.Z);
+            Birds.Update (Dt, Focus, Hour,
+                          (if Walking then Vec3'(Walk_X, 0.0, Walk_Z) else Vec3'(Player.X, 0.0, Player.Z)));
             Scenes.Update (Dt, Hour, Clock_Rate);
             Pedestrians.Update (Dt, Focus.X, Focus.Z, Focus_Heading, Player);
             Add (C_Traffic, T0);
