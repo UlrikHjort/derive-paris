@@ -109,7 +109,8 @@ fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 | J | clear the traffic around you (new cars arrive gradually) |
 | M | sound on/off |
 | 1 .. 9, 0 | jump to Saint-Sulpice, Notre-Dame, Louvre, Tour Eiffel, Arc de Triomphe, Sacré-Cœur, Panthéon, Concorde, Opéra, Bastille |
-| H | home: Place Saint-Sulpice (also where the game starts) |
+| H | home (asks first): Rue Bonaparte by the Place Saint-Sulpice, where the game starts |
+| Shift + H | make where the car is your home (saved in `~/.deriverc` as `home`) |
 | R | reset |
 | F2 | games: street races and the track editor |
 | F9 | record a video with sound; F9 again stops (saved in `~/Videos/Derive`) |
@@ -247,7 +248,7 @@ So far: `traffic`, `pedestrians` (1.0 = normal), `volume` (0 .. 1),
 (`modern`, `2cv` or `ds`), and for the wheel `manual_gearbox` (no:
 automatic), `clutch` (no: change gear without the clutch) and
 `force_feedback` (0 .. 1), `steering` (sensitivity) and `wheel_centre`
-(degrees), and for the taxi `taxi_police` and `taxi_fines` (1.0 =
+(degrees), `home` (`latitude longitude heading`, set with Shift+H in the game), and for the taxi `taxi_police` and `taxi_fines` (1.0 =
 normal: how often the police check, how much they fine) and
 `speed_limits` (`game` or `real`).
 

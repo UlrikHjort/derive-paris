@@ -97,9 +97,41 @@ package body Game is
    --  Start and home (H, R): Rue Bonaparte at the corner of Place
    --  Saint-Sulpice, facing north towards Saint-Germain-des-Pres (the
    --  street is one-way north)
-   Spawn_Lat     : constant Long_Float := 48.85190;
-   Spawn_Lon     : constant Long_Float := 2.333020;
-   Spawn_Heading : constant Float := 8.0 * Ada.Numerics.Pi / 180.0;
+   --  Home: Rue Bonaparte by the Place Saint-Sulpice, or "home = lat lon
+   --  heading" in ~/.deriverc (Shift+H sets it to where you are)
+   Spawn_Lat     : Long_Float := 48.85190;
+   Spawn_Lon     : Long_Float := 2.333020;
+   Spawn_Heading : Float := 8.0 * Ada.Numerics.Pi / 180.0;
+   Spawn_Name    : Ada.Strings.Unbounded.Unbounded_String :=
+     Ada.Strings.Unbounded.To_Unbounded_String ("Rue Bonaparte");
+
+   procedure Read_Home is
+      S : constant String := Config.Get ("home", "") & " ";
+      Field : array (1 .. 3) of Long_Float := (0.0, 0.0, 8.0);
+      K     : Natural := 0;
+      First : Positive := S'First;
+   begin
+      if S'Length < 5 then
+         return;
+      end if;
+      for I in S'Range loop
+         if S (I) = ' ' then
+            if I > First and then K < 3 then
+               K := K + 1;
+               Field (K) := Long_Float'Value (S (First .. I - 1));
+            end if;
+            First := I + 1;
+         end if;
+      end loop;
+      if K >= 2 then
+         Spawn_Lat := Field (1);
+         Spawn_Lon := Field (2);
+         Spawn_Heading := Float (Field (3)) * Ada.Numerics.Pi / 180.0;
+         Spawn_Name := Ada.Strings.Unbounded.To_Unbounded_String ("Home");
+      end if;
+   exception
+      when Constraint_Error => null;   --  a bad line: the default home
+   end Read_Home;
 
    Shadow_Size   : constant := 4096;
    Shadow_Extent : constant := 260.0;   --  half-size of the shadow box (m)
@@ -231,6 +263,8 @@ package body Game is
    In_Museum  : Boolean := False;  --  inside the Louvre (through the Pyramid)
    In_Hall_B : Boolean := False;   --  in hall B
    Caption    : Gtk.Label.Gtk_Label;   --  the label of the work you look at
+   Confirm    : Gtk.Label.Gtk_Label;   --  "Go home?"
+   Confirm_Open : Boolean := False;
    Caption_Shown : Ada.Strings.Unbounded.Unbounded_String;
    On_Tower   : Boolean := False;  --  on top of the Eiffel Tower
    On_Arc     : Boolean := False;  --  on the roof of the Arc de Triomphe
@@ -1443,6 +1477,10 @@ package body Game is
    procedure End_Race;
    --  Back to the city from a race (below, with the games menu)
 
+   procedure Go_Home_Now;
+   procedure Save_Home_Here;
+   --  (below, after Teleport)
+
    procedure Teleport (P : Place) is
       X, Z : Long_Float;
       Found : Boolean;
@@ -1471,6 +1509,7 @@ package body Game is
       Announce_Timer := 3.0;
       Street_Timer := 1.0;   --  refresh the plaque now
    end Teleport;
+
 
    Welcomed : Boolean := False;
 
@@ -1578,6 +1617,60 @@ package body Game is
         (W, (if On then Gdk_Cursor_New_For_Display (Gdk_Window_Get_Display (W), Blank)
              else System.Null_Address));
    end Capture_Mouse;
+
+   --  H, after "yes": straight to the home, exactly as you start the game
+   procedure Go_Home_Now is
+      X, Z : Long_Float;
+   begin
+      if Race.Active then
+         End_Race;
+      end if;
+      if Walking then
+         Walking := False;
+         Capture_Mouse (False);
+         Traffic.Set_Walker (False, 0.0, 0.0);
+      end if;
+      Geo.To_Local (Spawn_Lat, Spawn_Lon, X, Z);
+      if Mode = Flying then
+         Plane.Start (Aircraft, Float (X), Float (Z), Spawn_Heading);
+      else
+         Player := (X => Float (X), Z => Float (Z), Heading => Spawn_Heading, others => <>);
+         Player.Ground := Terrain.Height (Player.X, Player.Z);
+         Cam_Pos := (Player.X, 6.0 + Player.Ground, Player.Z) - 10.0 * Car.Forward (Player);
+         Cam_Look := (Player.X, 1.2 + Player.Ground, Player.Z);
+      end if;
+      Pending_Load := True;
+      Announce := Spawn_Name;
+      Announce_Timer := 3.0;
+      Street_Timer := 1.0;
+   end Go_Home_Now;
+
+   --  Shift+H: home is where the car is now (into ~/.deriverc)
+   procedure Save_Home_Here is
+      Lat, Lon : Long_Float;
+      function Img (V : Long_Float) return String is
+         S : constant String := Long_Long_Integer'Image (Long_Long_Integer (abs V * 1.0E6));
+         W : constant String := S (S'First + 1 .. S'Last);
+      begin
+         return (if V < 0.0 then "-" else "") & W (W'First .. W'Last - 6) & "." & W (W'Last - 5 .. W'Last);
+      end Img;
+      Deg : constant Integer :=
+        Integer (Player.Heading * 180.0 / Ada.Numerics.Pi) mod 360;
+   begin
+      if Mode /= Driving or else Visiting or else Walking then
+         Announce := Ada.Strings.Unbounded.To_Unbounded_String ("Park the car where home should be");
+      else
+         Geo.To_Lat_Lon (Long_Float (Player.X), Long_Float (Player.Z), Lat, Lon);
+         Spawn_Lat := Lat;
+         Spawn_Lon := Lon;
+         Spawn_Heading := Float (Deg) * Ada.Numerics.Pi / 180.0;
+         Spawn_Name := Ada.Strings.Unbounded.To_Unbounded_String ("Home");
+         Config.Set ("home", Img (Lat) & " " & Img (Lon) & Integer'Image (Deg));
+         Announce := Ada.Strings.Unbounded.To_Unbounded_String ("Home is here now (H takes you back)");
+      end if;
+      Announce_Timer := 3.0;
+      Street_Timer := 1.0;
+   end Save_Home_Here;
 
    procedure Enter_Museum is
    begin
@@ -2017,7 +2110,8 @@ package body Game is
         & "  1 .. 0           go to Saint-Sulpice, Notre-Dame, Louvre," & LF
         & "                   Tour Eiffel, Arc de Triomphe, Sacré-Cœur," & LF
         & "                   Panthéon, Concorde, Opéra, Bastille" & LF
-        & "  H                home (Saint-Sulpice)" & LF
+        & "  H                home (asks first)" & LF
+        & "  Shift+H          make this your home" & LF
         & "  Shift + 1 .. 0   navigate there (GPS)" & LF
         & "  X                stop navigating" & LF
         & "  L                save this place" & LF
@@ -2839,6 +2933,14 @@ package body Game is
       end Tap;
    begin
       while Wheel.Next_Press (B) loop
+         if Confirm_Open then
+            case B is
+               when Wheel.Cross  => Tap (16#FF0D#);
+               when Wheel.Circle => Tap (16#FF1B#);
+               when others => null;
+            end case;
+            goto Next;
+         end if;
          if not Menu_Open and then Taxi.Panel_Text /= "" then
             case B is
                when Wheel.Cross  => Tap (16#FF0D#);   --  next fare
@@ -3672,6 +3774,14 @@ package body Game is
       if K in 16#41# .. 16#5A# then   --  upper case letters
          K := K + 16#20#;
       end if;
+      if Confirm_Open and then Down then
+         Confirm_Open := False;
+         Confirm.Hide;
+         if K = 16#FF0D# or else K = 16#FF8D# or else K = 16#68# or else K = 16#79# then
+            Go_Home_Now;
+         end if;
+         return;
+      end if;
       if List_Open and then Down and then List_Key (K) then
          return;
       end if;
@@ -3771,9 +3881,16 @@ package body Game is
             if Down and then not Visiting then
                Teleport (Places (Integer (K) - 16#30#));
             end if;
-         when 16#68# =>                                       --  h: home
+         when 16#68# =>                                       --  h: home (asks first)
             if Down and then not Visiting then
-               Teleport (Places (1));
+               Confirm_Open := True;
+               Confirm.Set_Markup
+                 ("<span font_family='sans' size='large'><b>Go home?</b>  "
+                  & Ada.Strings.Unbounded.To_String (Spawn_Name) & "</span>" & ASCII.LF
+                  & "<span foreground='#aab'>Enter or H: yes      Esc: no"
+                  & (if Wheel.Present then ASCII.LF & "wheel: X yes, circle no" else "")
+                  & "</span>");
+               Confirm.Show;
             end if;
          when 16#67# =>                                       --  g
             if Down then
@@ -3931,6 +4048,13 @@ package body Game is
          end;
          return True;
       end if;
+      --  Shift + H: home is here
+      if (Event.State and Gdk.Types.Shift_Mask) /= 0
+        and then (Event.Keyval = 16#48# or else Event.Keyval = 16#68#)
+      then
+         Save_Home_Here;
+         return True;
+      end if;
       Set_Key (Event.Keyval, True);
       return True;
    end Key_Press;
@@ -4041,6 +4165,7 @@ package body Game is
    begin
       Gtk.Main.Init;
       Config.Load;
+      Read_Home;
       Terrain.Load;
       Hour := Config.Get ("start_hour", 18.0);
       declare
@@ -4144,6 +4269,12 @@ package body Game is
       Place_List.Set_No_Show_All (True);
       Overlay.Add_Overlay (Place_List);
 
+      Gtk.Label.Gtk_New (Confirm);
+      Confirm.Set_Halign (Gtk.Widget.Align_Center);
+      Confirm.Set_Valign (Gtk.Widget.Align_Center);
+      Confirm.Set_No_Show_All (True);
+      Overlay.Add_Overlay (Confirm);
+
       Gtk.Label.Gtk_New (Caption);
       Caption.Set_Halign (Gtk.Widget.Align_Center);
       Caption.Set_Valign (Gtk.Widget.Align_End);
@@ -4208,6 +4339,9 @@ package body Game is
          Gtk.Style_Context.Get_Style_Context (Caption).Add_Provider
            (Gtk.Css_Provider."+" (Css), Gtk.Style_Provider.Priority_Application);
          Gtk.Style_Context.Get_Style_Context (Caption).Add_Class ("caption");
+         Gtk.Style_Context.Get_Style_Context (Confirm).Add_Provider
+           (Gtk.Css_Provider."+" (Css), Gtk.Style_Provider.Priority_Application);
+         Gtk.Style_Context.Get_Style_Context (Confirm).Add_Class ("help");
          Gtk.Style_Context.Get_Style_Context (Sign).Add_Provider
            (Gtk.Css_Provider."+" (Css), Gtk.Style_Provider.Priority_Application);
          Gtk.Style_Context.Get_Style_Context (Sign).Add_Class ("street-sign");

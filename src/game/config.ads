@@ -13,4 +13,8 @@ package Config is
    function Get (Name : String; Default : Boolean) return Boolean;
    function Get (Name : String; Default : String) return String;
 
+   procedure Set (Name, Value : String);
+   --  Change a setting and write it to the file (the line is replaced, or
+   --  added at the end with a comment)
+
 end Config;

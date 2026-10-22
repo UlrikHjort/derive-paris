@@ -4,6 +4,7 @@
 --
 with Ada.Characters.Handling;
 with Ada.Containers.Indefinite_Hashed_Maps;
+with Ada.Containers.Indefinite_Vectors;
 with Ada.Directories;
 with Ada.Environment_Variables;
 with Ada.Strings.Fixed;
@@ -63,6 +64,9 @@ package body Config is
      & "# 1.5: quicker) and a correction if the car does not run straight with" & ASCII.LF
      & "# the wheel centred (degrees, + if the car pulls to the right)." & ASCII.LF
      & "steering = 1.0" & ASCII.LF
+     & "# Where H takes you and where the game starts: latitude longitude" & ASCII.LF
+     & "# heading (degrees).  Shift+H in the game sets it to where you are." & ASCII.LF
+     & "# home = 48.851900 2.333020 8" & ASCII.LF
      & "wheel_centre = 0.0" & ASCII.LF;
 
    function File_Name return String is
@@ -147,5 +151,51 @@ package body Config is
 
    function Get (Name : String; Default : String) return String is
      (if Values.Contains (Name) then Values.Element (Name) else Default);
+
+   procedure Set (Name, Value : String) is
+      use Ada.Strings.Fixed;
+      package Line_Vectors is new Ada.Containers.Indefinite_Vectors (Positive, String);
+      Lines : Line_Vectors.Vector;
+      F     : Ada.Text_IO.File_Type;
+      Done  : Boolean := False;
+   begin
+      Values.Include (Name, Value);
+      if Ada.Directories.Exists (File_Name) then
+         Ada.Text_IO.Open (F, Ada.Text_IO.In_File, File_Name);
+         while not Ada.Text_IO.End_Of_File (F) loop
+            declare
+               Line : constant String := Ada.Text_IO.Get_Line (F);
+               T    : constant String := Trim (Line, Ada.Strings.Both);
+               Eq   : constant Natural := Index (T, "=");
+            begin
+               if not Done and then Eq > 0 and then T (T'First) /= '#'
+                 and then Ada.Characters.Handling.To_Lower (Trim (T (T'First .. Eq - 1), Ada.Strings.Both)) = Name
+               then
+                  Lines.Append (Name & " = " & Value);
+                  Done := True;
+               else
+                  Lines.Append (Line);
+               end if;
+            end;
+         end loop;
+         Ada.Text_IO.Close (F);
+      end if;
+      if not Done then
+         Lines.Append ("");
+         Lines.Append ("# Set from the game");
+         Lines.Append (Name & " = " & Value);
+      end if;
+      Ada.Text_IO.Create (F, Ada.Text_IO.Out_File, File_Name);
+      for L of Lines loop
+         Ada.Text_IO.Put_Line (F, L);
+      end loop;
+      Ada.Text_IO.Close (F);
+   exception
+      when others =>
+         if Ada.Text_IO.Is_Open (F) then
+            Ada.Text_IO.Close (F);
+         end if;
+         Ada.Text_IO.Put_Line ("Could not write " & File_Name);
+   end Set;
 
 end Config;
