@@ -62,6 +62,9 @@ with Decals;
 with Scenes;
 with Birds;
 with Stravinsky;
+with Addresses;
+with Gdk.Keyval;
+with Glib.Unicode;
 with Street_Life;
 with Limit_Sign;
 with Rain;
@@ -266,6 +269,12 @@ package body Game is
    Caption    : Gtk.Label.Gtk_Label;   --  the label of the work you look at
    Confirm    : Gtk.Label.Gtk_Label;   --  "Go home?"
    Confirm_Open : Boolean := False;
+   Search_Box  : Gtk.Label.Gtk_Label;   --  F3: find an address
+   Search_Open : Boolean := False;
+   Search_Text : Ada.Strings.Unbounded.Unbounded_String;
+   Search_Sel  : Positive := 1;
+   Search_Hits : Addresses.Result_Array;
+   Search_N    : Natural := 0;
    Caption_Shown : Ada.Strings.Unbounded.Unbounded_String;
    On_Tower   : Boolean := False;  --  on top of the Eiffel Tower
    On_Arc     : Boolean := False;  --  on the roof of the Arc de Triomphe
@@ -771,6 +780,7 @@ package body Game is
          Tower.Load (Dir & "/eiffel.txt");
          Arc_Top.Load (Dir & "/arc.txt");
          Scenes.Load;
+         Addresses.Load (Dir);
          Scenes.Set_Override (Xmas_Setting);
          Scenes.Create;
          Stravinsky.Create;
@@ -2043,6 +2053,9 @@ package body Game is
    end Clock_Image;
 
    procedure Set_Key (Key : Gdk.Types.Gdk_Key_Type; Down : Boolean);
+   procedure Open_Search;
+   procedure Refresh_Search;
+   --  (below, by Key_Press)
 
    --  F1: the keys for what you are doing now
    function Help_Text return String is
@@ -2127,6 +2140,7 @@ package body Game is
         & "  P                weather: rain, storm, snow, dry" & LF
         & "  M                sound on / off" & LF
         & "  F2               games: street racing, taxi" & LF
+        & "  F3               find an address (GPS)" & LF
         & "  F9               record a video (again: stop)" & LF
         & "  F12              take a photo" & LF
         & (if Wheel.Present and then not Visiting then
@@ -3347,6 +3361,16 @@ package body Game is
             Walk_Pitch := -0.45;
          end;
       end if;
+      --  PARIS_SEARCH="76 rue bonaparte": the address box with that typed (testing)
+      if Ready and then Frame_Number = 40 and then Env ("PARIS_SEARCH") /= "" then
+         Open_Search;
+         Search_Text := Ada.Strings.Unbounded.To_Unbounded_String (Env ("PARIS_SEARCH"));
+         Refresh_Search;
+         for I in 1 .. Search_N loop
+            Ada.Text_IO.Put_Line ("search: " & Search_Hits (I).Label (1 .. Search_Hits (I).Last)
+                                  & Integer (Search_Hits (I).X)'Image & Integer (Search_Hits (I).Z)'Image);
+         end loop;
+      end if;
       --  PARIS_HEADING=<degrees>: turn the car that way (testing)
       if Ready and then Frame_Number = 30 and then Env ("PARIS_HEADING") /= "" then
          Player.Heading := Float'Value (Env ("PARIS_HEADING")) * Ada.Numerics.Pi / 180.0;
@@ -3994,6 +4018,10 @@ package body Game is
                   Start_Recording := True;   --  at the next frame, its size
                end if;
             end if;
+         when 16#FFC0# =>                                     --  F3: find an address
+            if Down then
+               Open_Search;
+            end if;
          when 16#FFBE# =>                                     --  F1: keys
             if Down then
                if Help.Get_Visible then
@@ -4030,6 +4058,117 @@ package body Game is
       end case;
    end Set_Key;
 
+   ---------------------------------------------------------------------------
+   --  F3: type a street (and a number), Enter sets the GPS
+   ---------------------------------------------------------------------------
+
+   procedure Refresh_Search is
+      use Ada.Strings.Unbounded;
+      LF : constant String := (1 => ASCII.LF);
+      T  : Unbounded_String;
+      Here_X : constant Float := (if Walking then Walk_X else Player.X);
+      Here_Z : constant Float := (if Walking then Walk_Z else Player.Z);
+   begin
+      Addresses.Search (To_String (Search_Text), Here_X, Here_Z, Search_Hits, Search_N);
+      Search_Sel := Positive'Max (1, Positive'Min (Search_Sel, Natural'Max (1, Search_N)));
+      Append (T, "<span font_family='sans'><b><span foreground='#ffd27a'>Find an address</span></b>"
+              & LF & "<span size='large' background='#ffffff22'> " & Escape (To_String (Search_Text))
+              & "&#x2502; </span>" & LF);
+      if Length (Search_Text) > 0 and then Search_N = 0 then
+         Append (T, LF & "<span foreground='#aab'>  nothing found</span>");
+      end if;
+      for I in 1 .. Search_N loop
+         declare
+            L : constant String := Escape (Search_Hits (I).Label (1 .. Search_Hits (I).Last));
+         begin
+            Append (T, LF & (if I = Search_Sel then "<span background='#3a6fd8'> " & L & " </span>" else " " & L));
+         end;
+      end loop;
+      Append (T, LF & LF & "<span foreground='#aab' size='small'>street name and number, in any order"
+              & LF & "up/down: choose    Enter: GPS there    Esc: close</span></span>");
+      Search_Box.Set_Markup (To_String (T));
+   end Refresh_Search;
+
+   procedure Open_Search is
+   begin
+      Search_Open := True;
+      Search_Sel := 1;
+      Help.Hide;
+      Refresh_Search;
+      Search_Box.Show;
+   end Open_Search;
+
+   procedure Close_Search is
+   begin
+      Search_Open := False;
+      Search_Box.Hide;
+   end Close_Search;
+
+   --  A key while the box is open (always used)
+   procedure Search_Key (Event : Gdk.Event.Gdk_Event_Key) is
+      use Ada.Strings.Unbounded;
+      K : constant Gdk.Types.Gdk_Key_Type := Event.Keyval;
+   begin
+      case K is
+         when 16#FF1B# | 16#FFC0# =>                          --  Escape, F3
+            Close_Search;
+            return;
+         when 16#FF0D# | 16#FF8D# =>                          --  Enter
+            if Search_N > 0 then
+               declare
+                  H : constant Addresses.Result := Search_Hits (Search_Sel);
+               begin
+                  Navigation.Set_Destination (H.Label (1 .. H.Last), H.X, H.Z);
+                  if not Show_Compass then
+                     Set_Key (16#67#, True);   --  the minimap
+                  end if;
+               end;
+               Close_Search;
+            end if;
+            return;
+         when 16#FF52# =>                                     --  up
+            if Search_Sel > 1 then
+               Search_Sel := Search_Sel - 1;
+            end if;
+         when 16#FF54# =>                                     --  down
+            if Search_Sel < Search_N then
+               Search_Sel := Search_Sel + 1;
+            end if;
+         when 16#FF08# =>                                     --  Backspace: one character
+            declare
+               S : constant String := To_String (Search_Text);
+               L : Natural := S'Last;
+            begin
+               if L >= S'First then
+                  --  back over the continuation bytes of a UTF-8 character
+                  while L > S'First and then Character'Pos (S (L)) in 16#80# .. 16#BF# loop
+                     L := L - 1;
+                  end loop;
+                  Search_Text := To_Unbounded_String (S (S'First .. L - 1));
+               end if;
+            end;
+            Search_Sel := 1;
+         when others =>
+            declare
+               C : constant Glib.Gunichar := Gdk.Keyval.To_Unicode (K);
+            begin
+               if Glib.">=" (C, 32) and then Length (Search_Text) < 60 then
+                  declare
+                     Buf  : String (1 .. 6);
+                     Last : Natural;
+                  begin
+                     Glib.Unicode.Unichar_To_UTF8 (C, Buf, Last);
+                     Append (Search_Text, Buf (1 .. Last));
+                     Search_Sel := 1;
+                  end;
+               else
+                  return;
+               end if;
+            end;
+      end case;
+      Refresh_Search;
+   end Search_Key;
+
    function Key_Press
      (Self : access Gtk.Widget.Gtk_Widget_Record'Class;
       Event : Gdk.Event.Gdk_Event_Key) return Boolean
@@ -4037,6 +4176,10 @@ package body Game is
       pragma Unreferenced (Self);
       use type Gdk.Types.Gdk_Modifier_Type;
    begin
+      if Search_Open then
+         Search_Key (Event);
+         return True;
+      end if;
       --  Shift + 1 .. 0 (the digit row, whatever the keyboard layout):
       --  navigate to that place
       if (Event.State and Gdk.Types.Shift_Mask) /= 0
@@ -4273,6 +4416,13 @@ package body Game is
       Place_List.Set_No_Show_All (True);
       Overlay.Add_Overlay (Place_List);
 
+      Gtk.Label.Gtk_New (Search_Box);
+      Search_Box.Set_Halign (Gtk.Widget.Align_Center);
+      Search_Box.Set_Valign (Gtk.Widget.Align_Start);
+      Search_Box.Set_Margin_Top (80);
+      Search_Box.Set_No_Show_All (True);
+      Overlay.Add_Overlay (Search_Box);
+
       Gtk.Label.Gtk_New (Confirm);
       Confirm.Set_Halign (Gtk.Widget.Align_Center);
       Confirm.Set_Valign (Gtk.Widget.Align_Center);
@@ -4346,6 +4496,9 @@ package body Game is
          Gtk.Style_Context.Get_Style_Context (Confirm).Add_Provider
            (Gtk.Css_Provider."+" (Css), Gtk.Style_Provider.Priority_Application);
          Gtk.Style_Context.Get_Style_Context (Confirm).Add_Class ("help");
+         Gtk.Style_Context.Get_Style_Context (Search_Box).Add_Provider
+           (Gtk.Css_Provider."+" (Css), Gtk.Style_Provider.Priority_Application);
+         Gtk.Style_Context.Get_Style_Context (Search_Box).Add_Class ("help");
          Gtk.Style_Context.Get_Style_Context (Sign).Add_Provider
            (Gtk.Css_Provider."+" (Css), Gtk.Style_Provider.Priority_Application);
          Gtk.Style_Context.Get_Style_Context (Sign).Add_Class ("street-sign");

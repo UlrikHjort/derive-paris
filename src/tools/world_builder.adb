@@ -4738,6 +4738,64 @@ package body World_Builder is
 
       Write_Tiles (Out_Dir);
       Write_Roads (Out_Dir & "/" & Roads_File);
+      --  The addresses (street, house number, where) for the GPS search
+      declare
+         F : Ada.Text_IO.File_Type;
+         Count : Natural := 0;
+         procedure Put (Tags : Tag_Maps.Map; X, Z : Long_Float) is
+         begin
+            --  (the street may be missing: the game takes the nearest one)
+            if Has (Tags, "addr:housenumber")
+              and then X >= DX0 and then X < DX1 and then Z >= DZ0 and then Z < DZ1
+            then
+               Ada.Text_IO.Put_Line
+                 (F, Tag (Tags, "addr:street") & ASCII.HT & Tag (Tags, "addr:housenumber") & ASCII.HT
+                  & Integer'Image (Integer (X)) & ASCII.HT & Integer'Image (Integer (Z)));
+               Count := Count + 1;
+            end if;
+         end Put;
+      begin
+         Ada.Text_IO.Create (F, Ada.Text_IO.Out_File,
+                             Out_Dir & "/addresses_" & Roads_File (Roads_File'First + 6 .. Roads_File'Last - 4)
+                             & ".txt");
+         for W of M.Ways loop
+            if Has (W.Tags, "addr:housenumber") then
+               declare
+                  SX, SZ : Long_Float := 0.0;
+                  N : Natural := 0;
+               begin
+                  for Id of W.Refs loop
+                     declare
+                        C : constant Node_Maps.Cursor := M.Nodes.Find (Id);
+                        X, Z : Long_Float;
+                     begin
+                        if Node_Maps.Has_Element (C) then
+                           Geo.To_Local (Node_Maps.Element (C).Lat, Node_Maps.Element (C).Lon, X, Z);
+                           SX := SX + X;
+                           SZ := SZ + Z;
+                           N := N + 1;
+                        end if;
+                     end;
+                  end loop;
+                  if N > 0 then
+                     Put (W.Tags, SX / Long_Float (N), SZ / Long_Float (N));
+                  end if;
+               end;
+            end if;
+         end loop;
+         for P of M.Points loop
+            if Has (P.Tags, "addr:housenumber") then
+               declare
+                  X, Z : Long_Float;
+               begin
+                  Geo.To_Local (P.Pos.Lat, P.Pos.Lon, X, Z);
+                  Put (P.Tags, X, Z);
+               end;
+            end if;
+         end loop;
+         Ada.Text_IO.Close (F);
+         Ada.Text_IO.Put_Line ("  addresses:" & Count'Image);
+      end;
       declare
          F : Ada.Text_IO.File_Type;
       begin

@@ -105,6 +105,7 @@ fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 | N | street names |
 | G | compass, position (lat/lon, heading, altitude) and minimap |
 | Shift + 1 .. 0 | GPS: navigate to that place (route through the real streets, turn-by-turn with street names) |
+| F3 | find an address: type a street and a number (in any order, accents and capitals don't matter), Enter sets the GPS |
 | X | stop navigating |
 | J | clear the traffic around you (new cars arrive gradually) |
 | M | sound on/off |
