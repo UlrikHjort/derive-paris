@@ -65,6 +65,7 @@ with Stravinsky;
 with Addresses;
 with Extras;
 with Moulin;
+with Rooms;
 with Gdk.Keyval;
 with Glib.Unicode;
 with Street_Life;
@@ -268,6 +269,7 @@ package body Game is
    Captured   : Boolean := False;  --  the mouse turns the head
    In_Museum  : Boolean := False;  --  inside the Louvre (through the Pyramid)
    In_Hall_B : Boolean := False;   --  in hall B
+   In_Room   : Boolean := False;   --  in one of the rooms (Rooms)
    Caption    : Gtk.Label.Gtk_Label;   --  the label of the work you look at
    Confirm    : Gtk.Label.Gtk_Label;   --  "Go home?"
    Confirm_Open : Boolean := False;
@@ -804,6 +806,18 @@ package body Game is
             end if;
             Hall_B.Mark_Point (X, Z);
             Decals.Set (Decals.Decal_D, X, Z);
+            declare
+               Found : Boolean;
+               Marks : constant array (Rooms.Room_Kind) of Decals.Decal_Kind :=
+                 (Decals.Decal_F, Decals.Decal_G, Decals.Decal_E, Decals.Decal_H);
+            begin
+               for K in Rooms.Room_Kind loop
+                  Rooms.Mark (K, X, Z, Found);
+                  if Found then
+                     Decals.Set (Marks (K), X, Z);
+                  end if;
+               end loop;
+            end;
             if Home.Known then
                Decals.Set (Decals.Decal_E,
                           Home.Origin.X + Home.Length / 2.0 * Home.Along.X - 2.2 * Home.Inward.X,
@@ -847,6 +861,7 @@ package body Game is
    function Walk_Eye return Vec3 is
      ((Walk_X, (if In_Museum then Museum.Floor_Y
                 elsif In_Hall_B then Hall_B.Floor_Y
+                elsif In_Room then Rooms.Floor_Y
                 elsif On_Tower then Tower.Top_Floor_Y
                 elsif On_Arc then Arc_Top.Roof_Y
                 else Terrain.Height (Walk_X, Walk_Z))
@@ -1217,8 +1232,8 @@ package body Game is
          Stravinsky.Draw (WU.Model, WU.Car_Color, Cam_Pos);
          Moulin.Draw (WU.Model, WU.Car_Color, Cam_Pos);
          Set (WU.Car_Color, Car_Color);
-         if Walking and then not In_Museum and then not In_Hall_B and then not On_Tower
-           and then not On_Arc
+         if Walking and then not In_Museum and then not In_Hall_B and then not In_Room
+           and then not On_Tower and then not On_Arc
          then
             Decals.Draw (WU.Model, WU.Extra_Color, Walk_X, Walk_Z);
          end if;
@@ -1229,7 +1244,7 @@ package body Game is
          Set (WU.Car_Color, Car_Color);
          Car.Draw;
          Traffic.Draw (WU.Model, WU.Car_Color);
-         if not In_Museum and then not In_Hall_B then
+         if not In_Museum and then not In_Hall_B and then not In_Room then
             Birds.Draw (WU.Model, WU.Car_Color, Cam_Pos);
             Extras.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos);
             Set (WU.Car_Color, Car_Color);
@@ -1259,6 +1274,10 @@ package body Game is
          if In_Hall_B then
             Hall_B.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, WU.Gallery);
          end if;
+         if In_Room then
+            Rooms.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, WU.Gallery);
+            Set (WU.Car_Color, Car_Color);
+         end if;
          if In_Museum then
             Museum.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, WU.Gallery);
             Set (WU.Car_Color, Car_Color);
@@ -1283,11 +1302,12 @@ package body Game is
          Ufo.Draw_Beam (VP, Cam_Pos);
          Surprises.Draw_Lights (VP, Cam_Pos);
          Sky_Life.Draw (VP, Float (H) / (2.0 * Tan (0.525)), Night);
-         Rain.Draw (VP, Cam_Pos, Time, (if In_Museum or else In_Hall_B then 0.0 else Float'Max (Rain_Amount, Snow_Amount)),
+         Rain.Draw (VP, Cam_Pos, Time, (if In_Museum or else In_Hall_B or else In_Room then 0.0 else Float'Max (Rain_Amount, Snow_Amount)),
                     Snow_Amount > Rain_Amount, Float (H) / (2.0 * Tan (0.525)),
                     Mix (Vec3'(0.30, 0.32, 0.36), Vec3'(0.75, 0.78, 0.82), 1.0 - Night));
          if (Mode = Driving or else Visiting or else Walking)
-           and then not In_Museum and then not In_Hall_B and then not On_Tower and then not On_Arc
+           and then not In_Museum and then not In_Hall_B and then not In_Room
+           and then not On_Tower and then not On_Arc
          then
             Rain.Draw_Leaves (VP, Cam_Pos, Time, Almanac.Leaves_Falling * (1.0 - Snow_Amount),
                               Float (H) / (2.0 * Tan (0.525)), 0.15 + 0.85 * (1.0 - Night));
@@ -1732,6 +1752,28 @@ package body Game is
       Street_Timer := 1.0;
    end Leave_Hall_B;
 
+   procedure Enter_Room (K : Rooms.Room_Kind) is
+   begin
+      Rooms.Enter (K, Walk_X, Walk_Z, Walk_Yaw);
+      In_Room := True;
+      Rooms.Entrance (Walk_X, Walk_Z, Walk_Yaw);
+      Walk_Pitch := 0.0;
+      Traffic.Set_Walker (False, 0.0, 0.0);
+      Announce := Ada.Strings.Unbounded.To_Unbounded_String (Rooms.Arrival);
+      Announce_Timer := 4.0;
+      Street_Timer := 1.0;
+   end Enter_Room;
+
+   procedure Leave_Room is
+   begin
+      In_Room := False;
+      Rooms.Way_Out (Walk_X, Walk_Z, Walk_Yaw);
+      Walk_Pitch := 0.1;
+      Announce := Ada.Strings.Unbounded.To_Unbounded_String (Rooms.Leaving);
+      Announce_Timer := 3.0;
+      Street_Timer := 1.0;
+   end Leave_Room;
+
    procedure Go_Up is
    begin
       On_Tower := True;
@@ -1806,6 +1848,8 @@ package body Game is
          Leave_Museum;
       elsif In_Hall_B then
          Leave_Hall_B;
+      elsif In_Room then
+         Leave_Room;
       elsif On_Tower then
          Go_Down;
       elsif On_Arc then
@@ -1845,6 +1889,9 @@ package body Game is
          when Decals.Decal_B => Go_Up;
          when Decals.Decal_C => Up_The_Arc;
          when Decals.Decal_D => Enter_Hall_B;
+         when Decals.Decal_F => Enter_Room (Rooms.Room_A);
+         when Decals.Decal_G => Enter_Room (Rooms.Room_B);
+         when Decals.Decal_H => Enter_Room (Rooms.Room_D);
          when Decals.Decal_E =>
             Walking := False;
             Capture_Mouse (False);
@@ -1861,9 +1908,21 @@ package body Game is
       DX, DZ : Float := 0.0;
       Turn  : constant Float := 1.8 * Dt;
    begin
-      if not In_Museum and then not In_Hall_B and then not On_Tower and then not On_Arc
-        and then On_A_Decal
+      if not In_Museum and then not In_Hall_B and then not In_Room and then not On_Tower
+        and then not On_Arc and then On_A_Decal
       then
+         return;
+      end if;
+      if In_Room then
+         Rooms.Update (Dt, Walk_X, Walk_Z);
+         if Rooms.At_Exit (Walk_X, Walk_Z) then
+            Leave_Room;
+            return;
+         end if;
+      elsif not In_Museum and then not In_Hall_B and then not On_Tower and then not On_Arc
+        and then Ufo.In_Beam (Walk_X, Walk_Z)
+      then
+         Enter_Room (Rooms.Room_C);
          return;
       end if;
       --  the arrows turn too, for those without a mouse
@@ -1906,6 +1965,11 @@ package body Game is
             end if;
             if On_Arc then
                Arc_Top.Keep_On_Roof (Walk_X, Walk_Z);
+               Walk_Step := Walk_Step + Dt * Speed * 4.2;
+               return;
+            end if;
+            if In_Room then
+               Rooms.Keep_Inside (Walk_X, Walk_Z);
                Walk_Step := Walk_Step + Dt * Speed * 4.2;
                return;
             end if;
@@ -2086,6 +2150,11 @@ package body Game is
              & "  mouse            look all round" & LF
              & "  W / S, A / D     walk round the roof" & LF
              & "  Q                the stairs down" & LF & LF
+           elsif Walking and then In_Room then
+             Head (Rooms.Heading)
+             & "  mouse            look all round" & LF
+             & "  W / S, A / D     walk, step aside" & LF
+             & "  Q                out" & LF & LF
            elsif Walking and then In_Hall_B then
              Head (Hall_B.Heading)
              & "  mouse            look all round" & LF
@@ -3143,7 +3212,7 @@ package body Game is
                        elsif Wheel.Present then Float'Max (0.15, Wheel.State.Throttle)
                        else 0.15),
           Speed    => (if Mode = Flying then Aircraft.Speed else abs Player.Speed),
-          Altitude => (if In_Museum or else In_Hall_B then 400.0 elsif On_Tower then 280.0
+          Altitude => (if In_Museum or else In_Hall_B or else In_Room then 400.0 elsif On_Tower then 280.0
                        elsif On_Arc then 50.0 else Ear_Y),
           Rain     => Rain_Amount,
           Night    => Night,
@@ -3153,7 +3222,7 @@ package body Game is
           Church   => Church_Near,
           Jingle   => Sleigh.Jingle,
           Jets     => Surprises.Jets,
-          Crowd    => (if In_Museum or else In_Hall_B then 0.1
+          Crowd    => (if In_Museum or else In_Hall_B or else In_Room then 0.1
                        else Float'Max (Float'Max (Surprises.Crowd, Race.Crowd),
                                        Scenes.Crowd (Where.X, Where.Z))),   --  the murmur of visitors
           Busker   => Surprises.Busker,
@@ -3288,6 +3357,24 @@ package body Game is
          end if;
          Go_Up;
          Walk_Yaw := Walk_Yaw + Float'Value (Env ("PARIS_TOWER")) * Ada.Numerics.Pi / 180.0;
+      end if;
+      --  PARIS_ROOM="k x z yaw" (k: A, B, C or D): in a room, x z from its entrance (testing)
+      if Ready and then Frame_Number = 30 and then Env ("PARIS_ROOM") /= "" then
+         if not Walking then
+            Toggle_Walk;
+         end if;
+         declare
+            S  : constant String := Env ("PARIS_ROOM") & " 0 0 0 ";
+            P0 : constant Natural := Index_Of (S, ' ', S'First);
+            P1 : constant Natural := Index_Of (S, ' ', P0 + 1);
+            P2 : constant Natural := Index_Of (S, ' ', P1 + 1);
+            P3 : constant Natural := Index_Of (S, ' ', P2 + 1);
+         begin
+            Enter_Room (Rooms.Room_Kind'Value ("Room_" & S (S'First .. P0 - 1)));
+            Walk_X := Walk_X + Float'Value (S (P0 + 1 .. P1 - 1));
+            Walk_Z := Walk_Z + Float'Value (S (P1 + 1 .. P2 - 1));
+            Walk_Yaw := Walk_Yaw + Float'Value (S (P2 + 1 .. P3 - 1)) * Ada.Numerics.Pi / 180.0;
+         end;
       end if;
       --  PARIS_HALL="x z yaw": in hall B (testing)
       if Ready and then Frame_Number = 30 and then Env ("PARIS_HALL") /= "" then
@@ -3567,7 +3654,8 @@ package body Game is
             declare
                use Ada.Strings.Unbounded;
                T : constant String :=
-                 (if In_Hall_B and then Walking then Hall_B.Caption (Walk_X, Walk_Z, Walk_Yaw) else "");
+                 (if In_Hall_B and then Walking then Hall_B.Caption (Walk_X, Walk_Z, Walk_Yaw)
+                  elsif In_Room and then Walking then Rooms.Status else "");
             begin
                if T /= To_String (Caption_Shown) then
                   Caption_Shown := To_Unbounded_String (T);
@@ -3646,7 +3734,7 @@ package body Game is
             use Ada.Strings.Unbounded;
             Name : constant String :=
               (if Announce_Timer > 0.0 then To_String (Announce)
-               elsif not Show_Street or else In_Museum or else In_Hall_B then ""
+               elsif not Show_Street or else In_Museum or else In_Hall_B or else In_Room then ""
                elsif On_Arc then "Arc de Triomphe"
                elsif On_Tower then "Tour Eiffel"
                elsif Walking then Road_Network.Street_At (Walk_X, Walk_Z)

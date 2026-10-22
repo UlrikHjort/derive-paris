@@ -1079,6 +1079,24 @@ void main()
     } else if (m == 76) {          // amber lamp glass, lit at night
         s = Surface(toLinear(vec3(0.95, 0.45, 0.12)), 0.6, 60.0,
                     toLinear(vec3(1.0, 0.55, 0.15)) * (0.15 + 2.5 * uNight), 0.0);
+    } else if (m == 77) {          // a wall of stacked bones: rows of ends, now and then a skull
+        vec2 g = vec2((vWorld.x + vWorld.z) * 6.0, vWorld.y * 9.0);
+        vec2 id = floor(g), f = fract(g) - 0.5;
+        float knob = smoothstep(0.42, 0.2, length(f * vec2(1.0, 1.4)));
+        vec2 sg = vec2((vWorld.x + vWorld.z) * 1.4, vWorld.y * 2.2);
+        vec2 sid = floor(sg), sf = fract(sg) - 0.5;
+        float row = step(0.5, fract(sid.y * 0.5));
+        float skull = row * step(0.55, hash(sid)) * smoothstep(0.38, 0.3, length(sf * vec2(1.0, 1.2)));
+        float eyes = skull * smoothstep(0.1, 0.06, min(length(sf - vec2(-0.12, 0.05)), length(sf - vec2(0.12, 0.05))));
+        vec3 c = vec3(0.62, 0.55, 0.42) * (0.55 + 0.45 * knob) * (0.85 + 0.2 * hash(id));
+        c = mix(c, vec3(0.72, 0.66, 0.52), skull);
+        c = mix(c, vec3(0.05, 0.04, 0.03), eyes);
+        s = Surface(toLinear(c), 0.05, 10.0, vec3(0), 0.0);
+    } else if (m == 78) {          // polished brass
+        s = Surface(toLinear(vec3(0.85, 0.65, 0.25)), 0.9, 80.0, vec3(0), 0.0);
+    } else if (m == 79) {          // a candle flame / a torch
+        float flicker = 0.75 + 0.15 * sin(uTime * 13.0 + vWorld.x * 7.0) + 0.1 * sin(uTime * 23.0 + vWorld.z * 5.0);
+        s = Surface(vec3(1.0, 0.8, 0.4), 0.0, 8.0, vec3(1.6, 1.0, 0.45) * flicker, 0.0);
     } else if (m == 50) {          // a lamp in uExtraColor: the taxi sign, a police light bar
         s = Surface(toLinear(uExtraColor), 0.3, 16.0, toLinear(uExtraColor) * (1.2 + 3.0 * uNight), 0.0);
     } else if (m == 38) {          // the star on top
@@ -1256,7 +1274,10 @@ void main()
         ambient = vec3(1.0, 0.93, 0.84) * (0.05 + 0.22 * day) + 0.3 * uAmbSky;
     }
     // In the Louvre: even, warm gallery light, day and night
-    if (uGallery > 1.5) {          // hall B: cool, bright, white
+    if (uGallery > 2.5) {          // underground: only the light you carry
+        float d = length(vWorld - uCamPos);
+        ambient = vec3(1.0, 0.7, 0.4) * (1.6 / (1.0 + 0.6 * d * d)) + vec3(0.003);
+    } else if (uGallery > 1.5) {   // hall B: cool, bright, white
         ambient = vec3(0.95, 0.97, 1.0) * 0.95;
     } else if (uGallery > 0.5) {
         ambient = vec3(1.0, 0.95, 0.86) * 0.8;
@@ -1274,7 +1295,10 @@ void main()
              + uSunColor * spec + s.emissive + lampSpec;
     // Hall B is underground: no sun, no city shadows, but an even light
     // from the ceiling, the same by day and by night
-    if (uGallery > 1.5) {
+    if (uGallery > 2.5) {          // (no floodlights down here: only flames and signs glow)
+        bool glows = m == 79 || m == 49 || m == 50 || m == 76;
+        col = s.albedo * ambient + (glows ? s.emissive : vec3(0.0));
+    } else if (uGallery > 1.5) {
         vec3 Lg = normalize(vec3(0.15, 1.0, 0.1));
         vec3 Hg = normalize(Lg + V);
         float sg = s.spec * pow(max(dot(N, Hg), 0.0), s.gloss);
