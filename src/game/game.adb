@@ -2055,6 +2055,7 @@ package body Game is
    procedure Set_Key (Key : Gdk.Types.Gdk_Key_Type; Down : Boolean);
    procedure Open_Search;
    procedure Refresh_Search;
+   procedure Close_Search;
    --  (below, by Key_Press)
 
    --  F1: the keys for what you are doing now
@@ -3192,6 +3193,8 @@ package body Game is
       end;
    end Update_Senses;
 
+   Tick_Failed : Boolean := False;   --  told about an error already
+
    function Tick
      (Widget      : not null access Gtk.Widget.Gtk_Widget_Record'Class;
       Frame_Clock : not null access Gdk.Frame_Clock.Gdk_Frame_Clock_Record'Class)
@@ -3370,6 +3373,12 @@ package body Game is
             Ada.Text_IO.Put_Line ("search: " & Search_Hits (I).Label (1 .. Search_Hits (I).Last)
                                   & Integer (Search_Hits (I).X)'Image & Integer (Search_Hits (I).Z)'Image);
          end loop;
+         if Env ("PARIS_SEARCH_GO") /= "" and then Search_N > 0 then
+            Navigation.Set_Destination (Search_Hits (1).Label (1 .. Search_Hits (1).Last),
+                                        Search_Hits (1).X, Search_Hits (1).Z);
+            Close_Search;
+            Ada.Text_IO.Put_Line ("search: destination set");
+         end if;
       end if;
       --  PARIS_HEADING=<degrees>: turn the car that way (testing)
       if Ready and then Frame_Number = 30 and then Env ("PARIS_HEADING") /= "" then
@@ -3790,6 +3799,16 @@ package body Game is
 
       Area.Queue_Render;
       return True;
+   exception
+      --  something went wrong in one frame: say so (once), and go on with
+      --  the next rather than stopping the game
+      when E : others =>
+         if not Tick_Failed then
+            Tick_Failed := True;
+            Ada.Text_IO.Put_Line ("Error in a frame: " & Ada.Exceptions.Exception_Information (E));
+         end if;
+         Area.Queue_Render;
+         return True;
    end Tick;
 
    ---------------------------------------------------------------------------

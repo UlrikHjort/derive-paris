@@ -184,7 +184,10 @@ package body Navigation is
             --  positive: turning right (x east, z south, heading clockwise)
             Cross : constant Float := (In_X * Out_Z - In_Z * Out_X) / (Li * Lo);
             Dot   : constant Float := (In_X * Out_X + In_Z * Out_Z) / (Li * Lo);
-            Angle : constant Float := Arctan (Cross, Dot) * 180.0 / Ada.Numerics.Pi;
+            --  (two route points in the same place: no turn there)
+            Angle : constant Float :=
+              (if abs Cross + abs Dot < 1.0E-6 then 0.0
+               else Arctan (Cross, Dot) * 180.0 / Ada.Numerics.Pi);
             New_Name : constant String := Name_Of (Route (K).Way);
             Old_Name : constant String := Name_Of (Route (K - 1).Way);
          begin
