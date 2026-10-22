@@ -91,7 +91,7 @@ fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 | arrows / WASD | drive |
 | space | handbrake |
 | B | horn |
-| Q | get out and walk (mouse to look all round, W/A/S/D to walk, Shift to run); Q again by the car to drive on |
+| Q | get out and walk (mouse to look all round, W/A/S/D to walk, Shift to run); Q again to drive on (from anywhere: you are taken back to the car) |
 | E | gearbox: manual (with the wheel's shifter and clutch) or automatic |
 | I | instruments: the gear (H-pattern or R N D), rev counter, speed and pedals |
 | L | save the place where you are |

@@ -1683,7 +1683,7 @@ package body Game is
          Walk_Pitch := 0.0;
          Capture_Mouse (True);
          Announce := Ada.Strings.Unbounded.To_Unbounded_String
-           ("On foot: mouse to look, W/A/S/D to walk, Shift to run, Q at the car to drive");
+           ("On foot: mouse to look, W/A/S/D to walk, Shift to run, Q to drive on");
          Announce_Timer := 4.0;
          Street_Timer := 1.0;
       elsif In_Museum then
@@ -1699,22 +1699,19 @@ package body Game is
             DX : constant Float := Player.X - Walk_X;
             DZ : constant Float := Player.Z - Walk_Z;
             D  : constant Float := Sqrt (DX * DX + DZ * DZ);
-            Points : constant array (0 .. 7) of String (1 .. 10) :=
-              ("north     ", "north-east", "east      ", "south-east",
-               "south     ", "south-west", "west      ", "north-west");
          begin
-            if D < 6.0 then
-               Walking := False;
-               Capture_Mouse (False);
-               Traffic.Set_Walker (False, 0.0, 0.0);
-            else
+            Walking := False;
+            Capture_Mouse (False);
+            Traffic.Set_Walker (False, 0.0, 0.0);
+            if D >= 6.0 then
+               --  far from the car: back to it at once
+               Pending_Load := True;
+               Cam_Pos := (Player.X, 6.0 + Player.Ground, Player.Z) - 10.0 * Car.Forward (Player);
+               Cam_Look := (Player.X, 1.2 + Player.Ground, Player.Z);
                Announce := Ada.Strings.Unbounded.To_Unbounded_String
-                 ("Your car is" & Natural'Image (Natural (D)) & " m "
-                  & Ada.Strings.Fixed.Trim
-                      (Points (Natural (Float'Floor ((Arctan (DX, -DZ) / (2.0 * Ada.Numerics.Pi) * 8.0)
-                                                       + 8.5)) mod 8), Ada.Strings.Right)
-                  & " of you");
-               Announce_Timer := 3.0;
+                 ("Back to the car (" & Ada.Strings.Fixed.Trim (Natural'Image (Natural (D)), Ada.Strings.Left)
+                  & " m away)");
+               Announce_Timer := 2.0;
                Street_Timer := 1.0;
             end if;
          end;
@@ -1989,7 +1986,7 @@ package body Game is
              & "  left / right     turn" & LF
              & "  Shift            run" & LF
              & "  Esc              free the mouse (click to look again)" & LF
-             & "  Q                back into the car (when you are by it)" & LF & LF
+             & "  Q                back into the car (from anywhere)" & LF & LF
            elsif Mode = Driving then
              Head ("Driving")
              & "  arrows / WASD    drive" & LF
@@ -3132,7 +3129,8 @@ package body Game is
       end if;
       --  PARIS_TOGGLE_FLIGHT=<frame>: press F then (testing)
       if Ready and then Env ("PARIS_TOGGLE_FLIGHT") /= ""
-        and then Frame_Number = Integer'Value (Env ("PARIS_TOGGLE_FLIGHT"))
+        and then (Frame_Number = Integer'Value (Env ("PARIS_TOGGLE_FLIGHT"))
+                  or else Frame_Number = Integer'Value (Env ("PARIS_TOGGLE_BACK", "-1")))
       then
          Set_Key (16#66#, True);
          Set_Key (16#66#, False);
