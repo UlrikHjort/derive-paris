@@ -791,11 +791,14 @@ package body Scenes is
                            while T < L - 2.0 loop
                               if G mod 5 /= 4 then   --  a gap now and then
                                  declare
-                                    P : constant Vec3 :=
-                                      On_Ground (Vec3'(A.X, 0.0, A.Z) + T * D + (Side * Off) * N);
+                                    R : constant Vec3 := Vec3'(A.X, 0.0, A.Z) + T * D;
+                                    P : constant Vec3 := On_Ground (R + (Side * Off) * N);
                                  begin
-                                    Box_Spots.Append ((P, D, Side * N, Float (Natural (Box_Spots.Length) mod 97) * 3.1));
-                                    Sum := Sum + P;
+                                    --  a quay has land on one side; a bridge has water on both
+                                    if Float'Max (H1, H2) > -0.8 then
+                                       Box_Spots.Append ((P, D, Side * N, Float (Natural (Box_Spots.Length) mod 97) * 3.1));
+                                       Sum := Sum + P;
+                                    end if;
                                  end;
                               end if;
                               T := T + 2.3;
