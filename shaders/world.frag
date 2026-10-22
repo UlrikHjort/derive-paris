@@ -1058,6 +1058,27 @@ void main()
         vec3 c = seeded(clamp(vUV, 0.0, 1.0), vSeed);
         c *= 0.88 + 0.14 * noise(vWorld.xy * 3.0 + vWorld.zy * 2.0);
         s = Surface(toLinear(c), 0.05, 10.0, vec3(0), 0.0);
+    } else if (m == 74) {          // a station sign: cream letters on dark green, a frame
+        vec2 uv = clamp(vUV, 0.0, 1.0);
+        float frame = step(uv.x, 0.03) + step(0.97, uv.x) + step(uv.y, 0.1) + step(0.9, uv.y);
+        float x = uv.x * 13.0;
+        float letter = step(0.28, uv.y) * step(uv.y, 0.72) * step(0.08, uv.x) * step(uv.x, 0.92)
+                     * step(0.18, fract(x)) * step(fract(x), 0.82)
+                     * (0.6 + 0.4 * step(0.5, fract(x * 2.0 + uv.y * 3.0)));
+        vec3 c = mix(vec3(0.08, 0.2, 0.14), vec3(0.95, 0.88, 0.68), clamp(letter + frame * 0.6, 0.0, 1.0));
+        s = Surface(toLinear(c), 0.15, 20.0, toLinear(c) * 0.25 * uNight, 0.0);
+    } else if (m == 75) {          // the M of the metro on a yellow disc
+        vec2 q = clamp(vUV, 0.0, 1.0) * 2.0 - 1.0;
+        float disc = step(length(q), 0.95);
+        gAlpha = disc;
+        float m1 = step(abs(q.x), 0.55) * step(abs(q.y), 0.55);
+        float stems = step(0.38, abs(q.x)) + step(abs(abs(q.x) - (0.55 - (q.y + 0.55) * 0.25)), 0.12) * step(0.0, q.y);
+        float mm = m1 * clamp(stems, 0.0, 1.0);
+        vec3 c = mix(vec3(0.98, 0.78, 0.1), vec3(0.08, 0.08, 0.08), mm);
+        s = Surface(toLinear(c), 0.3, 30.0, toLinear(c) * 0.4 * uNight, 0.0);
+    } else if (m == 76) {          // amber lamp glass, lit at night
+        s = Surface(toLinear(vec3(0.95, 0.45, 0.12)), 0.6, 60.0,
+                    toLinear(vec3(1.0, 0.55, 0.15)) * (0.15 + 2.5 * uNight), 0.0);
     } else if (m == 50) {          // a lamp in uExtraColor: the taxi sign, a police light bar
         s = Surface(toLinear(uExtraColor), 0.3, 16.0, toLinear(uExtraColor) * (1.2 + 3.0 * uNight), 0.0);
     } else if (m == 38) {          // the star on top

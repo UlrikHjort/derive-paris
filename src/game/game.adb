@@ -64,6 +64,7 @@ with Birds;
 with Stravinsky;
 with Addresses;
 with Extras;
+with Moulin;
 with Gdk.Keyval;
 with Glib.Unicode;
 with Street_Life;
@@ -1214,6 +1215,7 @@ package body Game is
          Street_Life.Draw (WU.Model, Cam_Pos);   --  benches, bins, posters, tags, papers
          Scenes.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos.X, Cam_Pos.Z);
          Stravinsky.Draw (WU.Model, WU.Car_Color, Cam_Pos);
+         Moulin.Draw (WU.Model, WU.Car_Color, Cam_Pos);
          Set (WU.Car_Color, Car_Color);
          if Walking and then not In_Museum and then not In_Hall_B and then not On_Tower
            and then not On_Arc
@@ -3585,6 +3587,7 @@ package body Game is
                           (if Walking then Vec3'(Walk_X, 0.0, Walk_Z) else Vec3'(Player.X, 0.0, Player.Z)));
             Scenes.Update (Dt, Hour, Clock_Rate);
             Stravinsky.Update (Dt);
+            Moulin.Update (Dt);
             Extras.Update (Dt, Hour, Night,
                            (if Walking then Vec3'(Walk_X, 0.0, Walk_Z) else Vec3'(Player.X, 0.0, Player.Z)));
             Pedestrians.Update (Dt, Focus.X, Focus.Z, Focus_Heading, Player);

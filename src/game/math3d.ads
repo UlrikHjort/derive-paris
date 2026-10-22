@@ -41,6 +41,8 @@ package Math3D is
    function Rotation_Y (Angle : Float) return Mat4;
    function Rotation_X (Angle : Float) return Mat4;
    function Rotation_Z (Angle : Float) return Mat4;
+   function About (A : Vec3; Angle : Float) return Mat4;
+   --  A turn by Angle about the unit axis A
    function Inverse (M : Mat4) return Mat4;
 
 end Math3D;
