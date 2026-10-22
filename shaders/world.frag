@@ -1097,6 +1097,13 @@ void main()
     } else if (m == 79) {          // a candle flame / a torch
         float flicker = 0.75 + 0.15 * sin(uTime * 13.0 + vWorld.x * 7.0) + 0.1 * sin(uTime * 23.0 + vWorld.z * 5.0);
         s = Surface(vec3(1.0, 0.8, 0.4), 0.0, 8.0, vec3(1.6, 1.0, 0.45) * flicker, 0.0);
+    } else if (m == 81) {          // cardboard cartons, with a band of tape
+        float tape = smoothstep(0.03, 0.0, abs(fract(vWorld.x * 2.1 + vWorld.z * 2.1) - 0.5) - 0.06);
+        s = Surface(toLinear(mix(vec3(0.66, 0.5, 0.32), vec3(0.78, 0.66, 0.46), tape)), 0.05, 6.0, vec3(0), 0.0);
+    } else if (m == 82) {          // a firm's blue band on a van
+        s = Surface(toLinear(vec3(0.08, 0.2, 0.55)), 0.5, 40.0, vec3(0), 0.0);
+    } else if (m == 80) {          // a delivery van's white paint
+        s = Surface(toLinear(vec3(0.9, 0.9, 0.88)), 0.5, 40.0, vec3(0), 0.0);
     } else if (m == 50) {          // a lamp in uExtraColor: the taxi sign, a police light bar
         s = Surface(toLinear(uExtraColor), 0.3, 16.0, toLinear(uExtraColor) * (1.2 + 3.0 * uNight), 0.0);
     } else if (m == 38) {          // the star on top

@@ -46,10 +46,15 @@ package body Street_Life is
    Mat_Sign    : constant := 74.0;
    Mat_M       : constant := 75.0;
    Mat_Amber   : constant := 76.0;
+   Mat_Van     : constant := 80.0;   --  white van paint
+   Mat_Carton  : constant := 81.0;
+   Mat_Livery  : constant := 82.0;   --  a firm's blue
+   Mat_Glass   : constant := 16.0;
 
    --  A seed for this game: the tags and posters are somewhere else next time
    Gen : Ada.Numerics.Float_Random.Generator;
    Session : Float := 0.0;
+   All_Vans : constant Boolean := Ada.Environment_Variables.Exists ("PARIS_VANS");
    Started : Boolean := False;
 
    procedure Begin_Session is
@@ -189,6 +194,56 @@ package body Street_Life is
       Solid_At (L, F, -0.6, 0.0, 0.45);
       Solid_At (L, F, 0.6, 0.0, 0.45);
    end Bench;
+
+   --  A delivery van stopped half on the pavement (F: on the pavement by
+   --  the kerb, V towards the road), its rear doors open, cartons inside
+   --  and a trolley of them on the pavement behind
+   procedure Van (F : Frame; Seed : Float; L : in out Solid_Vectors.Vector) is
+      --  (PARIS_VANS=1 puts one at every chance, for a look)
+      Z0 : constant Float := -0.2;   --  the pavement side of the van
+      Z1 : constant Float := 1.8;
+   begin
+      --  the cargo box and the cab
+      Box (F, -2.7, 1.25, 0.42, 2.55, Z0, Z1, Mat_Van);
+      Box (F, 1.25, 2.55, 0.42, 1.45, Z0, Z1, Mat_Van);
+      Box (F, 1.25, 1.95, 1.45, 2.3, Z0 + 0.05, Z1 - 0.05, Mat_Van);
+      Face (At_F (F, 1.951, 1.5, Z0 + 0.15), At_F (F, 1.951, 1.5, Z1 - 0.15), At_F (F, 1.951, 2.2, Z1 - 0.15),
+            At_F (F, 1.951, 2.2, Z0 + 0.15), F.U, Mat_Glass);   --  the windscreen
+      for Z of Float_List'(Z0 + 0.049, Z1 - 0.049) loop
+         Face (At_F (F, 1.35, 1.5, Z), At_F (F, 1.85, 1.5, Z), At_F (F, 1.85, 2.2, Z), At_F (F, 1.35, 2.2, Z),
+               (if Z < 0.8 then -1.0 else 1.0) * F.V, Mat_Glass);
+      end loop;
+      Box (F, 2.5, 2.6, 0.5, 0.8, Z0 + 0.1, Z1 - 0.1, Mat_Tyre);   --  bumper
+      Box (F, -2.75, -2.65, 0.45, 0.65, Z0 + 0.05, Z1 - 0.05, Mat_Tyre);
+      for X of Float_List'(-1.8, 1.7) loop
+         for Z of Float_List'(Z0 - 0.02, Z1 - 0.2) loop
+            Box (F, X - 0.36, X + 0.36, 0.0, 0.7, Z, Z + 0.22, Mat_Tyre);
+         end loop;
+      end loop;
+      --  a coloured band along the side (the firm's)
+      Box (F, -2.6, 1.2, 1.2, 1.5, Z0 - 0.01, Z1 + 0.01,
+           (if Seed < 0.5 then Mat_Green else Mat_Livery));
+      --  inside, through the open back: dark, and cartons
+      Face (At_F (F, -2.69, 0.5, Z0 + 0.1), At_F (F, -2.69, 0.5, Z1 - 0.1), At_F (F, -2.69, 2.45, Z1 - 0.1),
+            At_F (F, -2.69, 2.45, Z0 + 0.1), (-1.0) * F.U, Mat_Mouth);
+      for K in 0 .. 2 loop
+         Box (F, -2.6, -2.1, 0.55 + 0.45 * Float (K), 0.95 + 0.45 * Float (K), Z0 + 0.3, Z0 + 0.8, Mat_Carton);
+         Box (F, -2.6, -2.15, 0.55 + 0.42 * Float (K), 0.92 + 0.42 * Float (K), Z1 - 0.8, Z1 - 0.35, Mat_Carton);
+      end loop;
+      --  the doors, swung right open against the sides
+      Box (F, -2.8, -2.74, 0.45, 2.5, Z0 - 1.0, Z0, Mat_Van);
+      Box (F, -2.8, -2.74, 0.45, 2.5, Z1, Z1 + 1.0, Mat_Van);
+      --  a trolley of cartons on the pavement behind
+      Box (F, -3.9, -3.3, 0.0, 0.08, -0.9, -0.3, Mat_Iron);
+      Box (F, -3.92, -3.86, 0.0, 1.2, -0.9, -0.3, Mat_Iron);
+      Box (F, -3.82, -3.35, 0.08, 0.5, -0.85, -0.35, Mat_Carton);
+      Box (F, -3.8, -3.38, 0.5, 0.88, -0.83, -0.37, Mat_Carton);
+      Box (F, -3.78, -3.42, 0.88, 1.18, -0.8, -0.42, Mat_Carton);
+      for X of Float_List'(-1.9, 0.0, 1.9) loop
+         Solid_At (L, F, X, 0.8, 1.15);
+      end loop;
+      Solid_At (L, F, -3.6, -0.6, 0.45);
+   end Van;
 
    --  A row of bollards along the kerb
    procedure Bollards (F : Frame; L : in out Solid_Vectors.Vector) is
@@ -673,6 +728,11 @@ package body Street_Life is
                         Terrace (F, C.Solids);
                      elsif HS < 0.03 then
                         Bicycle (F);
+                     elsif (HS < 0.045 or else (All_Vans and then H > 0.6)) and then Width >= 8.0 and then Named
+                     then
+                        --  a van making its deliveries, half on the pavement
+                        F.P := F.P - 0.2 * Vec3'(RX, 0.0, RZ);
+                        Van (F, Hash (PX, PZ, Session, 21.0), C.Solids);
                      end if;
                   end if;
                end;

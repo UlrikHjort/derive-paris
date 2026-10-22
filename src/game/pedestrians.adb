@@ -2,6 +2,7 @@
 --  Copyright (c) 2026 Ulrik Hørlyk Hjort
 --  SPDX-License-Identifier: MIT
 --
+with Ada.Environment_Variables;
 with Ada.Numerics;
 with Ada.Numerics.Elementary_Functions;
 with Ada.Numerics.Float_Random;
@@ -18,12 +19,17 @@ package body Pedestrians is
    use Math3D;
    use Road_Network;
 
+   Pi : constant := Ada.Numerics.Pi;
+
    Max_Walkers : constant := 400;
    Limit       : Natural := 160;
    Spawn_Near  : constant := 30.0;
    Spawn_Far   : constant := 150.0;
    Retire_Far  : constant := 190.0;
    Hip         : constant := 0.92;
+
+   --  What some of them have with them
+   type Extra_Kind is (None, Small_Dog, Big_Dog, Baguette, Bag);
 
    type Walker is record
       Active  : Boolean := False;
@@ -39,9 +45,13 @@ package body Pedestrians is
       Shirt, Skin, Legs : Vec3 := (0.5, 0.5, 0.5);
       Santa   : Boolean := False;
       Greeted : Boolean := False;
+      Extra   : Extra_Kind := None;
+      Coat    : Vec3 := (0.5, 0.4, 0.3);   --  the dog's
    end record;
 
    Santas_On : Boolean := False;
+   --  PARIS_DOGS=1: everyone has a dog, a baguette or a bag (testing)
+   All_Extras : constant Boolean := Ada.Environment_Variables.Exists ("PARIS_DOGS");
    Mat_Fur   : constant := 39.0;   --  white fur trim and beard
 
    Walkers : array (1 .. Max_Walkers) of Walker;
@@ -49,6 +59,17 @@ package body Pedestrians is
    Primed  : Boolean := False;
 
    Body_Mesh, Left_Leg, Right_Leg, Santa_Mesh : Meshes.Mesh;
+   Dog_Body, Dog_Leg, Baguette_Mesh, Bag_Mesh : Meshes.Mesh;
+   Leads : array (Small_Dog .. Big_Dog, Boolean) of Meshes.Mesh;   --  (True: on the right)
+
+   Coats : constant array (0 .. 5) of Vec3 :=
+     ((0.12, 0.10, 0.08), (0.55, 0.38, 0.22), (0.85, 0.78, 0.62), (0.35, 0.33, 0.32),
+      (0.72, 0.52, 0.30), (0.92, 0.90, 0.86));
+
+   --  where the dog trots, in the walker's frame (front is -Z), and how big
+   function Dog_Spot (K : Extra_Kind; Right : Boolean) return Vec3 is
+     (((if Right then 0.45 else -0.45), 0.0, (if K = Big_Dog then -1.25 else -1.0)));
+   function Dog_Size (K : Extra_Kind) return Float is (if K = Big_Dog then 1.0 else 0.6);
 
    Santa_Share : Float := 0.035;
 
@@ -129,6 +150,55 @@ package body Pedestrians is
            Top_Inset_X => 0.06, Top_Inset_Front => 0.08, Top_Inset_Back => 0.02);
       Box (-0.04, 0.04, 1.88, 1.96, 0.06, 0.14, Mat_Fur);            --  pompom
       Finish (Santa_Mesh);
+      --  a dog, at full size (front is -Z): body, chest, head, muzzle,
+      --  ears, tail; one leg, drawn four times
+      Start;
+      Box (-0.11, 0.11, 0.33, 0.55, -0.3, 0.32, Mat_Cloth);
+      Box (-0.12, 0.12, 0.36, 0.6, -0.36, -0.18, Mat_Cloth);
+      Box (-0.09, 0.09, 0.55, 0.75, -0.52, -0.32, Mat_Cloth);
+      Box (-0.05, 0.05, 0.56, 0.66, -0.66, -0.5, Mat_Cloth);
+      Box (-0.025, 0.025, 0.62, 0.67, -0.69, -0.65, Mat_Tyre);   --  nose
+      Box (-0.09, -0.04, 0.72, 0.84, -0.42, -0.37, Mat_Cloth);
+      Box (0.04, 0.09, 0.72, 0.84, -0.42, -0.37, Mat_Cloth);
+      Box (-0.1, 0.1, 0.52, 0.56, -0.38, -0.3, Mat_Skin);          --  collar
+      Box (-0.025, 0.025, 0.5, 0.56, 0.3, 0.55, Mat_Cloth, Top_Inset_X => 0.01);
+      Finish (Dog_Body);
+      Start;
+      Box (-0.035, 0.035, 0.0, 0.36, -0.035, 0.035, Mat_Cloth);
+      Finish (Dog_Leg);
+      --  the leads: from the hand down to the collar, sagging a little
+      for K in Small_Dog .. Big_Dog loop
+         for Right in Boolean loop
+            declare
+               Hand   : constant Vec3 := ((if Right then 0.26 else -0.26), 0.86, -0.05);
+               Collar : constant Vec3 := Dog_Spot (K, Right)
+                 + Dog_Size (K) * Vec3'(0.0, 0.54, -0.34);
+            begin
+               Start;
+               for I in 0 .. 5 loop
+                  declare
+                     function At_T (T : Float) return Vec3 is
+                       (Hand + T * (Collar - Hand) - Vec3'(0.0, 0.12 * Sin (Pi * T), 0.0));
+                     A : constant Vec3 := At_T (Float (I) / 6.0);
+                     B : constant Vec3 := At_T (Float (I + 1) / 6.0);
+                  begin
+                     Box (Float'Min (A.X, B.X) - 0.008, Float'Max (A.X, B.X) + 0.008,
+                          Float'Min (A.Y, B.Y) - 0.008, Float'Max (A.Y, B.Y) + 0.008,
+                          Float'Min (A.Z, B.Z) - 0.008, Float'Max (A.Z, B.Z) + 0.008, Mat_Tyre);
+                  end;
+               end loop;
+               Finish (Leads (K, Right));
+            end;
+         end loop;
+      end loop;
+      --  a baguette under the left arm, a shopping bag in the right hand
+      Start;
+      Box (-0.33, -0.25, 1.02, 1.08, -0.38, 0.3, 13.0);
+      Finish (Baguette_Mesh);
+      Start;
+      Box (0.24, 0.36, 0.5, 0.82, -0.12, 0.12, 39.0);
+      Box (0.29, 0.31, 0.82, 0.9, -0.06, 0.06, 39.0);
+      Finish (Bag_Mesh);
       for Side in 0 .. 1 loop
          declare
             X0 : constant Float := (if Side = 0 then -0.18 else 0.02);
@@ -221,6 +291,16 @@ package body Pedestrians is
                               Skin => Skins (Natural (Float'Floor (Rnd * 4.99))),
                               Legs => Trousers (Natural (Float'Floor (Rnd * 4.99))),
                               others => <>);
+                        declare
+                           R : constant Float := (if All_Extras then 0.34 * Rnd else Rnd);
+                        begin
+                           W.Extra := (if R < 0.05 then Small_Dog elsif R < 0.10 then Big_Dog
+                                       elsif R < 0.22 then Baguette elsif R < 0.34 then Bag else None);
+                           W.Coat := Coats (Natural (Float'Floor (Rnd * 5.99)));
+                           if W.Extra in Small_Dog .. Big_Dog then
+                              W.Speed := 1.0 + 0.3 * Rnd;   --  a dog's pace
+                           end if;
+                        end;
                         if Santas_On and then Rnd < Santa_Share then
                            W.Santa := True;
                            W.Shirt := (0.72, 0.06, 0.06);
@@ -378,6 +458,44 @@ package body Pedestrians is
                Shaders.Set (Model_Loc, M * Translation ((0.0, Hip, 0.0))
                             * Rotation_X (-Swing) * Translation ((0.0, -Hip, 0.0)));
                Meshes.Draw (Right_Leg);
+               case W.Extra is
+                  when Baguette =>
+                     Shaders.Set (Model_Loc, M);
+                     Meshes.Draw (Baguette_Mesh);
+                  when Bag =>
+                     Shaders.Set (Model_Loc, M * Translation ((0.3, 0.9, 0.0)) * Rotation_X (0.5 * Swing)
+                                  * Translation ((-0.3, -0.9, 0.0)));
+                     Meshes.Draw (Bag_Mesh);
+                  when Small_Dog | Big_Dog =>
+                     declare
+                        Right : constant Boolean := W.Side > 0.0;   --  the houses' side
+                        Size  : constant Float := Dog_Size (W.Extra);
+                        D     : constant Mat4 := M * Translation (Dog_Spot (W.Extra, Right)) * Scale (Size);
+                        Trot  : constant Float := 0.6 * Sin (W.Phase * 1.7);
+                     begin
+                        Shaders.Set (Model_Loc, M);
+                        Meshes.Draw (Leads (W.Extra, Right));
+                        if Cloth_Loc >= 0 then
+                           Shaders.Set (Cloth_Loc, W.Coat);
+                           Shaders.Set (Skin_Loc, Vec3'(0.7, 0.1, 0.1));
+                        end if;
+                        Shaders.Set (Model_Loc, D * Translation ((0.0, 0.03 * abs Sin (W.Phase * 1.7), 0.0)));
+                        Meshes.Draw (Dog_Body);
+                        for L in 0 .. 3 loop
+                           declare
+                              LX : constant Float := (if L mod 2 = 0 then -0.07 else 0.07);
+                              LZ : constant Float := (if L < 2 then -0.26 else 0.24);
+                              A  : constant Float := (if (L = 0) = (L = 3) then Trot else -Trot);
+                           begin
+                              Shaders.Set (Model_Loc, D * Translation ((LX, 0.36, LZ)) * Rotation_X (A)
+                                           * Translation ((0.0, -0.36, 0.0)));
+                              Meshes.Draw (Dog_Leg);
+                           end;
+                        end loop;
+                     end;
+                  when None =>
+                     null;
+               end case;
             end;
          end if;
       end loop;
