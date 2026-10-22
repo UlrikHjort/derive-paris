@@ -370,6 +370,33 @@ package body Street_Life is
            Hash (Float'Rounding (AX), Float'Rounding (AZ), Session, 13.0) < 0.3;
          Downhill : constant Boolean := Terrain.Height (AX + L * DX, AZ + L * DZ) <= Terrain.Height (AX, AZ);
          T : Float := 9.0;
+
+         --  Where the road really ends on this side at T: the tagged width
+         --  is not always what is drawn; -1.0 if no kerb is found
+         function Kerb_At (T, Side : Float) return Float is
+            CX : constant Float := AX + T * DX;
+            CZ : constant Float := AZ + T * DZ;
+            R  : Float := 1.0;
+         begin
+            if not World.On_Road (CX, CZ) then
+               return -1.0;
+            end if;
+            while R < Width / 2.0 + 8.0 loop
+               if not World.On_Road (CX - Side * R * DZ, CZ + Side * R * DX) then
+                  --  a little finer, back over the edge
+                  declare
+                     Q : Float := R - 0.25;
+                  begin
+                     while Q > 0.0 and then not World.On_Road (CX - Side * Q * DZ, CZ + Side * Q * DX) loop
+                        Q := Q - 0.25;
+                     end loop;
+                     return Q + 0.2;
+                  end;
+               end if;
+               R := R + 0.5;
+            end loop;
+            return -1.0;
+         end Kerb_At;
       begin
          if not Mine (AX + 0.5 * L * DX, AZ + 0.5 * L * DZ) then
             return;
@@ -394,7 +421,6 @@ package body Street_Life is
          end loop;
          for Side of Float_List'(-1.0, 1.0) loop
             declare
-               Edge : constant Float := Width / 2.0;
                Out_V : constant Vec3 := Side * Vec3'(-DZ, 0.0, DX);   --  towards the pavement
             begin
                --  the water, in pieces that follow the ground, flowing downhill
@@ -405,16 +431,20 @@ package body Street_Life is
                      while U < L - 3.0 loop
                         declare
                            U1 : constant Float := Float'Min (L - 3.0, U + 4.0);
-                           A0 : constant Vec3 := G (U, Side * (Edge - 0.36), 0.025);
-                           A1 : constant Vec3 := G (U1, Side * (Edge - 0.36), 0.025);
-                           B0 : constant Vec3 := G (U, Side * (Edge - 0.04), 0.025);
-                           B1 : constant Vec3 := G (U1, Side * (Edge - 0.04), 0.025);
+                           E0 : constant Float := Kerb_At (U, Side);
+                           E1 : constant Float := Kerb_At (U1, Side);
+                           A0 : constant Vec3 := G (U, Side * (E0 - 0.36), 0.025);
+                           A1 : constant Vec3 := G (U1, Side * (E1 - 0.36), 0.025);
+                           B0 : constant Vec3 := G (U, Side * (E0 - 0.04), 0.025);
+                           B1 : constant Vec3 := G (U1, Side * (E1 - 0.04), 0.025);
                            --  the seed is the way it flows (the shader runs it on
                            --  from piece to piece)
                            Flow : constant Float :=
                              (if Downhill then Arctan (DZ, DX) else Arctan (-DZ, -DX));
                         begin
-                           Meshes.Quad_UV (A0, A1, B1, B0, Up, Mat_Gutter, Flow, 1.0, 1.0);
+                           if E0 > 0.0 and then E1 > 0.0 and then abs (E0 - E1) < 1.0 then
+                              Meshes.Quad_UV (A0, A1, B1, B0, Up, Mat_Gutter, Flow, 1.0, 1.0);
+                           end if;
                         end;
                         U := U + 4.0;
                      end loop;
@@ -427,10 +457,14 @@ package body Street_Life is
                begin
                   while V < L - 6.0 loop
                      declare
+                        Edge : constant Float := Kerb_At (V, Side);
                         Mid  : constant Vec3 := G (V, Side * Edge);
                         H    : constant Float := Hash (Float'Rounding (Mid.X), Float'Rounding (Mid.Z), Session, 11.0);
                         F    : constant Frame := (P => Mid, U => D, V => Out_V);   --  V: away from the road
                      begin
+                        if Edge < 0.0 then
+                           goto Next_Opening;
+                        end if;
                         Box (F, -0.5, 0.5, 0.0, 0.17, 0.0, 0.32, Mat_Kerb);
                         Meshes.Quad (At_F (F, -0.32, 0.03, -0.005), At_F (F, 0.32, 0.03, -0.005),
                                      At_F (F, 0.32, 0.13, -0.005), At_F (F, -0.32, 0.13, -0.005), Mat_Mouth);
@@ -447,6 +481,7 @@ package body Street_Life is
                            C.Floats.Append (At_F (F, 0.15, 0.0, -0.6));
                         end if;
                      end;
+                     <<Next_Opening>>
                      V := V + 31.0;
                      K := K + 1;
                   end loop;
