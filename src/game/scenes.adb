@@ -753,6 +753,27 @@ package body Scenes is
 
    Box_Spots : Spot_Vectors.Vector;
 
+   --  Not on (or right by) any carriageway: side streets, the end of a
+   --  bridge, a junction
+   function Clear_Of_Roads (P : Vec3) return Boolean is
+      Clear : Boolean := True;
+      procedure Visit (AX, AZ, BX, BZ, Width : Float; Named : Boolean) is
+         pragma Unreferenced (Named);
+         EX : constant Float := BX - AX;
+         EZ : constant Float := BZ - AZ;
+         T  : constant Float := Float'Max (0.0, Float'Min (1.0,
+           ((P.X - AX) * EX + (P.Z - AZ) * EZ) / Float'Max (0.0001, EX * EX + EZ * EZ)));
+      begin
+         if Sqrt ((AX + T * EX - P.X) ** 2 + (AZ + T * EZ - P.Z) ** 2) < Width / 2.0 + 1.6 then
+            Clear := False;
+         end if;
+      end Visit;
+      procedure Near is new Road_Network.For_Segments_Near (Visit);
+   begin
+      Near (P.X, P.Z, 20.0);
+      return Clear;
+   end Clear_Of_Roads;
+
    procedure Build_Boxes (S : in out Scene) is
       use Road_Network;
       Sum : Vec3 := (0.0, 0.0, 0.0);
@@ -795,7 +816,7 @@ package body Scenes is
                                     P : constant Vec3 := On_Ground (R + (Side * Off) * N);
                                  begin
                                     --  a quay has land on one side; a bridge has water on both
-                                    if Float'Max (H1, H2) > -0.8 then
+                                    if Float'Max (H1, H2) > -0.8 and then Clear_Of_Roads (P) then
                                        Box_Spots.Append ((P, D, Side * N, Float (Natural (Box_Spots.Length) mod 97) * 3.1));
                                        Sum := Sum + P;
                                     end if;
