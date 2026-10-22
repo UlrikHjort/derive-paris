@@ -480,8 +480,15 @@ package body Surprises is
 
    --  which lamps have a musician, a flock of pigeons, children (testing:
    --  "everywhere" puts one of them at every lamp)
+   function Fete_On return Boolean;
+   function Everyday_Music return Boolean;
+
+   --  On the Fête de la Musique by about one lamp in eight; on other days
+   --  by about one in eighty
    function Musician_At (I : Positive) return Boolean is
-     (if Forced (Everywhere_F) then I mod 3 = 0 else Lamps (I).H in 0.15 .. 0.27);
+     (if Forced (Everywhere_F) then I mod 3 = 0
+      elsif Fete_On then Lamps (I).H in 0.15 .. 0.27
+      else Lamps (I).H in 0.15 .. 0.1625);
    function Pigeons_At (I : Positive) return Boolean is
      (if Forced (Everywhere_F) then I mod 3 = 1 else Lamps (I).H in 0.27 .. 0.37);
    function Children_At (I : Positive) return Boolean is
@@ -509,10 +516,16 @@ package body Surprises is
               then Heading_Of ((RX - P.X, 0.0, RZ - P.Z)) else RH);
    end Street_Heading;
 
-   function Music_On return Boolean is
+   function Fete_On return Boolean is
      (Forced (Music_F)
       or else (Almanac.Month = 6 and then Almanac.Day = 21 and then Now.Hour >= 17.0)
       or else (Almanac.Month = 6 and then Almanac.Day = 22 and then Now.Hour < 2.0));
+
+   --  buskers on any dry day, late morning to the evening
+   function Everyday_Music return Boolean is
+     (Now.Hour >= 11.0 and then Now.Hour < 23.0 and then Now.Rain < 0.2 and then Now.Snow < 0.3);
+
+   function Music_On return Boolean is (Fete_On or else Everyday_Music);
 
    function Plages_On return Boolean is
      (Forced (Plages_F)

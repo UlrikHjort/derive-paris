@@ -63,6 +63,7 @@ with Scenes;
 with Birds;
 with Stravinsky;
 with Addresses;
+with Extras;
 with Gdk.Keyval;
 with Glib.Unicode;
 with Street_Life;
@@ -1228,6 +1229,7 @@ package body Game is
          Traffic.Draw (WU.Model, WU.Car_Color);
          if not In_Museum and then not In_Hall_B then
             Birds.Draw (WU.Model, WU.Car_Color, Cam_Pos);
+            Extras.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos);
             Set (WU.Car_Color, Car_Color);
          end if;
          Race.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos);
@@ -2142,6 +2144,7 @@ package body Game is
         & "  M                sound on / off" & LF
         & "  F2               games: street racing, taxi" & LF
         & "  F3               find an address (GPS)" & LF
+        & "  Y / Shift+Y      one day later / earlier" & LF
         & "  F9               record a video (again: stop)" & LF
         & "  F12              take a photo" & LF
         & (if Wheel.Present and then not Visiting then
@@ -3582,6 +3585,8 @@ package body Game is
                           (if Walking then Vec3'(Walk_X, 0.0, Walk_Z) else Vec3'(Player.X, 0.0, Player.Z)));
             Scenes.Update (Dt, Hour, Clock_Rate);
             Stravinsky.Update (Dt);
+            Extras.Update (Dt, Hour, Night,
+                           (if Walking then Vec3'(Walk_X, 0.0, Walk_Z) else Vec3'(Player.X, 0.0, Player.Z)));
             Pedestrians.Update (Dt, Focus.X, Focus.Z, Focus_Heading, Player);
             Add (C_Traffic, T0);
          end;
@@ -4037,6 +4042,11 @@ package body Game is
                   Start_Recording := True;   --  at the next frame, its size
                end if;
             end if;
+         when 16#79# =>                                       --  y: one day later
+            if Down then
+               Almanac.Next_Day;
+               Say (Almanac.Image & Integer'Image (Almanac.Year), 1.5);
+            end if;
          when 16#FFC0# =>                                     --  F3: find an address
             if Down then
                Open_Search;
@@ -4212,6 +4222,14 @@ package body Game is
             Navigation.Set_Destination (Ada.Strings.Unbounded.To_String (P.Name),
                                         Float (X), Float (Z));
          end;
+         return True;
+      end if;
+      --  Shift + Y: one day earlier
+      if (Event.State and Gdk.Types.Shift_Mask) /= 0
+        and then (Event.Keyval = 16#59# or else Event.Keyval = 16#79#)
+      then
+         Almanac.Previous_Day;
+         Say (Almanac.Image & Integer'Image (Almanac.Year), 1.5);
          return True;
       end if;
       --  Shift + H: home is here

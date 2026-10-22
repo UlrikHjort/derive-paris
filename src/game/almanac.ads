@@ -15,6 +15,7 @@ package Almanac is
    --  The real date (the default)
 
    procedure Next_Day;
+   procedure Previous_Day;
    --  The clock went past midnight
 
    function Year return Integer;
