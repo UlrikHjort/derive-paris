@@ -160,6 +160,8 @@ package body Halloween is
 
    --  Rows of graves: headstones, crosses, flat slabs and family chapels,
    --  with paths between the blocks
+   Near_To : Vec3 := (0.0, 0.0, 0.0);   --  where the listener was last
+
    procedure Build_Graves (C : in out Cemetery) is
       use Meshes;
       Mat_Stone : constant := 2.0;    --  grey stone (not floodlit)
@@ -298,14 +300,7 @@ package body Halloween is
    begin
       Active := On;
       Dark := Night > 0.5;
-      for C of Cemeteries (1 .. Cemetery_Count) loop
-         if not C.Built and then Distance (C, Listener) < 900.0 then
-            Build_Graves (C);
-         elsif C.Built and then Distance (C, Listener) > 1400.0 then
-            Meshes.Free (C.Graves);
-            C.Built := False;
-         end if;
-      end loop;
+      Near_To := Listener;   --  (the graves are built in Draw, where GL is ours)
       Clock := Clock + Dt;
       if not On then
          Pumpkin_Count := 0;
@@ -451,6 +446,12 @@ package body Halloween is
    begin
       Shaders.Set (Model_Loc, Identity);
       for C of Cemeteries (1 .. Cemetery_Count) loop
+         if not C.Built and then Distance (C, Near_To) < 900.0 then
+            Build_Graves (C);
+         elsif C.Built and then Distance (C, Near_To) > 1400.0 then
+            Meshes.Free (C.Graves);
+            C.Built := False;
+         end if;
          if C.Built then
             Meshes.Draw (C.Graves);
          end if;
