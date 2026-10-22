@@ -3193,6 +3193,20 @@ package body Game is
          else 1.2);
    begin
       Geo.To_Lat_Lon (Long_Float (Where.X), Long_Float (Where.Z), Lat, Lon);
+      --  PARIS_TRACE=1: where you are, twice a second, on the terminal
+      if Frame_Number mod 30 = 0 and then Env ("PARIS_TRACE") /= "" then
+         declare
+            function Six (V : Long_Float) return String is
+              (Ada.Strings.Fixed.Trim (Integer'Image (Integer (Long_Float'Floor (V))), Ada.Strings.Left) & "."
+               & Ada.Strings.Fixed.Tail (Ada.Strings.Fixed.Trim
+                   (Integer'Image (Integer ((V - Long_Float'Floor (V)) * 1.0E6)), Ada.Strings.Left), 6, '0'));
+         begin
+            Ada.Text_IO.Put_Line ("at " & Six (Lat) & " " & Six (Lon) & "  heading"
+                                  & Integer'Image (Integer (Head * 180.0 / Ada.Numerics.Pi) mod 360)
+                                  & "  frame" & Integer'Image (Frame_Number));
+            Ada.Text_IO.Flush;
+         end;
+      end if;
       Sleigh.Set_Listener_Heading (Head);
       Ufo.Set_Listener_Heading (Head);
       if Show_Compass then
