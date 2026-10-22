@@ -92,6 +92,7 @@ package body World_Builder is
    Mat_Lamp_Post  : constant := 26.0;
    Mat_Lantern    : constant := 27.0;
    Mat_Signal     : constant := 28.0;   --  traffic light lamp, uv = (offset, group)
+   Mat_Gilt       : constant := 48.0;   --  gilded bronze
    Mat_Stone      : constant := 29.0;   --  dressed stone of monuments, uv in metres
    Mat_Lattice    : constant := 33.0;   --  wrought-iron lattice (Eiffel Tower)
    Mat_Railing    : constant := 34.0;   --  balcony railing, uv in metres
@@ -899,8 +900,20 @@ package body World_Builder is
       Bld  : constant String := Tag (Tags, "building");
       Part : constant String := Tag (Tags, "building:part");
       Mat  : Long_Float;
+      Lv   : constant String := Tag (Tags, "level");
+      Ly   : constant String := Tag (Tags, "layer");
+      --  rooms, stairs and halls under the street (the metro's under the
+      --  Place de l'Opéra are mapped as building parts): nothing to build
+      Below : constant Boolean :=
+        (Tag (Tags, "indoor") /= "" and then Tag (Tags, "indoor") /= "no")
+        or else Tag (Tags, "location") = "underground"
+        or else (Tag (Tags, "tunnel") /= "" and then Tag (Tags, "tunnel") /= "no")
+        or else (Lv'Length > 0 and then Lv (Lv'First) = '-')
+        or else (Part /= "" and then Ly'Length > 0 and then Ly (Ly'First) = '-');
    begin
-      if Bld /= "" and then Bld /= "no" then
+      if (Bld /= "" or else Part /= "") and then Below then
+         null;
+      elsif Bld /= "" and then Bld /= "no" then
          for P of Polys loop
             Add_Building (Id, P, Tags, False);
          end loop;
@@ -1140,7 +1153,7 @@ package body World_Builder is
                   if One_Of (Tag (B.Tags, "building"),
                              "church|cathedral|chapel|basilica|temple|mosque|synagogue")
                   then
-                     Part.Sacred := True;
+                     Part.Sacred := True;   --  (dressed stone, no flats' windows)
                   end if;
                end if;
             end loop;
@@ -3267,6 +3280,442 @@ package body World_Builder is
       end loop;
    end Fountain_Saint_Sulpice;
 
+   type Long_Float_List is array (Positive range <>) of Long_Float;
+
+   --  Places from data/landmarks.txt the other passes need to know about:
+   --  pylons (the OSM buildings there are left out) and areas of ornate
+   --  street lamps
+   type Hand_Spot is record
+      Kind : Ada.Strings.Unbounded.Unbounded_String;
+      X, Z, Size : Long_Float;
+   end record;
+   package Spot_Vectors is new Ada.Containers.Vectors (Positive, Hand_Spot);
+   Hand_Spots : Spot_Vectors.Vector;
+
+   procedure Read_Hand_Spots (File_Name : String) is
+      F : Ada.Text_IO.File_Type;
+   begin
+      if not Ada.Directories.Exists (File_Name) then
+         return;
+      end if;
+      Ada.Text_IO.Open (F, Ada.Text_IO.In_File, File_Name);
+      while not Ada.Text_IO.End_Of_File (F) loop
+         declare
+            use Ada.Strings.Unbounded;
+            Line  : constant String := Ada.Text_IO.Get_Line (F) & " ";
+            Words : array (1 .. 5) of Unbounded_String;
+            N     : Natural := 0;
+            Start : Natural := 0;
+            X, Z  : Long_Float;
+         begin
+            if Line (Line'First) /= '#' then
+               for I in Line'Range loop
+                  if Line (I) = ' ' then
+                     if Start > 0 and then N < Words'Last then
+                        N := N + 1;
+                        Words (N) := To_Unbounded_String (Line (Start .. I - 1));
+                     end if;
+                     Start := 0;
+                  elsif Start = 0 then
+                     Start := I;
+                  end if;
+               end loop;
+            end if;
+            if N = 5 then
+               Geo.To_Local (Long_Float'Value (To_String (Words (2))), Long_Float'Value (To_String (Words (3))),
+                             X, Z);
+               Hand_Spots.Append ((Words (1), X, Z, Long_Float'Value (To_String (Words (5)))));
+            end if;
+         end;
+      end loop;
+      Ada.Text_IO.Close (F);
+   end Read_Hand_Spots;
+
+   function In_Spot (Kind : String; X, Z : Long_Float; Extra : Long_Float := 0.0) return Boolean is
+   begin
+      for H of Hand_Spots loop
+         if Ada.Strings.Unbounded.To_String (H.Kind) = Kind
+           and then (H.X - X) ** 2 + (H.Z - Z) ** 2 < (H.Size + Extra) ** 2
+         then
+            return True;
+         end if;
+      end loop;
+      return False;
+   end In_Spot;
+
+   --  A box of any orientation: centre C, unit axes AX, AY, AZ (right
+   --  handed) and half sizes along them
+   procedure Any_Box (T : in out Tile_Builder; C, AX, AY, AZ : V3; HX, HY, HZ : Long_Float;
+                      Mat, Seed : Long_Float) is
+      procedure Side (N, A, B : V3; HN, HA, HB : Long_Float) is
+         F : constant V3 := C + HN * N;
+      begin
+         Solid_Quad (T, F - HA * A - HB * B, F + HA * A - HB * B, F + HA * A + HB * B, F - HA * A + HB * B,
+                     N, 0.0, 2.0 * HA, 0.0, 2.0 * HB, Mat, Seed);
+      end Side;
+   begin
+      Side (AX, AY, AZ, HX, HY, HZ);
+      Side ((-1.0) * AX, AZ, AY, HX, HZ, HY);
+      Side (AY, AZ, AX, HY, HZ, HX);
+      Side ((-1.0) * AY, AX, AZ, HY, HX, HZ);
+      Side (AZ, AX, AY, HZ, HX, HY);
+      Side ((-1.0) * AZ, AY, AX, HZ, HY, HX);
+   end Any_Box;
+
+   --  The same, with its long axis along D (any direction) and its width
+   --  along the horizontal W (normal to D)
+   procedure Beam (T : in out Tile_Builder; C, D, W : V3; HD, HW, HT : Long_Float;
+                   Mat, Seed : Long_Float) is
+      DN : constant V3 := Normalize (D);
+      WN : constant V3 := Normalize (W - Dot (W, DN) * DN);
+   begin
+      Any_Box (T, C, DN, WN, Cross (DN, WN), HD, HW, HT, Mat, Seed);
+   end Beam;
+
+   --  A pylon of the Pont Alexandre III: a square stone column on a socle,
+   --  a cornice and an attic, crowned by a gilded winged horse held by a
+   --  Fame; a seated stone figure at its foot.  Facing: the way the horse
+   --  rears (away from the river), in degrees in the X/Z plane.
+   procedure Bridge_Pylon (C : P2; Facing_Deg, Half : Long_Float) is
+      T    : Tile_Builder renames Tile_At (C).all;
+      A    : constant Long_Float := Facing_Deg * Ada.Numerics.Pi / 180.0;
+      U    : constant P2 := (Cos (A), Sin (A));
+      V    : constant P2 := (-Sin (A), Cos (A));
+      F    : constant V3 := (U.X, 0.0, U.Z);
+      S    : constant V3 := (V.X, 0.0, V.Z);
+      Up   : constant V3 := (0.0, 1.0, 0.0);
+      Seed : constant Long_Float := 0.3;
+      Top  : constant Long_Float := 17.0;
+      function At_C (Along, Side_Off, Y : Long_Float) return V3 is
+        ((C.X, Y, C.Z) + Along * F + Side_Off * S);
+      procedure Block (Ctr : P2; HU, HV, Y0, Y1 : Long_Float; Mat : Long_Float := Mat_Stone) is
+      begin
+         Frustum (T, U, V, Ctr, HU, HV, Y0, Ctr, HU, HV, Y1, Mat, Seed, True);
+      end Block;
+      function Dir (Deg_Up : Long_Float) return V3 is
+        (Cos (Deg_Up * Ada.Numerics.Pi / 180.0) * F + Sin (Deg_Up * Ada.Numerics.Pi / 180.0) * Up);
+   begin
+      --  socle, the shaft with corner pilasters, cornice, attic, top
+      Block (C, Half + 0.35, Half + 0.35, 0.0, 2.6);
+      Block (C, Half + 0.5, Half + 0.5, 2.6, 3.0);
+      Block (C, Half, Half, 3.0, 14.0);
+      for SU in -1 .. 1 loop
+         for SV in -1 .. 1 loop
+            if SU /= 0 and then SV /= 0 then
+               Block (C + (Long_Float (SU) * (Half - 0.15)) * U + (Long_Float (SV) * (Half - 0.15)) * V,
+                      0.4, 0.4, 3.0, 13.9);
+            end if;
+         end loop;
+      end loop;
+      Block (C, Half + 0.25, Half + 0.25, 12.6, 13.0);
+      Block (C, Half + 0.55, Half + 0.55, 13.9, 14.8);
+      Block (C, Half - 0.25, Half - 0.25, 14.8, 16.3);
+      Block (C, Half - 0.05, Half - 0.05, 16.3, Top);
+      for K in 0 .. 3 loop   --  the corners of the base, for walking into
+         declare
+            R : constant Long_Float := Half + 0.35;
+            P : constant P2 := C + (if K mod 2 = 0 then R else -R) * U + (if K < 2 then R else -R) * V;
+            Q : constant P2 := C + (if K mod 2 = 0 then R else -R) * U + (if K < 2 then -R else R) * V;
+         begin
+            Add_Edge (P, Q, 0.0, Top);
+         end;
+      end loop;
+      Add_Edge (C + (Half + 0.35) * U + (Half + 0.35) * V, C - (Half + 0.35) * U + (Half + 0.35) * V, 0.0, Top);
+      Add_Edge (C + (Half + 0.35) * U - (Half + 0.35) * V, C - (Half + 0.35) * U - (Half + 0.35) * V, 0.0, Top);
+
+      --  the seated figure at its foot, on a pedestal before the face
+      Block (C + (Half + 1.1) * U, 0.8, 1.2, 0.0, 1.3);
+      Block (C + (Half + 1.0) * U, 0.55, 0.6, 1.3, 2.6);
+      Block (C + (Half + 0.95) * U, 0.35, 0.42, 2.6, 3.3);
+      Block (C + (Half + 0.95) * U, 0.17, 0.15, 3.3, 3.75);
+      Block (C + (Half + 1.55) * U, 0.35, 0.55, 1.3, 1.8);   --  the knees
+
+      --  the gilded group: a plinth, the horse rearing, its wings, the Fame
+      Block (C, 1.5, 1.0, Top, Top + 0.5, Mat_Gilt);
+      declare
+         Body_C : constant V3 := At_C (0.2, 0.0, Top + 2.0);
+         Body_D : constant V3 := Dir (35.0);
+         Front  : constant V3 := Body_C + 1.05 * Body_D;
+         Rear   : constant V3 := Body_C - 1.0 * Body_D;
+         Neck_D : constant V3 := Dir (68.0);
+         Neck_C : constant V3 := Front + 0.42 * Neck_D + 0.1 * Up;
+         Head_D : constant V3 := Dir (-25.0);
+         Head_C : constant V3 := Neck_C + 0.5 * Neck_D + 0.25 * Head_D;
+      begin
+         Beam (T, Body_C, Body_D, S, 1.15, 0.38, 0.42, Mat_Gilt, Seed);
+         Beam (T, Neck_C, Neck_D, S, 0.5, 0.2, 0.27, Mat_Gilt, Seed);
+         Beam (T, Head_C, Head_D, S, 0.33, 0.15, 0.17, Mat_Gilt, Seed);
+         for Side_Off of Long_Float_List'(-0.2, 0.2) loop
+            --  hind legs down to the plinth, front legs pawing the air
+            declare
+               Hip  : constant V3 := Rear + Side_Off * S - 0.2 * Up;
+               Foot : constant V3 := At_C (-0.55, Side_Off, Top + 0.5);
+               Sh   : constant V3 := Front + Side_Off * S - 0.3 * Up;
+               Fore : constant V3 := Dir (-35.0);
+            begin
+               Beam (T, 0.5 * (Hip + Foot), Hip - Foot, S, 0.5 * Sqrt (Dot (Hip - Foot, Hip - Foot)), 0.09, 0.11,
+                     Mat_Gilt, Seed);
+               Beam (T, Sh + 0.35 * Fore, Fore, S, 0.38, 0.08, 0.09, Mat_Gilt, Seed);
+            end;
+            --  a wing, spread up and back
+            declare
+               Root : constant V3 := Body_C + 0.35 * Body_D + (Side_Off * 1.6) * S + 0.3 * Up;
+               WD   : constant V3 := Normalize ((-0.45) * F + 0.85 * Up + (Side_Off * 2.0) * S);
+            begin
+               Beam (T, Root + 1.0 * WD, WD, Body_D, 1.1, 0.5, 0.05, Mat_Gilt, Seed);
+            end;
+         end loop;
+         Beam (T, Rear - 0.45 * Body_D - 0.3 * Up, Dir (-60.0), S, 0.45, 0.08, 0.08, Mat_Gilt, Seed);   --  tail
+         --  the Fame beside it: robe, body, head, an arm up to the bridle
+         declare
+            P : constant V3 := At_C (-0.2, 1.0, Top + 0.5);
+         begin
+            Any_Box (T, P + 0.7 * Up, F, Up, Cross (F, Up), 0.28, 0.7, 0.3, Mat_Gilt, Seed);
+            Any_Box (T, P + 1.75 * Up, F, Up, Cross (F, Up), 0.2, 0.35, 0.23, Mat_Gilt, Seed);
+            Any_Box (T, P + 2.3 * Up, F, Up, Cross (F, Up), 0.12, 0.16, 0.12, Mat_Gilt, Seed);
+            Beam (T, P + 2.1 * Up + 0.35 * F - 0.25 * S, Dir (55.0) - 0.4 * S, S, 0.4, 0.06, 0.06, Mat_Gilt, Seed);
+         end;
+      end;
+   end Bridge_Pylon;
+
+   --  A flat panel in a vertical plane: centre (along the facade, out
+   --  from it, height), half width and half height, facing F
+   procedure Panel (T : in out Tile_Builder; C : P2; F, S : V3; Side_Off, Out_Off, Y0, Y1, HW : Long_Float;
+                    Mat, Seed : Long_Float) is
+      B : constant V3 := (C.X, 0.0, C.Z) + Out_Off * F + Side_Off * S;
+   begin
+      Solid_Quad (T, B - HW * S + Y0 * V3'(0.0, 1.0, 0.0), B + HW * S + Y0 * V3'(0.0, 1.0, 0.0),
+                  B + HW * S + Y1 * V3'(0.0, 1.0, 0.0), B - HW * S + Y1 * V3'(0.0, 1.0, 0.0),
+                  F, 0.0, 2.0 * HW, Y0, Y1, Mat, Seed);
+   end Panel;
+
+   --  A gilded statue group for a roof corner: a winged figure standing
+   --  between two kneeling ones (the Harmony and Poetry of the Opéra)
+   procedure Gilt_Group (T : in out Tile_Builder; C : P2; F, S : V3; Y : Long_Float; Seed : Long_Float) is
+      Up : constant V3 := (0.0, 1.0, 0.0);
+      B  : constant V3 := (C.X, Y, C.Z);
+   begin
+      Any_Box (T, B + 0.45 * Up, F, Up, Cross (F, Up), 1.4, 0.45, 2.2, Mat_Gilt, Seed);
+      Any_Box (T, B + 2.2 * Up, F, Up, Cross (F, Up), 0.35, 1.3, 0.35, Mat_Gilt, Seed);
+      Any_Box (T, B + 3.75 * Up, F, Up, Cross (F, Up), 0.18, 0.25, 0.18, Mat_Gilt, Seed);
+      for Side_Off of Long_Float_List'(-1.0, 1.0) loop
+         Beam (T, B + 3.2 * Up + (Side_Off * 0.9) * S - 0.3 * F,
+               Normalize (0.8 * Up + (Side_Off * 0.6) * S - 0.3 * F), F, 1.0, 0.45, 0.05, Mat_Gilt, Seed);
+         Any_Box (T, B + 1.45 * Up + (Side_Off * 1.35) * S + 0.3 * F, F, Up, Cross (F, Up), 0.4, 0.55, 0.35,
+                  Mat_Gilt, Seed);
+         Any_Box (T, B + 2.2 * Up + (Side_Off * 1.35) * S + 0.3 * F, F, Up, Cross (F, Up), 0.15, 0.2, 0.15,
+                  Mat_Gilt, Seed);
+      end loop;
+      Beam (T, B + 4.4 * Up + 0.2 * F, Normalize (Up + 0.3 * F), S, 0.6, 0.05, 0.05, Mat_Gilt, Seed);   --  a raised arm
+   end Gilt_Group;
+
+   --  The front of the Palais Garnier, before the wall of its OSM outline:
+   --  the steps, the arcade of seven arches, the loggia with its paired
+   --  columns and gilded busts, the entablature, the attic with gilded
+   --  masks, and the two gilded groups on the corners of the roof
+   procedure Opera_Front (C : P2; Facing_Deg, Half : Long_Float) is
+      T    : Tile_Builder renames Tile_At (C).all;
+      A    : constant Long_Float := Facing_Deg * Ada.Numerics.Pi / 180.0;
+      U    : constant P2 := (Cos (A), Sin (A));
+      V    : constant P2 := (-Sin (A), Cos (A));
+      F    : constant V3 := (U.X, 0.0, U.Z);
+      S    : constant V3 := (V.X, 0.0, V.Z);
+      Seed : constant Long_Float := 0.4;
+      function At_P (Out_Off, Side_Off : Long_Float) return P2 is (C + Out_Off * U + Side_Off * V);
+      procedure Block (Out_Off, Side_Off, HU, HV, Y0, Y1 : Long_Float; Mat : Long_Float := Mat_Stone) is
+      begin
+         Frustum (T, U, V, At_P (Out_Off, Side_Off), HU, HV, Y0, At_P (Out_Off, Side_Off), HU, HV, Y1, Mat, Seed,
+                  True);
+      end Block;
+      Dark : constant Long_Float := Mat_Glass_Pane;
+   begin
+      --  steps across the front
+      Block (3.2, 0.0, 1.0, Half - 4.0, 0.0, 0.2);
+      Block (2.2, 0.0, 1.0, Half - 4.0, 0.0, 0.4);
+      Block (1.2, 0.0, 1.0, Half - 4.0, 0.0, 0.6);
+      --  the stone face, in three storeys
+      Block (0.0, 0.0, 0.3, Half, 0.0, 9.6);
+      Block (0.1, 0.0, 0.45, Half + 0.2, 9.6, 10.4);
+      Block (0.0, 0.0, 0.3, Half, 10.4, 20.4);
+      Block (0.7, 0.0, 1.1, Half + 0.3, 20.4, 22.2);
+      Block (0.0, 0.0, 0.3, Half - 0.4, 22.2, 26.6);
+      Block (0.2, 0.0, 0.6, Half, 26.6, 27.3);
+      Block (0.0, 0.0, 0.3, Half - 0.6, 27.3, 30.6);   --  the upper attic
+      Block (0.25, 0.0, 0.65, Half, 30.6, 31.4);
+      --  the arcade: seven arches with a stepped head
+      for K in -3 .. 3 loop
+         declare
+            X : constant Long_Float := Long_Float (K) * 6.4;
+         begin
+            Panel (T, C, F, S, X, 0.32, 0.6, 6.8, 2.1, Dark, Seed);
+            Panel (T, C, F, S, X, 0.32, 6.8, 7.6, 1.8, Dark, Seed);
+            Panel (T, C, F, S, X, 0.32, 7.6, 8.1, 1.2, Dark, Seed);
+            Block (0.45, X + 3.2, 0.15, 0.55, 0.6, 9.6);   --  the pier between
+         end;
+      end loop;
+      --  the loggia: dark behind, paired columns, busts in round windows
+      for K in -4 .. 4 loop
+         declare
+            X : constant Long_Float := Long_Float (K) * 5.9;
+         begin
+            for D of Long_Float_List'(-0.6, 0.6) loop
+               Block (1.4, X + D, 0.45, 0.45, 10.4, 10.9);
+               Frustum (T, U, V, At_P (1.4, X + D), 0.36, 0.36, 10.9, At_P (1.4, X + D), 0.3, 0.3, 19.7,
+                        Mat_Stone, Seed, False);
+               Block (1.4, X + D, 0.5, 0.5, 19.7, 20.4);
+            end loop;
+            if K < 4 then
+               Panel (T, C, F, S, X + 2.95, 0.32, 11.0, 17.4, 1.7, Dark, Seed);
+               Panel (T, C, F, S, X + 2.95, 0.32, 18.0, 19.6, 0.8, Dark, Seed);
+               Block (0.6, X + 2.95, 0.3, 0.32, 18.2, 19.3, Mat_Gilt);   --  a bust
+            end if;
+         end;
+      end loop;
+      --  gilded masks along the attic
+      for K in -8 .. 8 loop
+         Block (0.45, Long_Float (K) * 3.0, 0.15, 0.4, 23.6, 24.6, Mat_Gilt);
+         Block (0.4, Long_Float (K) * 3.0 + 1.5, 0.12, 0.25, 28.3, 29.6, Mat_Gilt);   --  and garlands above
+      end loop;
+      --  the gilded groups on the corners
+      for Side_Off of Long_Float_List'(-1.0, 1.0) loop
+         Block (0.0, Side_Off * (Half - 2.5), 1.8, 2.0, 31.4, 32.4);
+         Gilt_Group (T, At_P (0.0, Side_Off * (Half - 2.5)), F, S, 32.4, Seed);
+      end loop;
+   end Opera_Front;
+
+   --  Apollo raising his golden lyre, on the ridge of the Opéra's stage
+   procedure Opera_Apollo (C : P2; Facing_Deg, Y : Long_Float) is
+      T    : Tile_Builder renames Tile_At (C).all;
+      A    : constant Long_Float := Facing_Deg * Ada.Numerics.Pi / 180.0;
+      F    : constant V3 := (Cos (A), 0.0, Sin (A));
+      S    : constant V3 := (-Sin (A), 0.0, Cos (A));
+      Up   : constant V3 := (0.0, 1.0, 0.0);
+      B    : constant V3 := (C.X, Y, C.Z);
+      Seed : constant Long_Float := 0.5;
+   begin
+      Any_Box (T, B + 0.3 * Up, F, Up, Cross (F, Up), 1.0, 0.3, 1.0, Mat_Gilt, Seed);
+      Any_Box (T, B + 1.9 * Up, F, Up, Cross (F, Up), 0.35, 1.3, 0.45, Mat_Gilt, Seed);
+      Any_Box (T, B + 3.5 * Up, F, Up, Cross (F, Up), 0.2, 0.3, 0.2, Mat_Gilt, Seed);
+      for Side_Off of Long_Float_List'(-1.0, 1.0) loop
+         Beam (T, B + 3.9 * Up + (Side_Off * 0.55) * S, Normalize (Up + (Side_Off * 0.25) * S), F,
+               0.8, 0.08, 0.08, Mat_Gilt, Seed);
+      end loop;
+      --  the lyre, held up high
+      Any_Box (T, B + 5.3 * Up, S, Up, Cross (S, Up), 0.7, 0.8, 0.08, Mat_Gilt, Seed);
+      Any_Box (T, B + 6.2 * Up, S, Up, Cross (S, Up), 0.9, 0.12, 0.1, Mat_Gilt, Seed);
+   end Opera_Apollo;
+
+   --  The middle of the Hôtel de Ville's west front, before its OSM wall:
+   --  three storeys of tall windows between pilasters, statues in niches,
+   --  three arched doors, and the projecting central pavilion with the
+   --  clock and the belfry above it
+   procedure Town_Hall_Front (C : P2; Facing_Deg, Half : Long_Float) is
+      T    : Tile_Builder renames Tile_At (C).all;
+      A    : constant Long_Float := Facing_Deg * Ada.Numerics.Pi / 180.0;
+      U    : constant P2 := (Cos (A), Sin (A));
+      V    : constant P2 := (-Sin (A), Cos (A));
+      F    : constant V3 := (U.X, 0.0, U.Z);
+      S    : constant V3 := (V.X, 0.0, V.Z);
+      Seed : constant Long_Float := 0.6;
+      Dark : constant Long_Float := Mat_Glass_Pane;
+      Top  : constant Long_Float := 17.5;
+      Mid  : constant Long_Float := 7.0;   --  half width of the central pavilion
+      function At_P (Out_Off, Side_Off : Long_Float) return P2 is (C + Out_Off * U + Side_Off * V);
+      procedure Block (Out_Off, Side_Off, HU, HV, Y0, Y1 : Long_Float; Mat : Long_Float := Mat_Stone) is
+      begin
+         Frustum (T, U, V, At_P (Out_Off, Side_Off), HU, HV, Y0, At_P (Out_Off, Side_Off), HU, HV, Y1, Mat, Seed,
+                  True);
+      end Block;
+      procedure Statue (Out_Off, Side_Off, Y : Long_Float) is
+      begin
+         Block (Out_Off + 0.2, Side_Off, 0.25, 0.4, Y, Y + 0.3);
+         Block (Out_Off + 0.2, Side_Off, 0.2, 0.26, Y + 0.3, Y + 1.6);
+         Block (Out_Off + 0.2, Side_Off, 0.13, 0.12, Y + 1.6, Y + 1.95);
+      end Statue;
+      procedure Bays (From, To, Out_Off : Long_Float) is
+         N : constant Natural := Natural (Long_Float'Floor ((To - From) / 4.4));
+         W : constant Long_Float := (To - From) / Long_Float (Natural'Max (1, N));
+      begin
+         for K in 0 .. N - 1 loop
+            declare
+               X : constant Long_Float := From + (Long_Float (K) + 0.5) * W;
+            begin
+               --  windows on three floors, a dormer-like top on the last
+               Panel (T, C, F, S, X, Out_Off + 0.32, 1.0, 4.4, 0.8, Dark, Seed);
+               Panel (T, C, F, S, X, Out_Off + 0.32, 6.4, 9.4, 0.8, Dark, Seed);
+               Panel (T, C, F, S, X, Out_Off + 0.32, 11.4, 14.2, 0.75, Dark, Seed);
+               Block (Out_Off + 0.4, X, 0.12, 1.05, 9.4, 9.8);
+               Block (Out_Off + 0.4, X, 0.12, 1.0, 14.2, 14.6);
+               --  pilasters, and statues in the niches between every other bay
+               Block (Out_Off + 0.4, X - W / 2.0, 0.12, 0.35, 0.0, Top);
+               if K mod 2 = 1 then
+                  Panel (T, C, F, S, X - W / 2.0, Out_Off + 0.53, 6.5, 8.9, 0.45, Dark, Seed);
+                  Statue (Out_Off + 0.4, X - W / 2.0, 6.6);
+                  Panel (T, C, F, S, X - W / 2.0, Out_Off + 0.53, 11.4, 13.8, 0.45, Dark, Seed);
+                  Statue (Out_Off + 0.4, X - W / 2.0, 11.5);
+               end if;
+            end;
+         end loop;
+         Block (Out_Off + 0.4, To, 0.12, 0.35, 0.0, Top);
+      end Bays;
+   begin
+      --  the face, the string courses and the cornice
+      Block (0.0, 0.0, 0.3, Half, 0.0, Top);
+      Block (0.25, 0.0, 0.4, Half + 0.1, 5.2, 5.7);
+      Block (0.25, 0.0, 0.4, Half + 0.1, 10.3, 10.7);
+      Block (0.4, 0.0, 0.7, Half + 0.3, Top, Top + 0.8);
+      Bays (-Half, -Mid, 0.0);
+      Bays (Mid, Half, 0.0);
+      --  the central pavilion, standing forward and up
+      Block (1.5, 0.0, 1.2, Mid, 0.0, 22.0);
+      Block (1.9, 0.0, 1.5, Mid + 0.3, 22.0, 22.8);
+      for K in -1 .. 1 loop
+         declare
+            X : constant Long_Float := Long_Float (K) * 4.2;
+         begin
+            Panel (T, C, F, S, X, 2.72, 0.0, 4.4, 1.3, Dark, Seed);     --  the doors
+            Panel (T, C, F, S, X, 2.72, 4.4, 5.2, 0.9, Dark, Seed);
+            Panel (T, C, F, S, X, 2.72, 6.4, 9.4, 0.85, Dark, Seed);
+            Panel (T, C, F, S, X, 2.72, 11.4, 14.2, 0.8, Dark, Seed);
+         end;
+      end loop;
+      for K in -2 .. 2 loop
+         Block (2.85, Long_Float (K) * 2.1 + 1.05, 0.12, 0.3, 0.0, 15.0);
+      end loop;
+      Statue (2.7, -6.2, 15.6);
+      Statue (2.7, 6.2, 15.6);
+      --  the clock, white and lit at night, with its hands at ten to two
+      declare
+         Up : constant V3 := (0.0, 1.0, 0.0);
+         Ctr : constant V3 := (C.X, 18.6, C.Z) + 2.75 * F;
+      begin
+         for K in 0 .. 7 loop
+            declare
+               B0 : constant Long_Float := Long_Float (K) * Ada.Numerics.Pi / 4.0;
+               B1 : constant Long_Float := Long_Float (K + 1) * Ada.Numerics.Pi / 4.0;
+               P0 : constant V3 := Ctr + (1.6 * Cos (B0)) * S + (1.6 * Sin (B0)) * Up;
+               P1 : constant V3 := Ctr + (1.6 * Cos (B1)) * S + (1.6 * Sin (B1)) * Up;
+            begin
+               Solid_Quad (T, Ctr, P1, P0, Ctr, F, 0.0, 1.0, 0.0, 1.0, Mat_Lantern, Seed);
+               Solid_Quad (T, Ctr, P0, P1, Ctr, F, 0.0, 1.0, 0.0, 1.0, Mat_Lantern, Seed);
+            end;
+         end loop;
+         Beam (T, Ctr + 0.1 * F + 0.45 * Normalize (Up + 0.6 * S), Normalize (Up + 0.6 * S), F, 0.5, 0.06, 0.02,
+               Mat_Lamp_Post, Seed);
+         Beam (T, Ctr + 0.1 * F + 0.6 * Normalize (Up - 0.85 * S), Normalize (Up - 0.85 * S), F, 0.65, 0.05, 0.02,
+               Mat_Lamp_Post, Seed);
+      end;
+      --  the belfry: an arcaded lantern, a tall slate spire, a finial
+      Block (0.0, 0.0, 2.6, 2.6, 22.8, 23.6);
+      Block (0.0, 0.0, 2.2, 2.2, 23.6, 28.0);
+      for K in -1 .. 1 loop
+         Panel (T, C, F, S, Long_Float (K) * 1.3, 2.22, 24.4, 27.2, 0.4, Dark, Seed);
+      end loop;
+      Block (0.0, 0.0, 2.5, 2.5, 28.0, 28.6);
+      Frustum (T, U, V, At_P (0.0, 0.0), 2.3, 2.3, 28.6, At_P (0.0, 0.0), 0.15, 0.15, 36.0, Mat_Mansard, Seed, True);
+      Frustum (T, U, V, At_P (0.0, 0.0), 0.08, 0.08, 36.0, At_P (0.0, 0.0), 0.04, 0.04, 38.5, Mat_Gilt, Seed, True);
+   end Town_Hall_Front;
+
    procedure Emit_Hand_Landmarks (File_Name : String) is
       F : Ada.Text_IO.File_Type;
    begin
@@ -3304,6 +3753,22 @@ package body World_Builder is
                   if In_Data (X, Z) and then To_String (Words (1)) = "fountain_saint_sulpice" then
                      Fountain_Saint_Sulpice ((X, Z), Long_Float'Value (To_String (Words (4))),
                                              Long_Float'Value (To_String (Words (5))));
+                     Ada.Text_IO.Put_Line ("  landmark: " & To_String (Words (1)));
+                  elsif In_Data (X, Z) and then To_String (Words (1)) = "opera_front" then
+                     Opera_Front ((X, Z), Long_Float'Value (To_String (Words (4))),
+                                  Long_Float'Value (To_String (Words (5))));
+                     Ada.Text_IO.Put_Line ("  landmark: " & To_String (Words (1)));
+                  elsif In_Data (X, Z) and then To_String (Words (1)) = "opera_apollo" then
+                     Opera_Apollo ((X, Z), Long_Float'Value (To_String (Words (4))),
+                                   Long_Float'Value (To_String (Words (5))));
+                     Ada.Text_IO.Put_Line ("  landmark: " & To_String (Words (1)));
+                  elsif In_Data (X, Z) and then To_String (Words (1)) = "town_hall_front" then
+                     Town_Hall_Front ((X, Z), Long_Float'Value (To_String (Words (4))),
+                                      Long_Float'Value (To_String (Words (5))));
+                     Ada.Text_IO.Put_Line ("  landmark: " & To_String (Words (1)));
+                  elsif In_Data (X, Z) and then To_String (Words (1)) = "pont_pylon" then
+                     Bridge_Pylon ((X, Z), Long_Float'Value (To_String (Words (4))),
+                                   Long_Float'Value (To_String (Words (5))));
                      Ada.Text_IO.Put_Line ("  landmark: " & To_String (Words (1)));
                   end if;
                end;
@@ -4281,6 +4746,66 @@ package body World_Builder is
       T.Lights.Append (Float (Z));
    end Emit_Lamp;
 
+   --  An ornate bronze candelabra (the Pont Alexandre III, the Opéra...):
+   --  a stepped base, a fluted column, gilded rings, three lanterns on a
+   --  cross-bar; Grand: the big ones with gilded cherubs round the column
+   --  and five lanterns, on a stone pedestal
+   procedure Emit_Candelabra (X, Z : Long_Float; Grand : Boolean; Ground : Long_Float := 0.0) is
+      T    : Tile_Builder renames Tile (Geo.Tile_Of (X), Geo.Tile_Of (Z)).all;
+      C    : constant P2 := (X, Z);
+      function Sq (P : P2; R : Long_Float) return Quad_P2 is
+        ((P.X - R, P.Z - R), (P.X + R, P.Z - R), (P.X + R, P.Z + R), (P.X - R, P.Z + R));
+      B    : constant Long_Float := Ground + (if Grand then 1.6 else 0.0);   --  foot of the column
+      Y0   : constant Long_Float := B + (if Grand then 4.4 else 3.9);       --  the lanterns
+      procedure Lantern (P : P2; Y : Long_Float) is
+      begin
+         Prism (T, Sq (P, 0.13), Y, Y + 0.45, Mat_Lantern, 0.0, Top => False);
+         Pyramid_Roof (T, To_Ring (Sq (P, 0.17)), Y + 0.45, 0.22, Mat_Lamp_Post, 0.0);
+         Prism (T, Sq (P, 0.05), Y - 0.12, Y, Mat_Gilt, 0.0);
+         T.Lights.Append (Float (P.X));
+         T.Lights.Append (Float (Lift_Y (P.X, Y + 0.25, P.Z)));
+         T.Lights.Append (Float (P.Z));
+      end Lantern;
+   begin
+      if Grand then
+         Prism (T, Sq (C, 0.75), Ground, Ground + 0.3, Mat_Stone, 0.0);
+         Prism (T, Sq (C, 0.6), Ground + 0.3, B, Mat_Stone, 0.0);
+         --  four cherubs about the column, arms up
+         for K in 0 .. 3 loop
+            declare
+               D : constant P2 := (case K is when 0 => (0.32, 0.0), when 1 => (0.0, 0.32),
+                                   when 2 => (-0.32, 0.0), when others => (0.0, -0.32));
+            begin
+               Prism (T, Sq (C + D, 0.14), B, B + 0.55, Mat_Gilt, 0.0);
+               Prism (T, Sq (C + 1.05 * D, 0.1), B + 0.55, B + 0.75, Mat_Gilt, 0.0);
+               Prism (T, Sq (C + 0.8 * D, 0.04), B + 0.75, B + 1.15, Mat_Gilt, 0.0);
+            end;
+         end loop;
+      end if;
+      Prism (T, Sq (C, 0.3), B, B + 0.35, Mat_Lamp_Post, 0.0);
+      Prism (T, Sq (C, 0.2), B + 0.35, B + 0.9, Mat_Lamp_Post, 0.0);
+      Prism (T, Sq (C, 0.24), B + 0.9, B + 1.0, Mat_Gilt, 0.0);
+      Prism (T, Sq (C, 0.09), B + 1.0, Y0 - 0.25, Mat_Lamp_Post, 0.0, Top => False);
+      Prism (T, Sq (C, 0.13), B + 2.4, B + 2.5, Mat_Gilt, 0.0);
+      Prism (T, Sq (C, 0.14), Y0 - 0.3, Y0 - 0.2, Mat_Gilt, 0.0);
+      --  the cross-bar(s) and the lanterns
+      Prism (T, ((X - 0.55, Z - 0.03), (X + 0.55, Z - 0.03), (X + 0.55, Z + 0.03), (X - 0.55, Z + 0.03)),
+             Y0 - 0.2, Y0 - 0.14, Mat_Lamp_Post, 0.0);
+      Lantern ((X - 0.55, Z), Y0);
+      Lantern ((X + 0.55, Z), Y0);
+      Lantern (C, Y0 + 0.35);
+      if Grand then
+         Prism (T, ((X - 0.03, Z - 0.55), (X + 0.03, Z - 0.55), (X + 0.03, Z + 0.55), (X - 0.03, Z + 0.55)),
+                Y0 - 0.2, Y0 - 0.14, Mat_Lamp_Post, 0.0);
+         Lantern ((X, Z - 0.55), Y0);
+         Lantern ((X, Z + 0.55), Y0);
+      end if;
+      Add_Edge (C + (-0.3, -0.3), C + (0.3, -0.3), Ground, Y0);
+      Add_Edge (C + (0.3, -0.3), C + (0.3, 0.3), Ground, Y0);
+      Add_Edge (C + (0.3, 0.3), C + (-0.3, 0.3), Ground, Y0);
+      Add_Edge (C + (-0.3, 0.3), C + (-0.3, -0.3), Ground, Y0);
+   end Emit_Candelabra;
+
    ---------------------------------------------------------------------------
    --  Trees
    ---------------------------------------------------------------------------
@@ -4695,6 +5220,12 @@ package body World_Builder is
       Emit_Signals;
       Ada.Text_IO.Put_Line ("  roads done");
 
+      Read_Hand_Spots ("data/landmarks.txt");
+      for I in Buildings.First_Index .. Buildings.Last_Index loop
+         if In_Spot ("pont_pylon", Buildings (I).Center.X, Buildings (I).Center.Z, 1.5) then
+            Buildings (I).Skip := True;   --  we build it ourselves
+         end if;
+      end loop;
       for I in Buildings.First_Index .. Buildings.Last_Index loop
          if Buildings (I).Skip then
             null;
@@ -4724,6 +5255,12 @@ package body World_Builder is
                if In_Data (X, Z) and then not In_River ((X, Z)) then
                   if Kind = "tree" then
                      Emit_Tree (P.Id, X, Z, (if In_Low ((X, Z)) then Low_Level else 0.0));
+                  elsif In_Spot ("ornate_lamps", X, Z)
+                    and then Tag (P.Tags, "support") /= "wall_mounted"
+                  then
+                     Emit_Candelabra (X, Z, Grand => Tag (P.Tags, "tourism") = "artwork",
+                                      Ground => (if In_Low ((X, Z)) then Low_Level else 0.0));
+                     Lamps := Lamps + 1;
                   else
                      Emit_Lamp (X, Z, Tag (P.Tags, "support") = "wall_mounted"
                                 or else Tag (P.Tags, "lamp_mount") = "wall",

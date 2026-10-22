@@ -6,3 +6,25 @@
 # OSM outline (way 40068036): an octagon of 11.95 m circumradius, turned so
 # that its sides face -8.5 degrees from east.
 fountain_saint_sulpice  48.850870  2.333282  -8.5  11.95
+
+# Pont Alexandre III: the four pylons at the ends (their OSM buildings are
+# left out), each with a gilded winged horse rearing away from the river:
+#   pont_pylon  lat  lon  facing_deg (X/Z plane)  half_width_m
+pont_pylon  48.864229  2.313267  -86.0  2.75
+pont_pylon  48.864249  2.313932  -86.0  2.75
+pont_pylon  48.863069  2.313806  94.0  2.75
+pont_pylon  48.863056  2.313138  94.0  2.75
+# Areas where the street lamps are ornate bronze candelabras (the ones
+# tagged as artwork are the big ones with cherubs):
+#   ornate_lamps  lat  lon  0  radius_m
+ornate_lamps  48.863650  2.313540  0  90
+
+# The front of the Opéra (Palais Garnier), just before the wall of its OSM
+# outline, and Apollo on the ridge of the stage (Y: the ridge's height):
+#   opera_front  lat  lon  facing_deg  half_width_m
+opera_front  48.8713491  2.3320076  74.0  29.6
+opera_apollo  48.872241  2.331539  74.0  58.0
+ornate_lamps  48.871100  2.332100  0  70
+# The middle of the Hôtel de Ville's west front (clock and belfry):
+town_hall_front  48.856565  2.351953  -159.3  31.0
+ornate_lamps  48.856500  2.351200  0  70
