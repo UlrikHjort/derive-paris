@@ -67,6 +67,7 @@ with Addresses;
 with Extras;
 with Moulin;
 with Rooms;
+with Postcards;
 with Gdk.Keyval;
 with Gtkada.Bindings;
 with Glib.Unicode;
@@ -786,6 +787,7 @@ package body Game is
          Tower.Load (Dir & "/eiffel.txt");
          Arc_Top.Load (Dir & "/arc.txt");
          Scenes.Load;
+         Postcards.Load;
          Addresses.Load (Dir);
          Scenes.Set_Override (Xmas_Setting);
          Scenes.Create;
@@ -1332,6 +1334,9 @@ package body Game is
             Street_Timer := 1.0;
          end if;
          Recorder.Frame (Natural (W), Natural (H));
+         if Postcards.Want_Picture then
+            Postcards.Take_Picture (Natural (W), Natural (H));
+         end if;
          if Take_Photo then
             Take_Photo := False;
             Photo.Take (Natural (W), Natural (H));
@@ -2217,6 +2222,7 @@ package body Game is
         & "  M                sound on / off" & LF
         & "  F2               games: street racing, taxi" & LF
         & "  F3               find an address (GPS)" & LF
+        & "  F4               your postcards" & LF
         & "  Y / Shift+Y      one day later / earlier" & LF
         & "  F9               record a video (again: stop)" & LF
         & "  F12              take a photo" & LF
@@ -3352,6 +3358,10 @@ package body Game is
             Eye_Yaw := Eye_Yaw + Float'Value (Env ("PARIS_VISIT")) * Ada.Numerics.Pi / 180.0;
          end if;
       end if;
+      --  PARIS_ALBUM=<frame>: open the postcard album then (testing)
+      if Env ("PARIS_ALBUM") /= "" and then Frame_Number = Integer'Value (Env ("PARIS_ALBUM")) then
+         Postcards.Toggle_Album;
+      end if;
       if Frame_Number = 2 and then Env ("PARIS_HELP_PNG") /= "" then
          Set_Key (16#FFBE#, True);
       end if;
@@ -3722,6 +3732,18 @@ package body Game is
             Birds.Update (Dt, Focus, Hour,
                           (if Walking then Vec3'(Walk_X, 0.0, Walk_Z) else Vec3'(Player.X, 0.0, Player.Z)));
             Scenes.Update (Dt, Hour, Clock_Rate);
+            Postcards.Update (Cam_Pos, Cam_Look,
+                              Allowed => not (In_Museum or else In_Hall_B or else In_Room or else Visiting
+                                              or else On_Tower or else On_Arc or else Fixed_Camera));
+            declare
+               News : constant String := Postcards.News;
+            begin
+               if News /= "" then
+                  Announce := Ada.Strings.Unbounded.To_Unbounded_String (News);
+                  Announce_Timer := 5.0;
+                  Street_Timer := 1.0;
+               end if;
+            end;
             Stravinsky.Update (Dt);
             Moulin.Update (Dt);
             Extras.Update (Dt, Hour, Night,
@@ -3976,6 +3998,9 @@ package body Game is
       if List_Open and then Down and then List_Key (K) then
          return;
       end if;
+      if Postcards.Album_Open and then Down and then Postcards.Album_Key (Natural (K)) then
+         return;
+      end if;
       if Menu_Open and then Down and then Menu_Key (K) then
          return;
       end if;
@@ -4185,6 +4210,11 @@ package body Game is
             if Down then
                Almanac.Next_Day;
                Say (Almanac.Image & Integer'Image (Almanac.Year), 1.5);
+            end if;
+         when 16#FFC1# =>                                     --  F4: the postcards
+            if Down then
+               Help.Hide;
+               Postcards.Toggle_Album;
             end if;
          when 16#FFC0# =>                                     --  F3: find an address
             if Down then
@@ -4599,6 +4629,7 @@ package body Game is
       Search_Box.Set_Margin_Top (80);
       Search_Box.Set_No_Show_All (True);
       Overlay.Add_Overlay (Search_Box);
+      Overlay.Add_Overlay (Postcards.Album);
 
       Gtk.Label.Gtk_New (Confirm);
       Confirm.Set_Halign (Gtk.Widget.Align_Center);
@@ -4676,6 +4707,9 @@ package body Game is
          Gtk.Style_Context.Get_Style_Context (Search_Box).Add_Provider
            (Gtk.Css_Provider."+" (Css), Gtk.Style_Provider.Priority_Application);
          Gtk.Style_Context.Get_Style_Context (Search_Box).Add_Class ("help");
+         Gtk.Style_Context.Get_Style_Context (Postcards.Album).Add_Provider
+           (Gtk.Css_Provider."+" (Css), Gtk.Style_Provider.Priority_Application);
+         Gtk.Style_Context.Get_Style_Context (Postcards.Album).Add_Class ("help");
          Gtk.Style_Context.Get_Style_Context (Sign).Add_Provider
            (Gtk.Css_Provider."+" (Css), Gtk.Style_Provider.Priority_Application);
          Gtk.Style_Context.Get_Style_Context (Sign).Add_Class ("street-sign");

@@ -1,0 +1,115 @@
+# Postcards: the famous places.  Come near one with it before you (by car,
+# on foot, or flying low) and the game takes its picture for your album
+# (F4).  One card each:
+#   [card]
+#   name  what it is called
+#   at    lat lon radius_m   (how near you must be)
+#   text  a little of its story, on one line
+[card]
+name Notre-Dame de Paris
+at 48.852970 2.349920 160
+text Begun in 1163 under Bishop Maurice de Sully and finished about 1345, the cathedral on the Île de la Cité is a masterpiece of French Gothic. Its spire and roof burned in April 2019; restored, it opened again in December 2024. Point zéro, from which distances from Paris are measured, is set in the square before it.
+[card]
+name La Tour Eiffel
+at 48.858260 2.294500 260
+text Gustave Eiffel's company built it in two years for the World's Fair of 1889. At 300 metres it was the tallest structure in the world until 1930. Many Parisians hated it at first; it was only meant to stand for twenty years, and its use for radio saved it.
+[card]
+name L'Arc de Triomphe
+at 48.873790 2.295030 180
+text Napoleon ordered it in 1806 after Austerlitz; it was finished in 1836. The Unknown Soldier has lain beneath it since 1921, and the flame on his tomb is rekindled every evening at half past six. Twelve avenues meet in the star around it.
+[card]
+name Le Louvre
+at 48.861000 2.335800 200
+text A fortress of Philippe Auguste around 1200, then the palace of kings, the Louvre opened as a museum in 1793. I. M. Pei's glass pyramid, its new entrance, opened in 1989. The Mona Lisa has hung here since 1797, but for the two years after she was stolen in 1911.
+[card]
+name Le Sacré-Cœur
+at 48.886700 2.343100 180
+text Built on the top of Montmartre from 1875 to 1914 and consecrated in 1919. Its travertine stone gives off calcite when it rains, so the church stays white. From the steps before it, all of Paris lies below you.
+[card]
+name Le Panthéon
+at 48.846200 2.346400 150
+text Louis XV vowed a church to Sainte Geneviève; Soufflot's building was finished in 1790 and the Revolution made it a temple to great men. Voltaire, Rousseau, Victor Hugo, Zola and Marie Curie lie in its crypt, and Joséphine Baker is honoured there. Foucault hung his pendulum from the dome in 1851 to show the Earth turning.
+[card]
+name L'Opéra Garnier
+at 48.871970 2.331600 150
+text Charles Garnier was 35 when he won the competition in 1861; the opera house opened in 1875. Under it lies a great water tank, which gave Gaston Leroux the lake of his Phantom of the Opera. Chagall painted the ceiling of the auditorium in 1964.
+[card]
+name L'Hôtel de Ville
+at 48.856400 2.352300 150
+text Paris has been governed from this square since 1357. The Renaissance town hall burned during the Commune in 1871 and was built again as it had been, finished in 1892. The square was the Place de Grève, where men out of work waited to be hired: faire la grève.
+[card]
+name Le Pont Alexandre III
+at 48.863650 2.313540 130
+text Tsar Nicholas II laid its first stone in 1896, for the alliance with Russia, and it opened for the World's Fair of 1900. A single steel arch of 107 metres spans the Seine, kept low so as not to hide the Invalides. On its four pylons, gilded Fames hold back winged horses.
+[card]
+name La Place de la Concorde
+at 48.865600 2.321200 170
+text Laid out in 1755 as the Place Louis XV. During the Revolution the guillotine stood here; Louis XVI and Marie-Antoinette died on it in 1793. The obelisk, 3,300 years old and from the temple of Luxor, was set up in 1836, a gift of Egypt.
+[card]
+name Les Invalides
+at 48.855000 2.312600 180
+text Louis XIV founded it in 1670 as a home for old and wounded soldiers. Under its golden dome, given new gold leaf in 1989, Napoleon lies in a tomb of red quartzite, brought back from Saint Helena in 1840.
+[card]
+name Le Centre Pompidou
+at 48.860700 2.352200 120
+text Renzo Piano and Richard Rogers turned a building inside out: the pipes, ducts and escalators are outside, coloured by what they do: blue for air, green for water, yellow for electricity, red for moving people. It opened in 1977. Beside it plays the Stravinsky Fountain of Tinguely and Niki de Saint Phalle.
+[card]
+name La Place des Vosges
+at 48.855500 2.365500 110
+text Henri IV had it built from 1605 as the Place Royale, the oldest planned square in Paris: houses of brick and stone, all alike above their arcades. Victor Hugo lived at number 6 from 1832 to 1848.
+[card]
+name La Bastille
+at 48.853200 2.369100 130
+text The fortress and prison stormed on the 14th of July 1789 was pulled down stone by stone. The July Column in the middle of the square remembers the revolution of 1830; the gilded Spirit of Freedom stands on its top.
+[card]
+name Saint-Sulpice
+at 48.851000 2.334800 120
+text The second largest church of Paris, built from 1646 to 1870, its two towers unlike each other. Inside are murals by Delacroix, one of the great organs of the world, and a brass line in the floor running to a marble obelisk: a gnomon, to find the date of Easter.
+[card]
+name Le Jardin du Luxembourg
+at 48.847500 2.337200 160
+text Marie de Médicis had the palace built from 1615, to remind her of Florence; the Senate meets in it now. In the garden children sail little wooden boats on the Grand Bassin, as they have for a hundred years.
+[card]
+name La Sainte-Chapelle
+at 48.855400 2.345000 90
+text Louis IX built it in a few years, consecrated in 1248, to keep the Crown of Thorns. Its upper chapel is almost all glass: 1,113 scenes in stained glass, two thirds of them from the thirteenth century.
+[card]
+name Le Pont Neuf
+at 48.857000 2.341100 110
+text For all its name, the new bridge is the oldest standing in Paris, finished in 1607 under Henri IV. It was the first without houses on it, and had pavements for those on foot. Henri IV rides in bronze in its middle.
+[card]
+name Le Moulin Rouge
+at 48.884110 2.332270 90
+text The cabaret opened in 1889 at the foot of Montmartre, under its red mill, and made the French cancan famous. Toulouse-Lautrec drew its dancers and made its posters, La Goulue and Jane Avril among them.
+[card]
+name La Tour Montparnasse
+at 48.842100 2.322000 180
+text At 210 metres, the only skyscraper in the middle of Paris, finished in 1973. Parisians liked it so little that tall buildings were soon forbidden within the city. People say the best view of Paris is from its top: the only one without the tower in it.
+[card]
+name Le Grand Palais
+at 48.866100 2.312500 150
+text Built for the World's Fair of 1900, its nave of glass and steel is the largest in Europe. It was a hospital in the First World War, and has held art shows, horse shows and the fencing of the 2024 Olympic Games.
+[card]
+name La Madeleine
+at 48.870100 2.324500 110
+text Begun in 1764, made by Napoleon into a temple to the glory of his army, and a church at last in 1842: 52 Corinthian columns and no bell tower. Chopin's funeral was held here in 1849.
+[card]
+name La Place Vendôme
+at 48.867500 2.329400 100
+text The eight-sided square of Louis XIV, of 1702, home now of the jewellers and the Ritz. The column in its middle was cast from cannons taken at Austerlitz; the Commune pulled it down in 1871, and it was set up again.
+[card]
+name La Conciergerie
+at 48.856000 2.345700 100
+text Part of the palace of the kings of France on the Île de la Cité. In the Terror it was the last prison before the guillotine; Marie-Antoinette was held here in 1793. Its clock tower carries the oldest public clock of Paris, of 1370.
+[card]
+name Saint-Germain-des-Prés
+at 48.853900 2.334400 100
+text The oldest church of Paris, its bell tower from about the year 1000. After the war the cafés round it, Les Deux Magots and the Flore, were full of Sartre, Beauvoir, Camus and jazz.
+[card]
+name Le Musée d'Orsay
+at 48.860000 2.326500 140
+text A railway station built for the World's Fair of 1900, left empty when trains grew too long for its platforms. It opened as a museum in 1986: the great hall under the station's glass roof, and the Impressionists behind its big clocks.
+[card]
+name Le Palais-Royal
+at 48.863800 2.337200 110
+text Cardinal Richelieu's palace, finished in 1639. Before the Revolution its arcades were the liveliest place in Paris; on the 12th of July 1789 Camille Desmoulins stood on a table here and called Paris to arms. Buren's striped columns stand in its courtyard since 1986.

@@ -107,6 +107,7 @@ fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 | Shift + 1 .. 0 | GPS: navigate to that place (route through the real streets, turn-by-turn with street names) |
 | Y / Shift+Y | one day later / earlier (hold it to run through the calendar) |
 | F3 | find an address: type a street and a number (in any order, accents and capitals don't matter), Enter sets the GPS |
+| F4 | your postcards: the album of the famous places you have found (Left/Right to turn the pages) |
 | X | stop navigating |
 | J | clear the traffic around you (new cars arrive gradually) |
 | M | sound on/off |
@@ -156,6 +157,15 @@ saved places: Enter sets the GPS to it, Space takes you there, Delete
 forgets it.  They are kept in `~/.derive_places`, one per line as
 `latitude longitude name`, so the names can be changed there.  Saved
 places show as green diamonds on the minimap.
+
+### Postcards
+
+There are 27 famous places to find, from Notre-Dame and the Eiffel Tower
+to the Moulin Rouge and the Palais-Royal (`data/postcards.txt`).  Come
+near one with it before you and in sight, by car, on foot or flying low,
+and the game takes its picture for your album, with a little of its
+story.  F4 opens the album.  The cards and their pictures are kept in
+`~/.derive_postcards`; delete the folder to start again.
 
 ### Games: street races
 
