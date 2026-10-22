@@ -1172,6 +1172,7 @@ package body Game is
             Decals.Draw (WU.Model, WU.Extra_Color, Walk_X, Walk_Z);
          end if;
          glDisable (GL_SAMPLE_ALPHA_TO_COVERAGE);
+         Set (WU.Model, Identity);   --  (what was drawn before may have moved it)
          Landscape.Draw;   --  the hills beyond the loaded tiles
          Set (WU.Model, Car_M);
          Set (WU.Car_Color, Car_Color);
