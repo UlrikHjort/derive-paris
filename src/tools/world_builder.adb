@@ -4796,6 +4796,28 @@ package body World_Builder is
          Ada.Text_IO.Close (F);
          Ada.Text_IO.Put_Line ("  addresses:" & Count'Image);
       end;
+      --  The metro entrances (where, and which way the street runs is
+      --  found in the game)
+      declare
+         F : Ada.Text_IO.File_Type;
+      begin
+         Ada.Text_IO.Create (F, Ada.Text_IO.Out_File,
+                             Out_Dir & "/metro_" & Roads_File (Roads_File'First + 6 .. Roads_File'Last - 4)
+                             & ".txt");
+         for P of M.Points loop
+            if Tag (P.Tags, "railway") = "subway_entrance" then
+               declare
+                  X, Z : Long_Float;
+               begin
+                  Geo.To_Local (P.Pos.Lat, P.Pos.Lon, X, Z);
+                  if X >= DX0 and then X < DX1 and then Z >= DZ0 and then Z < DZ1 then
+                     Ada.Text_IO.Put_Line (F, Integer'Image (Integer (X * 10.0)) & " " & Integer'Image (Integer (Z * 10.0)));
+                  end if;
+               end;
+            end if;
+         end loop;
+         Ada.Text_IO.Close (F);
+      end;
       declare
          F : Ada.Text_IO.File_Type;
       begin

@@ -36,6 +36,11 @@ package body Almanac is
       Today := Ada.Calendar.Arithmetic."+" (Today, Ada.Calendar.Arithmetic.Day_Count (1));
    end Next_Day;
 
+   procedure Previous_Day is
+   begin
+      Today := Ada.Calendar.Arithmetic."-" (Today, Ada.Calendar.Arithmetic.Day_Count (1));
+   end Previous_Day;
+
    function Year return Integer is (Integer (Ada.Calendar.Year (Today)));
    function Month return Integer is (Integer (Ada.Calendar.Month (Today)));
    function Day return Integer is (Integer (Ada.Calendar.Day (Today)));

@@ -25,6 +25,9 @@ package Ufo is
    procedure Draw_Beam (VP : Math3D.Mat4; Cam : Math3D.Vec3);
    --  Its beam of light (additive, after the solid world)
 
+   function In_Beam (X, Z : Float) return Boolean;
+   --  Standing in its beam of light (while it shines)
+
    function Nearness return Float;
    --  0 .. 1: how close it is to you (lamps flicker, compass spins, sound)
 

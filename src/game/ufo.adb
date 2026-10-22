@@ -217,6 +217,10 @@ package body Ufo is
       end if;
    end Draw_Beam;
 
+   function In_Beam (X, Z : Float) return Boolean is
+     (Phase = Hovering and then Timer > 12.0 and then Timer < 38.0
+      and then (X - Pos.X) ** 2 + (Z - Pos.Z) ** 2 < 6.0 ** 2);
+
    function Nearness return Float is (Near);
    function Pan return Float is (Side);
 

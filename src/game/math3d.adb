@@ -91,6 +91,22 @@ package body Math3D is
       return M;
    end Translation;
 
+   function About (A : Vec3; Angle : Float) return Mat4 is
+      C : constant Float := Cos (Angle);
+      S : constant Float := Sin (Angle);
+      T : constant Float := 1.0 - C;
+      M : Mat4 := Identity;
+      procedure Put (Row, Col : Natural; V : Float) is
+      begin
+         M (Col * 4 + Row) := V;
+      end Put;
+   begin
+      Put (0, 0, T * A.X * A.X + C);       Put (0, 1, T * A.X * A.Y - S * A.Z); Put (0, 2, T * A.X * A.Z + S * A.Y);
+      Put (1, 0, T * A.X * A.Y + S * A.Z); Put (1, 1, T * A.Y * A.Y + C);       Put (1, 2, T * A.Y * A.Z - S * A.X);
+      Put (2, 0, T * A.X * A.Z - S * A.Y); Put (2, 1, T * A.Y * A.Z + S * A.X); Put (2, 2, T * A.Z * A.Z + C);
+      return M;
+   end About;
+
    function Rotation_Y (Angle : Float) return Mat4 is
       C : constant Float := Cos (Angle);
       S : constant Float := Sin (Angle);

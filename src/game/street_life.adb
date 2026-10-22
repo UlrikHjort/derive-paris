@@ -5,6 +5,9 @@
 with Ada.Containers.Ordered_Maps;
 with Ada.Containers.Vectors;
 with Ada.Environment_Variables;
+with Ada.Directories;
+with Ada.Strings.Fixed;
+with Ada.Text_IO;
 with Ada.Numerics;
 with Ada.Numerics.Elementary_Functions;
 with Ada.Numerics.Float_Random;
@@ -40,6 +43,9 @@ package body Street_Life is
    Mat_Mouth   : constant := 70.0;
    Mat_Rubber  : constant := 71.0;
    Mat_Pair    : constant := 72.0;
+   Mat_Sign    : constant := 74.0;
+   Mat_M       : constant := 75.0;
+   Mat_Amber   : constant := 76.0;
 
    --  A seed for this game: the tags and posters are somewhere else next time
    Gen : Ada.Numerics.Float_Random.Generator;
@@ -346,6 +352,137 @@ package body Street_Life is
    package Cell_Maps is new Ada.Containers.Ordered_Maps (Cell_Key, Cell);
    Cells : Cell_Maps.Map;
 
+   ---------------------------------------------------------------------------
+   --  Metro entrances (tiles/metro_*.txt: where; the street gives the way
+   --  the stairs run)
+   ---------------------------------------------------------------------------
+
+   Entrances : Vec_Vectors.Vector;
+   Entrances_Read : Boolean := False;
+
+   procedure Read_Entrances is
+      use Ada.Directories;
+      Dir : constant String :=
+        (if Ada.Environment_Variables.Exists ("PARIS_TILES")
+         then Ada.Environment_Variables.Value ("PARIS_TILES") else "tiles");
+      S : Search_Type;
+      E : Directory_Entry_Type;
+   begin
+      Entrances_Read := True;
+      if not Exists (Dir) then
+         return;
+      end if;
+      Start_Search (S, Dir, "metro_*.txt", (Ordinary_File => True, others => False));
+      while More_Entries (S) loop
+         Get_Next_Entry (S, E);
+         declare
+            F : Ada.Text_IO.File_Type;
+         begin
+            Ada.Text_IO.Open (F, Ada.Text_IO.In_File, Full_Name (E));
+            while not Ada.Text_IO.End_Of_File (F) loop
+               declare
+                  L : constant String := Ada.Strings.Fixed.Trim (Ada.Text_IO.Get_Line (F), Ada.Strings.Both);
+                  --  two whole numbers, the second may follow the first
+                  --  with only its minus sign between them
+                  Sp : Natural := 0;
+               begin
+                  for I in L'First + 1 .. L'Last loop
+                     if L (I) = ' ' or else (L (I) = '-' and then L (I - 1) in '0' .. '9') then
+                        Sp := I;
+                        exit;
+                     end if;
+                  end loop;
+                  if Sp > 0 then
+                     Entrances.Append ((Float (Integer'Value (L (L'First .. Sp - 1))) / 10.0, 0.0,
+                                        Float (Integer'Value (L (Sp .. L'Last))) / 10.0));
+                  end if;
+               exception
+                  when Constraint_Error => null;
+               end;
+            end loop;
+            Ada.Text_IO.Close (F);
+         exception
+            when others =>
+               if Ada.Text_IO.Is_Open (F) then
+                  Ada.Text_IO.Close (F);
+               end if;
+         end;
+      end loop;
+      End_Search (S);
+   end Read_Entrances;
+
+   --  An entrance: the stairwell runs along U (down towards +U), V across
+   procedure Entrance (F : Frame; Old_Style : Boolean; L : in out Solid_Vectors.Vector) is
+      Len : constant Float := 4.2;
+      W   : constant Float := 0.9;    --  half the width
+   begin
+      --  the dark stairwell, the top steps light against it
+      Meshes.Quad (At_F (F, 0.0, 0.02, -W), At_F (F, 0.0, 0.02, W), At_F (F, Len, 0.02, W), At_F (F, Len, 0.02, -W),
+                   Mat_Mouth);
+      for K in 0 .. 2 loop
+         declare
+            X : constant Float := 0.15 + 0.55 * Float (K);
+         begin
+            Box (F, X, X + 0.12, 0.0, 0.035 - 0.005 * Float (K), -W, W, Mat_Kerb);
+         end;
+      end loop;
+      --  railings along both sides and across the far end
+      for Side of Float_List'(-1.0, 1.0) loop
+         Box (F, 0.0, Len, 0.88, 0.95, Side * W - 0.03, Side * W + 0.03, Mat_Green);
+         Box (F, 0.0, Len, 0.1, 0.16, Side * W - 0.03, Side * W + 0.03, Mat_Green);
+         for K in 0 .. 14 loop
+            declare
+               X : constant Float := Len * Float (K) / 14.0;
+            begin
+               Box (F, X - 0.015, X + 0.015, 0.0, 0.95, Side * W - 0.015, Side * W + 0.015, Mat_Green);
+            end;
+         end loop;
+      end loop;
+      Box (F, Len - 0.03, Len + 0.03, 0.0, 0.95, -W, W, Mat_Green);
+      if Old_Style then
+         --  two lamp posts curving over the way in, with the sign between
+         for Side of Float_List'(-1.0, 1.0) loop
+            declare
+               B : constant Vec3 := At_F (F, 0.0, 0.0, Side * (W + 0.05));
+               Up : constant Vec3 := (0.0, 1.0, 0.0);
+               P1 : constant Vec3 := B + 2.6 * Up;
+               P2 : constant Vec3 := B + 3.2 * Up - (0.35 * Side) * F.V;
+            begin
+               Bar (B, P1, 0.05, Mat_Green);
+               Bar (P1, P2, 0.045, Mat_Green);
+               Meshes.Box (P2.X - 0.1, P2.X + 0.1, P2.Y - 0.32, P2.Y - 0.02, P2.Z - 0.1, P2.Z + 0.1, Mat_Amber);
+            end;
+         end loop;
+         Meshes.Quad_UV (At_F (F, 0.0, 2.2, -W + 0.05), At_F (F, 0.0, 2.2, W - 0.05),
+                         At_F (F, 0.0, 2.55, W - 0.05), At_F (F, 0.0, 2.55, -W + 0.05),
+                         (-1.0) * F.U, Mat_Sign, 0.0);
+         Meshes.Quad_UV (At_F (F, 0.01, 2.2, W - 0.05), At_F (F, 0.01, 2.2, -W + 0.05),
+                         At_F (F, 0.01, 2.55, -W + 0.05), At_F (F, 0.01, 2.55, W - 0.05),
+                         F.U, Mat_Sign, 0.0);
+      else
+         --  a post with the M on a yellow disc, both ways
+         declare
+            B : constant Vec3 := At_F (F, -0.3, 0.0, W + 0.35);
+            T : constant Vec3 := B + Vec3'(0.0, 2.9, 0.0);
+         begin
+            Bar (B, T, 0.05, Mat_Iron);
+            for Dir of Float_List'(-1.0, 1.0) loop
+               Meshes.Quad_UV (T - 0.3 * F.V - Vec3'(0.0, 0.6, 0.0) + (Dir * 0.03) * F.U,
+                               T + 0.3 * F.V - Vec3'(0.0, 0.6, 0.0) + (Dir * 0.03) * F.U,
+                               T + 0.3 * F.V + (Dir * 0.03) * F.U, T - 0.3 * F.V + (Dir * 0.03) * F.U,
+                               Dir * F.U, Mat_M, 0.0);
+            end loop;
+         end;
+      end if;
+      declare
+         M : constant Vec3 := At_F (F, Len / 2.0, 0.0, 0.0);
+         E : constant Vec3 := At_F (F, Len - 0.5, 0.0, 0.0);
+      begin
+         L.Append ((M.X, M.Z, 1.3));
+         L.Append ((E.X, E.Z, 1.0));
+      end;
+   end Entrance;
+
    procedure Build_Cell (K : Cell_Key; C : out Cell) is
       X0 : constant Float := Float (K.CX) * Cell_Size;
       Z0 : constant Float := Float (K.CZ) * Cell_Size;
@@ -627,6 +764,30 @@ package body Street_Life is
       Meshes.Start;
       Streets (Mid_X, Mid_Z, Cell_Size);
       Walls (Mid_X, Mid_Z, Cell_Size * 0.75);
+      --  metro entrances, the stairs along the street
+      if not Entrances_Read then
+         Read_Entrances;
+      end if;
+      for P of Entrances loop
+         if Mine (P.X, P.Z) then
+            declare
+               Found : Boolean;
+               RX, RZ, RH : Float;
+               Old_Style : constant Boolean := Hash (P.X, P.Z, 5.0, 1.0) < 0.4;
+            begin
+               Road_Network.Nearest_Road (P.X, P.Z, Found, RX, RZ, RH);
+               if Found then
+                  declare
+                     U : constant Vec3 := (Sin (RH), 0.0, -Cos (RH));
+                     F : constant Frame := (P => (P.X, Terrain.Height (P.X, P.Z), P.Z), U => U,
+                                           V => (-U.Z, 0.0, U.X));
+                  begin
+                     Entrance (F, Old_Style, C.Solids);
+                  end;
+               end if;
+            end;
+         end if;
+      end loop;
       Meshes.Finish (C.Mesh);
    end Build_Cell;
 
