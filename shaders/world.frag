@@ -1054,6 +1054,10 @@ void main()
     } else if (m == 72) {          // two small lights in the dark, now and then
         float on = step(0.08, fract(uTime * 0.21 + vSeed)) * step(0.5, fract(uTime * 0.05 + vSeed * 0.37));
         s = Surface(vec3(0.0), 0.0, 8.0, toLinear(vec3(1.0, 0.92, 0.55)) * 1.6 * on, 0.0);
+    } else if (m == 73) {          // a painted wall, from its seed, a little weathered
+        vec3 c = seeded(clamp(vUV, 0.0, 1.0), vSeed);
+        c *= 0.88 + 0.14 * noise(vWorld.xy * 3.0 + vWorld.zy * 2.0);
+        s = Surface(toLinear(c), 0.05, 10.0, vec3(0), 0.0);
     } else if (m == 50) {          // a lamp in uExtraColor: the taxi sign, a police light bar
         s = Surface(toLinear(uExtraColor), 0.3, 16.0, toLinear(uExtraColor) * (1.2 + 3.0 * uNight), 0.0);
     } else if (m == 38) {          // the star on top

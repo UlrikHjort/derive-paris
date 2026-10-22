@@ -61,6 +61,7 @@ with Hall_B;
 with Decals;
 with Scenes;
 with Birds;
+with Stravinsky;
 with Street_Life;
 with Limit_Sign;
 with Rain;
@@ -772,6 +773,7 @@ package body Game is
          Scenes.Load;
          Scenes.Set_Override (Xmas_Setting);
          Scenes.Create;
+         Stravinsky.Create;
          Tower.Create;     --  their railings, now that we know where they are
          Arc_Top.Create;
          --  decals
@@ -1200,6 +1202,7 @@ package body Game is
          World.Draw_Solid;
          Street_Life.Draw (WU.Model, Cam_Pos);   --  benches, bins, posters, tags, papers
          Scenes.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos.X, Cam_Pos.Z);
+         Stravinsky.Draw (WU.Model, WU.Car_Color, Cam_Pos);
          Set (WU.Car_Color, Car_Color);
          if Walking and then not In_Museum and then not In_Hall_B and then not On_Tower
            and then not On_Arc
@@ -3545,6 +3548,7 @@ package body Game is
             Birds.Update (Dt, Focus, Hour,
                           (if Walking then Vec3'(Walk_X, 0.0, Walk_Z) else Vec3'(Player.X, 0.0, Player.Z)));
             Scenes.Update (Dt, Hour, Clock_Rate);
+            Stravinsky.Update (Dt);
             Pedestrians.Update (Dt, Focus.X, Focus.Z, Focus_Heading, Player);
             Add (C_Traffic, T0);
          end;
