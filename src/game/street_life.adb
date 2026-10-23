@@ -683,6 +683,24 @@ package body Street_Life is
          end loop;
       end Ground_Details;
 
+      --  Is the footprint of something at F clear of the road: its ends
+      --  (Half along) and its side towards the road (Depth)?
+      function Off_Road (F : Frame; Half, Depth : Float) return Boolean is
+      begin
+         for X of Float_List'(-Half, 0.0, Half) loop
+            for Z of Float_List'(0.0, Depth) loop
+               declare
+                  P : constant Vec3 := At_F (F, X, 0.0, Z);
+               begin
+                  if World.On_Road (P.X, P.Z) then
+                     return False;
+                  end if;
+               end;
+            end loop;
+         end loop;
+         return True;
+      end Off_Road;
+
       --  along a street: every 7 m on each side, a chance of something
       procedure Street (AX, AZ, BX, BZ, Width : Float; Named : Boolean) is
          L  : constant Float := Sqrt ((BX - AX) ** 2 + (BZ - AZ) ** 2);
@@ -710,7 +728,9 @@ package body Street_Life is
                      F := (P => (PX, Terrain.Height (PX, PZ), PZ),
                            U => (DX, 0.0, DZ),
                            V => (-RX, 0.0, -RZ));   --  towards the road
-                     if H < 0.10 and then Width >= 6.0 then
+                     if not (H >= 0.216 and then H < 0.27) and then not Off_Road (F, 1.4, 0.3) then
+                        null;   --  it would stand in the road (the road is wider than tagged)
+                     elsif H < 0.10 and then Width >= 6.0 then
                         Bin (F, C.Solids);
                      elsif H < 0.16 and then Width >= 9.0 then
                         Bench (F, C.Solids);
@@ -723,9 +743,12 @@ package body Street_Life is
                      elsif H < 0.216 and then Width >= 7.0 then
                         Wallace (F, C.Solids);
                      elsif H < 0.27 and then Width >= 8.0 and then Named then
-                        --  a terrace further from the kerb, by the cafés
+                        --  a terrace further from the kerb, by the cafés (if it
+                        --  is clear of the road there too)
                         F.P := F.P + 1.4 * Vec3'(RX, 0.0, RZ);
-                        Terrace (F, C.Solids);
+                        if Off_Road (F, 3.3, 0.7) then
+                           Terrace (F, C.Solids);
+                        end if;
                      elsif HS < 0.03 then
                         Bicycle (F);
                      elsif (HS < 0.045 or else (All_Vans and then H > 0.6)) and then Width >= 8.0 and then Named
