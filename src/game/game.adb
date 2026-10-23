@@ -149,6 +149,7 @@ package body Game is
    Samples       : constant := 4;
 
    Car_Color    : constant Vec3 := (0.62, 0.07, 0.06);
+   Taxi_Black   : constant Vec3 := (0.04, 0.04, 0.05);   --  your car on a taxi shift
    Plane_Color  : constant Vec3 := (0.90, 0.90, 0.88);
    Fog_Base     : constant := 0.0013;
    Fog_Density  : Float := Fog_Base;
@@ -1246,7 +1247,7 @@ package body Game is
          Set (WU.Model, Identity);   --  (what was drawn before may have moved it)
          Landscape.Draw;   --  the hills beyond the loaded tiles
          Set (WU.Model, Car_M);
-         Set (WU.Car_Color, Car_Color);
+         Set (WU.Car_Color, (if Taxi.Active then Taxi_Black else Car_Color));
          Car.Draw;
          Traffic.Draw (WU.Model, WU.Car_Color);
          if not In_Museum and then not In_Hall_B and then not In_Room then
@@ -3344,6 +3345,22 @@ package body Game is
       Log_Error ("Error in a callback", E);
    end Callback_Failed;
 
+   Density_Wait : Float := 0.0;
+
+   --  How busy the streets are at this hour, against normal
+   function Traffic_Factor (H : Float) return Float is
+      Weekday : constant Boolean := not Almanac.Saturday and then not Almanac.Sunday;
+   begin
+      if Weekday and then ((H >= 8.0 and then H < 9.5) or else (H >= 17.0 and then H < 19.5)) then
+         return 1.6;   --  rush hour
+      elsif H < 5.5 or else H >= 23.5 then
+         return 0.45;  --  the dead of night
+      elsif H < 7.0 then
+         return 0.7;
+      end if;
+      return 1.0;
+   end Traffic_Factor;
+
    Tick_Failed : Natural := 0;   --  errors in frames told about
 
    function Tick
@@ -3730,7 +3747,13 @@ package body Game is
                end;
             end if;
             Race.Update (Dt, Player);
-            Taxi.Update (Dt, Player, Hour, Almanac.Sunday);
+            Taxi.Update (Dt, Player, Hour, Almanac.Sunday, Rain_Amount);
+            --  the traffic: rush hour on weekdays, quiet late at night
+            Density_Wait := Density_Wait - Dt;
+            if Density_Wait <= 0.0 and then not Race.Active then
+               Density_Wait := 5.0;
+               Traffic.Set_Density (Config.Get ("traffic", 1.0) * Traffic_Factor (Hour));
+            end if;
             Hall_B.Update (Dt);
             --  the label of the work you stand before
             declare

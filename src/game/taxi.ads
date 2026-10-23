@@ -35,7 +35,8 @@ package Taxi is
    procedure Impact (Loss : Float);
    --  The car lost this much speed (m/s) in a knock this step
 
-   procedure Update (Dt : Float; Player : Car.State; Hour : Float; Sunday : Boolean);
+   procedure Update (Dt : Float; Player : Car.State; Hour : Float; Sunday : Boolean; Rain : Float := 0.0);
+   --  Rain (0 .. 1): more people want a taxi, and they tip better
 
    procedure Goal (Serial : out Natural; X, Z : out Float;
                    Name : out Ada.Strings.Unbounded.Unbounded_String);

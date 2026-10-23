@@ -7,6 +7,7 @@ with Ada.Environment_Variables;
 with Ada.Numerics.Elementary_Functions;
 with Ada.Numerics.Float_Random;
 with Ada.Strings.Fixed;
+with Ada.Text_IO;
 
 with Config;
 with Figures;
@@ -220,10 +221,14 @@ package body Taxi is
    --  A new fare
    ---------------------------------------------------------------------------
 
+   Raining : Float := 0.0;
+   Busy    : Boolean := False;
+
    procedure Look_For_Fare (Hour : Float) is
       use Road_Network;
-      Near : constant Float := (if Test ("PARIS_TAXI_NEAR") then 25.0 else 300.0);
-      Far  : constant Float := (if Test ("PARIS_TAXI_NEAR") then 60.0 else 800.0);
+      --  rush hour and rain: people everywhere want one, the next is nearer
+      Near : constant Float := (if Test ("PARIS_TAXI_NEAR") then 25.0 elsif Busy then 120.0 else 300.0);
+      Far  : constant Float := (if Test ("PARIS_TAXI_NEAR") then 60.0 elsif Busy then 450.0 else 800.0);
    begin
       Waiting := False;
       for Attempt in 1 .. 30 loop
@@ -369,8 +374,69 @@ package body Taxi is
       end if;
    end Next_Fare;
 
+   --  The best shift ever (~/.derive_taxi): what it earned, and the best ride
+   Record_Total, Record_Ride : Float := 0.0;
+   New_Record : Boolean := False;
+
+   function Record_File return String is
+     (Ada.Environment_Variables.Value ("HOME", ".") & "/.derive_taxi");
+
+   procedure Read_Record is
+      F : Ada.Text_IO.File_Type;
+   begin
+      Record_Total := 0.0;
+      Record_Ride := 0.0;
+      Ada.Text_IO.Open (F, Ada.Text_IO.In_File, Record_File);
+      while not Ada.Text_IO.End_Of_File (F) loop
+         declare
+            L  : constant String := Ada.Text_IO.Get_Line (F);
+            Sp : constant Natural := Ada.Strings.Fixed.Index (L, " ");
+         begin
+            if Sp > 0 and then L (L'First .. Sp - 1) = "best_shift" then
+               Record_Total := Float'Value (L (Sp + 1 .. L'Last));
+            elsif Sp > 0 and then L (L'First .. Sp - 1) = "best_ride" then
+               Record_Ride := Float'Value (L (Sp + 1 .. L'Last));
+            end if;
+         exception
+            when Constraint_Error => null;
+         end;
+      end loop;
+      Ada.Text_IO.Close (F);
+   exception
+      when others =>
+         if Ada.Text_IO.Is_Open (F) then
+            Ada.Text_IO.Close (F);
+         end if;
+   end Read_Record;
+
+   procedure Write_Record is
+      F : Ada.Text_IO.File_Type;
+   begin
+      Ada.Text_IO.Create (F, Ada.Text_IO.Out_File, Record_File);
+      Ada.Text_IO.Put_Line (F, "# Dérive: your best taxi shift (euros)");
+      Ada.Text_IO.Put_Line (F, "best_shift" & Float'Image (Record_Total));
+      Ada.Text_IO.Put_Line (F, "best_ride" & Float'Image (Record_Ride));
+      Ada.Text_IO.Close (F);
+   exception
+      when others => null;
+   end Write_Record;
+
    procedure End_Shift is
    begin
+      if Current /= Off and then Current /= Summary then
+         Read_Record;
+         New_Record := Rides > 0 and then Total > Record_Total;
+         if New_Record then
+            Record_Total := Total;
+         end if;
+         if Rides > 0 and then Best > Record_Ride then
+            Record_Ride := Best;
+            New_Record := True;
+         end if;
+         if New_Record then
+            Write_Record;
+         end if;
+      end if;
       if Current /= Off then
          Current := Summary;
          Police.On := False;
@@ -461,7 +527,9 @@ package body Taxi is
 
    procedure Pay is
       Late : constant Boolean := Elapsed > Allowed + 30.0;
-      Tip  : Float := (if Mood < 0.25 then 0.0 else Meter_Now * Tip_Rate (Who_Kind) * Mood);
+      --  (glad of a dry ride home: more in the rain)
+      Tip  : Float := (if Mood < 0.25 then 0.0
+                       else Meter_Now * Tip_Rate (Who_Kind) * Mood * (1.0 + 0.5 * Raining));
       Ride : Float;
    begin
       if Who_Kind = Business and then Late then
@@ -559,8 +627,11 @@ package body Taxi is
 
    ---------------------------------------------------------------------------
 
-   procedure Update (Dt : Float; Player : Car.State; Hour : Float; Sunday : Boolean) is
+   procedure Update (Dt : Float; Player : Car.State; Hour : Float; Sunday : Boolean; Rain : Float := 0.0) is
    begin
+      Raining := Rain;
+      Busy := Rain > 0.3 or else (not Sunday and then ((Hour >= 8.0 and then Hour < 9.5)
+                                                       or else (Hour >= 17.0 and then Hour < 19.5)));
       if Current = Off then
          return;
       end if;
@@ -763,6 +834,12 @@ package body Taxi is
            & LF
            & Row ("Earned", Total)
            & Row ("Best ride", Best)
+           & LF
+           & (if New_Record then "  <b><span foreground='#7fe08a'>New record!</span></b>" & LF
+              else "")
+           & "<span foreground='#aab'>"
+           & Row ("Best shift ever", Record_Total)
+           & Row ("Best ride ever", Record_Ride) & "</span>"
            & LF & "<span foreground='#aab'>  Enter or Esc: back to the city</span></span>";
       end if;
       return "";
@@ -777,7 +854,10 @@ package body Taxi is
       end if;
       if not Built then
          Meshes.Start;
-         Meshes.Box (-0.3, 0.3, 1.42, 1.58, -0.12, 0.12, 50.0);   --  the TAXI sign
+         --  the TAXI PARISIEN sign: a white box on the roof, lit from
+         --  inside, the lamp (green free, red taken) on its front
+         Meshes.Box (-0.32, 0.32, 1.42, 1.62, -0.1, 0.1, 39.0);
+         Meshes.Box (-0.09, 0.09, 1.46, 1.58, -0.12, 0.12, 50.0);  --  the lamp, seen both ways
          Meshes.Finish (Lamp_Mesh);
          Meshes.Start;
          Meshes.Box (-0.6, 0.6, 1.42, 1.55, -0.16, 0.16, 50.0);   --  a light bar

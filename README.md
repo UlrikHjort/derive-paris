@@ -246,6 +246,15 @@ stand by the road with a speed gun: 45 € up to 20 km/h too fast, 135 €
 up to 40, 375 € beyond.  How often, and how much, can be changed in
 `~/.deriverc` (`taxi_police = 1.0`, `taxi_fines = 1.0`).
 
+On a shift your car is a black Paris taxi with the white sign on its
+roof (its lamp green when free, red when taken).  At rush hour (on
+weekdays, 8 to 9:30 and 5 to 7:30 in the evening) and in the rain more
+people want a taxi, so the next fare is nearer, and in the rain they tip
+better.  Your best shift and best ride are kept in `~/.derive_taxi`.
+
+The traffic follows the clock: busier at rush hour, thin in the middle
+of the night.
+
 ### The calendar and its surprises
 
 The game runs on today's date: the sun rises and sets as it does in Paris
