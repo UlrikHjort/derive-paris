@@ -11,6 +11,19 @@ and pedestrians, day and night, and rain.
 
 ![The Eiffel Tower seen from the Trocadéro](docs/screenshots/eiffel.jpg)
 
+## In motion
+
+| | |
+|---|---|
+| ![Up the Champs-Élysées](docs/gifs/champs.gif) | ![Flying past the Eiffel Tower](docs/gifs/fly.gif) |
+| Up the Champs-Élysées towards the Arc de Triomphe | Flying past the Eiffel Tower |
+| ![The Eiffel Tower sparkling](docs/gifs/sparkle.gif) | ![A burnout](docs/gifs/burnout.gif) |
+| The Eiffel Tower sparkling, from the Trocadéro | Drop the clutch |
+| ![The market in the Rue d'Aligre](docs/gifs/market.gif) | |
+| Market morning in the Rue d'Aligre | |
+
+(Made from the game with `scripts/make_gifs.sh`.)
+
 ## Screenshots
 
 | | |
