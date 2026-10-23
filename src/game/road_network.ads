@@ -110,6 +110,31 @@ package Road_Network is
    procedure For_Segments_Near (X, Z, Radius : Float);
    --  Every road segment near (X, Z), for drawing the minimap
 
+   --  Closed streets --------------------------------------------------------
+   --  Roadworks, an accident, a market on the carriageway: the cars do not
+   --  drive into a closed segment (and turn back on one), the GPS goes round.
+   --  A segment is a way and the index of its first point; closings count,
+   --  so overlapping ones open again only when all are gone.
+
+   procedure Close (W, Seg : Natural);
+   procedure Reopen (W, Seg : Natural);
+   function Is_Closed (W, Seg : Natural) return Boolean;
+   function Is_Closed (L : Link) return Boolean;
+   --  (the segment L drives along)
+
+   function Closings return Natural;
+   --  Changes whenever something closes or opens (the GPS plans again)
+
+   generic
+      with procedure Visit (AX, AZ, BX, BZ : Float);
+   procedure For_Closed_Near (X, Z, Radius : Float);
+   --  Every closed segment near (X, Z), for the minimap
+
+   generic
+      with procedure Visit (W, Seg : Natural; AX, AZ, BX, BZ : Float);
+   procedure For_Segment_Ids_Near (X, Z, Radius : Float);
+   --  Like For_Segments_Near, with the way and segment of each
+
    type Light is (Green, Amber, Red);
 
    Signal_Cycle : constant := 32.0;   --  seconds; matches world.frag

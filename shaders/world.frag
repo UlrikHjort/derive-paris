@@ -1107,6 +1107,15 @@ void main()
         vec3 c = mix(vec3(0.30, 0.55, 0.47), vec3(0.42, 0.66, 0.56), n);
         c = mix(c * 0.7, c, smoothstep(-0.3, 0.6, N.y + 0.3));
         s = Surface(toLinear(c), 0.25, 24.0, vec3(0), 0.0);
+    } else if (m == 84) {          // dug earth, lumpy
+        float n = fbm(vWorld.xz * 2.5 + vWorld.y);
+        s = Surface(toLinear(mix(vec3(0.30, 0.22, 0.14), vec3(0.46, 0.35, 0.24), n)), 0.02, 4.0, vec3(0), 0.0);
+    } else if (m == 85) {          // a traffic cone: orange, a white band
+        float band = step(0.5, fract(vWorld.y * 3.3)) * step(fract(vWorld.y * 3.3), 0.75);
+        s = Surface(toLinear(mix(vec3(0.95, 0.38, 0.05), vec3(0.95), band)), 0.3, 20.0,
+                    vec3(0.25, 0.08, 0.0) * uNight, 0.0);
+    } else if (m == 86) {          // signal red paint (barriers, signs)
+        s = Surface(toLinear(vec3(0.75, 0.06, 0.05)), 0.3, 24.0, vec3(0), 0.0);
     } else if (m == 80) {          // a delivery van's white paint
         s = Surface(toLinear(vec3(0.9, 0.9, 0.88)), 0.5, 40.0, vec3(0), 0.0);
     } else if (m == 50) {          // a lamp in uExtraColor: the taxi sign, a police light bar

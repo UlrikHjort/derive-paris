@@ -68,6 +68,7 @@ with Extras;
 with Moulin;
 with Rooms;
 with Postcards;
+with Closures;
 with Gdk.Keyval;
 with Gtkada.Bindings;
 with Glib.Unicode;
@@ -1251,6 +1252,7 @@ package body Game is
          if not In_Museum and then not In_Hall_B and then not In_Room then
             Birds.Draw (WU.Model, WU.Car_Color, Cam_Pos);
             Extras.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos);
+            Closures.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, WU.Extra_Color, Cam_Pos, Time);
             Set (WU.Car_Color, Car_Color);
          end if;
          Race.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos);
@@ -3675,6 +3677,7 @@ package body Game is
                         Traffic.Collide_Player (Player);
                         Street_Life.Collide (Player);
                         Scenes.Collide (Player);
+                        Closures.Collide (Player);
                         Loss := Before - abs Player.Speed;
                         if Player.Bumped and then Loss > 0.0 then
                            Race.Impact (Loss);   --  damage, in a race
@@ -3748,6 +3751,7 @@ package body Game is
             end;
             Add (C_Physics, T0);
             T0 := Clock_Now;
+            Closures.Update (Dt, Hour, Almanac.Saturday, Focus.X, Focus.Z, Focus_Heading);
             Traffic.Update (Dt, Time, Focus.X, Focus.Z, Focus_Heading, Player);
             Street_Life.Update (Dt, Focus.X, Focus.Z);
             Birds.Update (Dt, Focus, Hour,

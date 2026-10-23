@@ -95,6 +95,7 @@ package body Scenes is
       Say      : Unbounded_String;       --  shown when the countdown is over
       On       : Boolean := False;       --  happening now
       Late     : Boolean := False;       --  ... carried over from yesterday
+      Shut     : Boolean := False;       --  its street closed to the cars
    end record;
 
    package Scene_Vectors is new Ada.Containers.Vectors (Positive, Scene);
@@ -1042,6 +1043,32 @@ package body Scenes is
       end loop;
    end Create;
 
+   --  A market on a carriageway closes the street under it while it is
+   --  there (the traffic and the GPS go round); Open: close (True) or open
+   procedure Close_Street (S : Scene; Open : Boolean) is
+      A : constant Vec3 := S.Points (1);
+      B : constant Vec3 := S.Points (2);
+      L : constant Float := Length (B - A);
+      D : constant Vec3 := (1.0 / Float'Max (L, 0.01)) * (B - A);
+      procedure Visit (W, Seg : Natural; AX, AZ, BX, BZ : Float) is
+         MX : constant Float := (AX + BX) / 2.0 - A.X;
+         MZ : constant Float := (AZ + BZ) / 2.0 - A.Z;
+         T  : constant Float := MX * D.X + MZ * D.Z;
+         Off : constant Float := abs (MX * D.Z - MZ * D.X);
+      begin
+         if T > -2.0 and then T < L + 2.0 and then Off < 4.0 then
+            if Open then
+               Road_Network.Close (W, Seg);
+            else
+               Road_Network.Reopen (W, Seg);
+            end if;
+         end if;
+      end Visit;
+      procedure Each is new Road_Network.For_Segment_Ids_Near (Visit);
+   begin
+      Each ((A.X + B.X) / 2.0, (A.Z + B.Z) / 2.0, L / 2.0 + 10.0);
+   end Close_Street;
+
    procedure Update (Dt, Hour, Rate : Float) is
    begin
       Clock := Clock + Dt;
@@ -1052,6 +1079,12 @@ package body Scenes is
             S : Scene := All_Scenes (I);
          begin
             Decide (S, Hour);
+            if S.Kind = Stalls and then S.On /= S.Shut and then Natural (S.Points.Length) >= 2
+              and then Road_Network.Loaded
+            then
+               Close_Street (S, S.On);
+               S.Shut := S.On;
+            end if;
             All_Scenes.Replace_Element (I, S);
          end;
       end loop;

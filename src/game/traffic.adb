@@ -240,6 +240,8 @@ package body Traffic is
          if L.W = A.Cur.W and then L.Dir = -A.Cur.Dir then
             Back := L;
             Has_Back := True;
+         elsif Is_Closed (L) then
+            null;   --  closed: not that way
          else
             --  prefer going straight on, but keep every option possible
             Total := Total + 0.3 + Float'Max (0.0, Dot (D, Direction (L)));
@@ -250,7 +252,7 @@ package body Traffic is
             Pick : Float := Rnd * Total;
          begin
             for L of Links (End_Node) loop
-               if not (L.W = A.Cur.W and then L.Dir = -A.Cur.Dir) then
+               if not (L.W = A.Cur.W and then L.Dir = -A.Cur.Dir) and then not Is_Closed (L) then
                   Pick := Pick - (0.3 + Float'Max (0.0, Dot (D, Direction (L))));
                   if Pick <= 0.0 or else not A.Has_Next then
                      A.Next := L;
@@ -303,7 +305,7 @@ package body Traffic is
                   DZ : constant Float := (P.Z + Q.Z) / 2.0 - Focus_Z;
                   D  : constant Float := Sqrt (DX * DX + DZ * DZ);
                begin
-                  if Len < 4.0 or else D < Near or else D > Spawn_Far then
+                  if Len < 4.0 or else D < Near or else D > Spawn_Far or else Is_Closed (L) then
                      Ok := False;
                   elsif Near > 20.0 and then D < 160.0
                     and then (DX * Sin (Focus_Heading) - DZ * Cos (Focus_Heading)) / D > 0.6
@@ -564,6 +566,10 @@ package body Traffic is
               (A.X - Focus_X) ** 2 + (A.Z - Focus_Z) ** 2 > Retire_Far ** 2
             then
                A.Active := False;
+            elsif A.Active and then Is_Closed (A.Cur)
+              and then (A.X - Focus_X) ** 2 + (A.Z - Focus_Z) ** 2 > 60.0 ** 2
+            then
+               A.Active := False;   --  closed under it, out of sight: gone
             end if;
          end;
       end loop;

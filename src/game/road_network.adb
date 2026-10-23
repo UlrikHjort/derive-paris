@@ -3,6 +3,7 @@
 --  SPDX-License-Identifier: MIT
 --
 with Ada.Containers.Hashed_Maps;
+with Ada.Containers.Ordered_Maps;
 with Ada.Containers.Hashed_Sets;
 with Ada.Directories;
 with Ada.Numerics.Elementary_Functions;
@@ -578,6 +579,9 @@ package body Road_Network is
                   exit;
                end if;
                for L of Table (U) loop
+                  if Is_Closed (L) and then not Any_Way then
+                     goto Next_Link;   --  closed: go round
+                  end if;
                   declare
                      V   : constant Natural := Node_Index (L.W, L.Pos + L.Dir);
                      A   : constant Node := Nodes (U);
@@ -594,6 +598,7 @@ package body Road_Network is
                         Push ((C + H (V), V));
                      end if;
                   end;
+                  <<Next_Link>>
                end loop;
             end if;
          end;
@@ -625,6 +630,93 @@ package body Road_Network is
          Found := True;
       end;
    end Find_Route;
+
+   ---------------------------------------------------------------------------
+   --  Closed streets
+   ---------------------------------------------------------------------------
+
+   type Seg_Key is record
+      W, Seg : Natural;
+   end record;
+   function "<" (A, B : Seg_Key) return Boolean is
+     (A.W < B.W or else (A.W = B.W and then A.Seg < B.Seg));
+   package Closed_Maps is new Ada.Containers.Ordered_Maps (Seg_Key, Positive);
+   Closed  : Closed_Maps.Map;
+   Version : Natural := 0;
+
+   procedure Close (W, Seg : Natural) is
+      C : constant Closed_Maps.Cursor := Closed.Find ((W, Seg));
+   begin
+      if Closed_Maps.Has_Element (C) then
+         Closed.Replace_Element (C, Closed_Maps.Element (C) + 1);
+      else
+         Closed.Insert ((W, Seg), 1);
+         Version := Version + 1;
+      end if;
+   end Close;
+
+   procedure Reopen (W, Seg : Natural) is
+      C : Closed_Maps.Cursor := Closed.Find ((W, Seg));
+   begin
+      if Closed_Maps.Has_Element (C) then
+         if Closed_Maps.Element (C) > 1 then
+            Closed.Replace_Element (C, Closed_Maps.Element (C) - 1);
+         else
+            Closed.Delete (C);
+            Version := Version + 1;
+         end if;
+      end if;
+   end Reopen;
+
+   function Is_Closed (W, Seg : Natural) return Boolean is
+     (not Closed.Is_Empty and then Closed.Contains ((W, Seg)));
+
+   function Is_Closed (L : Link) return Boolean is
+     (Is_Closed (L.W, (if L.Dir > 0 then L.Pos else L.Pos - 1)));
+
+   function Closings return Natural is (Version);
+
+   procedure For_Closed_Near (X, Z, Radius : Float) is
+   begin
+      for C in Closed.Iterate loop
+         declare
+            K : constant Seg_Key := Closed_Maps.Key (C);
+            A : constant Node := Point (K.W, K.Seg);
+            B : constant Node := Point (K.W, K.Seg + 1);
+         begin
+            if ((A.X + B.X) / 2.0 - X) ** 2 + ((A.Z + B.Z) / 2.0 - Z) ** 2 < Radius ** 2 then
+               Visit (A.X, A.Z, B.X, B.Z);
+            end if;
+         end;
+      end loop;
+   end For_Closed_Near;
+
+   procedure For_Segment_Ids_Near (X, Z, Radius : Float) is
+   begin
+      if not Loaded then
+         return;
+      end if;
+      for CX in Cell_Of (X - Radius) .. Cell_Of (X + Radius) loop
+         for CZ in Cell_Of (Z - Radius) .. Cell_Of (Z + Radius) loop
+            declare
+               C : constant Cell_Maps.Cursor := Grid.Find ((CX, CZ));
+            begin
+               if Cell_Maps.Has_Element (C) then
+                  for S of Grid.Constant_Reference (C).Element.all loop
+                     declare
+                        A : constant Node := Point (S.W, S.Pos);
+                        B : constant Node := Point (S.W, S.Pos + 1);
+                     begin
+                        if Cell_Of (A.X) = CX and then Cell_Of (A.Z) = CZ then
+                           Visit (S.W, S.Pos, A.X, A.Z, B.X, B.Z);
+                        end if;
+                     end;
+                  end loop;
+               end if;
+            end;
+         end loop;
+      end loop;
+   end For_Segment_Ids_Near;
 
    function Signal_State (Offset, Dir_X, Dir_Z, Time : Float) return Light is
       Phase : constant Float :=

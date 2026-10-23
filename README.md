@@ -171,6 +171,15 @@ forgets it.  They are kept in `~/.derive_places`, one per line as
 `latitude longitude name`, so the names can be changed there.  Saved
 places show as green diamonds on the minimap.
 
+### Streets closed
+
+Here and there a street is closed for roadworks: barriers, the
+*travaux* sign, a trench, a little digger and a workman.  Now and then
+there is an accident, with the police waving you round, and on Saturday
+afternoons a demonstration marches up a boulevard.  The traffic and the
+GPS go round them, and the closed stretches are red on the minimap.  The
+markets on the boulevards close their street while they are there.
+
 ### Postcards
 
 There are 28 famous places to find, from Notre-Dame and the Eiffel Tower

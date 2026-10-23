@@ -230,6 +230,8 @@ package body Navigation is
          & "</span>");
    end Instruction;
 
+   Seen_Closings : Natural := 0;
+
    procedure Update (X, Z, Heading : Float; Dt : Float; Route_Allowed : Boolean) is
    begin
       Me_X := X;
@@ -266,6 +268,13 @@ package body Navigation is
       end if;
 
       Reroute_Wait := Reroute_Wait - Dt;
+      --  a street closed or opened: plan again (the way may be shut, or
+      --  shorter now)
+      if Road_Network.Closings /= Seen_Closings and then not Fixed then
+         Seen_Closings := Road_Network.Closings;
+         Route.Clear;
+         Reroute_Wait := 0.0;
+      end if;
       --  where are we on the route?
       if Natural (Route.Length) >= 2 then
          declare
@@ -346,6 +355,17 @@ package body Navigation is
       end Road;
 
       procedure Roads is new For_Segments_Near (Road);
+
+      --  closed streets: red over the grey
+      procedure Shut (AX, AZ, BX, BZ : Float) is
+         X0, Y0, X1, Y1 : Gdouble;
+      begin
+         To_Screen (AX, AZ, X0, Y0);
+         To_Screen (BX, BZ, X1, Y1);
+         Move_To (Cr, X0, Y0);
+         Line_To (Cr, X1, Y1);
+      end Shut;
+      procedure Shut_Ones is new Road_Network.For_Closed_Near (Shut);
    begin
       --  round map window
       Arc (Cr, C, C, R, 0.0, 2.0 * Pi);
@@ -356,6 +376,11 @@ package body Navigation is
       Set_Source_Rgba (Cr, 0.78, 0.78, 0.75, 0.9);
       Set_Line_Cap (Cr, Cairo_Line_Cap_Round);
       Roads (Me_X, Me_Z, Float (R) / Scale + 30.0);
+      Set_Source_Rgba (Cr, 0.9, 0.12, 0.1, 0.95);
+      Set_Line_Width (Cr, Gdouble (Float'Max (4.0, 9.0 * Scale)));
+      Shut_Ones (Me_X, Me_Z, Float (R) / Scale + 30.0);
+      Stroke (Cr);
+      Set_Source_Rgba (Cr, 0.78, 0.78, 0.75, 0.9);
 
       --  route ahead
       if Has_Dest and then Natural (Route.Length) >= 2 then
