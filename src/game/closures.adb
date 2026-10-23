@@ -6,9 +6,13 @@ with Ada.Environment_Variables;
 with Ada.Numerics;
 with Ada.Numerics.Elementary_Functions;
 with Ada.Numerics.Float_Random;
+with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
 
+with Ada.Text_IO;
+
 with Figures;
+with Geo;
 with Meshes;
 with Road_Network;
 with Shaders;
@@ -189,6 +193,16 @@ package body Closures is
                E.B := (Q.X, Terrain.Height (Q.X, Q.Z), Q.Z);
             end;
             Shut (E);
+            declare
+               Lat, Lon : Long_Float;
+            begin
+               Geo.To_Lat_Lon (Long_Float (E.A.X), Long_Float (E.A.Z), Lat, Lon);
+               Ada.Text_IO.Put_Line ("Closed for " & (case K is when Works => "roadworks",
+                                                      when Accident => "an accident",
+                                                      when Demo => "a demonstration")
+                                     & ": " & Ada.Strings.Unbounded.To_String (Ways (W).Name)
+                                     & Long_Float'Image (Lat) & Long_Float'Image (Lon));
+            end;
             return;
          end if;
       end loop;
@@ -202,7 +216,11 @@ package body Closures is
          return;
       end if;
       if not Seeded then
-         Ada.Numerics.Float_Random.Reset (Gen);
+         if Test ("PARIS_WORKS") or else Test ("PARIS_ACCIDENT") or else Test ("PARIS_DEMO") then
+            Ada.Numerics.Float_Random.Reset (Gen, 7);   --  the same place each time (testing)
+         else
+            Ada.Numerics.Float_Random.Reset (Gen);
+         end if;
          Seeded := True;
       end if;
       for E of Events loop
@@ -243,7 +261,26 @@ package body Closures is
          end if;
       end if;
       if Test ("PARIS_DEMO") and then Count (Demo) = 0 then
+         declare
+            V  : constant String := Ada.Environment_Variables.Value ("PARIS_DEMO");
+            Sp : constant Natural := Ada.Strings.Fixed.Index (V, " ");
+            X, Z : Long_Float;
+         begin
+            if Sp > 0 then   --  "lat lon": the wide street nearest there
+               Geo.To_Local (Long_Float'Value (V (V'First .. Sp - 1)), Long_Float'Value (V (Sp + 1 .. V'Last)),
+                             X, Z);
+               Find_Place (Float (X), Float (Z), Heading, 0.0, 80.0, 12.0, 15.0, Found, W, Seg);
+               if Found then
+                  Begin_Event (Demo, W, Seg, 0.0);
+               end if;
+            end if;
+         end;
+      end if;
+      if Test ("PARIS_DEMO") and then Count (Demo) = 0 then
          Find_Place (Focus_X, Focus_Z, Heading, 30.0, 250.0, 12.0, 15.0, Found, W, Seg, Ahead => True);
+         if not Found then   --  no boulevard ahead: the nearest wide street
+            Find_Place (Focus_X, Focus_Z, Heading + Pi, 30.0, 500.0, 12.0, 15.0, Found, W, Seg);
+         end if;
          if Found then
             Begin_Event (Demo, W, Seg, 0.0);
          end if;
@@ -265,7 +302,7 @@ package body Closures is
       end if;
       --  Saturday afternoon: a march on a boulevard
       if Saturday and then Hour >= 14.0 and then Hour < 18.0 and then Count (Demo) = 0 then
-         Find_Place (Focus_X, Focus_Z, Heading, 200.0, 600.0, 16.0, 25.0, Found, W, Seg);
+         Find_Place (Focus_X, Focus_Z, Heading, 200.0, 600.0, 12.0, 25.0, Found, W, Seg);
          if Found then
             Begin_Event (Demo, W, Seg, 0.0);
          end if;
