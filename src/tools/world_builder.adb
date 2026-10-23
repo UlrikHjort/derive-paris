@@ -93,6 +93,7 @@ package body World_Builder is
    Mat_Lantern    : constant := 27.0;
    Mat_Signal     : constant := 28.0;   --  traffic light lamp, uv = (offset, group)
    Mat_Gilt       : constant := 48.0;   --  gilded bronze
+   Mat_Verdigris  : constant := 83.0;   --  copper gone green
    Mat_Stone      : constant := 29.0;   --  dressed stone of monuments, uv in metres
    Mat_Lattice    : constant := 33.0;   --  wrought-iron lattice (Eiffel Tower)
    Mat_Railing    : constant := 34.0;   --  balcony railing, uv in metres
@@ -3324,7 +3325,13 @@ package body World_Builder is
             if N = 5 then
                Geo.To_Local (Long_Float'Value (To_String (Words (2))), Long_Float'Value (To_String (Words (3))),
                              X, Z);
-               Hand_Spots.Append ((Words (1), X, Z, Long_Float'Value (To_String (Words (5)))));
+               declare
+                  W5 : constant String := To_String (Words (5));
+                  SL : constant Natural := Ada.Strings.Fixed.Index (W5, "/");   --  "a/b": a
+               begin
+                  Hand_Spots.Append
+                    ((Words (1), X, Z, Long_Float'Value (if SL > 0 then W5 (W5'First .. SL - 1) else W5)));
+               end;
             end if;
          end;
       end loop;
@@ -3716,6 +3723,117 @@ package body World_Builder is
       Frustum (T, U, V, At_P (0.0, 0.0), 0.08, 0.08, 36.0, At_P (0.0, 0.0), 0.04, 0.04, 38.5, Mat_Gilt, Seed, True);
    end Town_Hall_Front;
 
+   --  Liberty Enlightening the World, after Bartholdi: the robe, the
+   --  tablet held on the left arm, the crowned head, the right arm raised
+   --  with the torch and its gilded flame; on a stone pedestal of the
+   --  given height.  H: the statue, from her feet to the flame.
+   procedure Liberty (C : P2; Facing_Deg, H, Plinth : Long_Float) is
+      T    : Tile_Builder renames Tile_At (C).all;
+      A    : constant Long_Float := Facing_Deg * Ada.Numerics.Pi / 180.0;
+      U    : constant P2 := (Cos (A), Sin (A));
+      V    : constant P2 := (-Sin (A), Cos (A));
+      F    : constant V3 := (U.X, 0.0, U.Z);
+      Up   : constant V3 := (0.0, 1.0, 0.0);
+      R    : constant V3 := Cross (F, Up);   --  her right
+      Seed : constant Long_Float := 0.7;
+      B    : constant V3 := (C.X, Plinth, C.Z);   --  her feet
+      function P (Fw, Rt, Y : Long_Float) return V3 is (B + (Fw * H) * F + (Rt * H) * R + (Y * H) * Up);
+      procedure Block (Ctr : P2; HU, HV, Y0, Y1 : Long_Float; Mat : Long_Float := Mat_Stone) is
+      begin
+         Frustum (T, U, V, Ctr, HU, HV, Y0, Ctr, HU, HV, Y1, Mat, Seed, True);
+      end Block;
+      --  something round-ish: two frustums, the second turned by 45 degrees
+      procedure Round (Ctr : V3; R0, R1, Y0, Y1 : Long_Float; Mat : Long_Float) is
+         Q  : constant P2 := (Ctr.X, Ctr.Z);
+         U2 : constant P2 := (0.7071 * (U.X - V.X), 0.7071 * (U.Z - V.Z));
+         V2 : constant P2 := (-U2.Z, U2.X);
+      begin
+         Frustum (T, U, V, Q, R0, R0, Y0, Q, R1, R1, Y1, Mat, Seed, True);
+         Frustum (T, U2, V2, Q, R0, R0, Y0, Q, R1, R1, Y1, Mat, Seed, True);
+      end Round;
+      PW : constant Long_Float := Long_Float'Max (0.6, 0.24 * H);   --  half width of the pedestal
+   begin
+      --  the pedestal: a base, the shaft, a cornice, a smaller top
+      if Plinth > 0.0 then
+         Block (C, PW + 0.25 * PW, PW + 0.25 * PW, 0.0, 0.12 * Plinth);
+         Block (C, PW, PW, 0.12 * Plinth, 0.82 * Plinth);
+         Block (C, PW + 0.12 * PW, PW + 0.12 * PW, 0.82 * Plinth, 0.88 * Plinth);
+         Block (C, 0.8 * PW, 0.8 * PW, 0.88 * Plinth, Plinth);
+         declare
+            E : constant Long_Float := 1.25 * PW;
+         begin
+            Add_Edge (C + E * U + E * V, C - E * U + E * V, 0.0, Plinth);
+            Add_Edge (C - E * U + E * V, C - E * U - E * V, 0.0, Plinth);
+            Add_Edge (C - E * U - E * V, C + E * U - E * V, 0.0, Plinth);
+            Add_Edge (C + E * U - E * V, C + E * U + E * V, 0.0, Plinth);
+         end;
+      end if;
+      --  the robe, falling to her feet, a little wider below
+      Round (B, 0.11 * H, 0.075 * H, Plinth, Plinth + 0.5 * H, Mat_Verdigris);
+      Round (B + (0.01 * H) * F, 0.078 * H, 0.068 * H, Plinth + 0.5 * H, Plinth + 0.6 * H, Mat_Verdigris);
+      --  the shoulders and the head, the crown with its seven rays
+      Any_Box (T, P (0.0, 0.0, 0.625), F, Up, R, 0.045 * H, 0.03 * H, 0.085 * H, Mat_Verdigris, Seed);
+      Round (P (0.0, 0.0, 0.0), 0.022 * H, 0.02 * H, Plinth + 0.655 * H, Plinth + 0.68 * H, Mat_Verdigris);
+      Round (P (0.005, 0.0, 0.0), 0.034 * H, 0.03 * H, Plinth + 0.68 * H, Plinth + 0.735 * H, Mat_Verdigris);
+      Round (P (0.0, 0.0, 0.0), 0.038 * H, 0.036 * H, Plinth + 0.73 * H, Plinth + 0.745 * H, Mat_Verdigris);
+      for K in -3 .. 3 loop
+         declare
+            Ang : constant Long_Float := Long_Float (K) * 0.42;
+            D   : constant V3 := Normalize (Cos (Ang) * F + Sin (Ang) * R + 0.35 * Up);
+         begin
+            Beam (T, P (0.0, 0.0, 0.74) + (0.055 * H) * D, D, Up, 0.03 * H, 0.006 * H, 0.004 * H,
+                  Mat_Verdigris, Seed);
+         end;
+      end loop;
+      --  the left arm bent, holding the tablet against her side
+      Beam (T, P (0.0, -0.075, 0.57), Normalize (Up - 0.2 * R), F, 0.05 * H, 0.016 * H, 0.016 * H,
+            Mat_Verdigris, Seed);
+      Any_Box (T, P (0.03, -0.085, 0.53), Normalize (F + 0.3 * R), Normalize (Up + 0.35 * F),
+               Cross (Normalize (F + 0.3 * R), Normalize (Up + 0.35 * F)), 0.012 * H, 0.075 * H, 0.04 * H,
+               Mat_Verdigris, Seed);
+      --  the right arm raised high, a little forward and out, the torch
+      declare
+         Sh   : constant V3 := P (0.0, 0.07, 0.635);
+         D    : constant V3 := Normalize (Up + 0.12 * F + 0.18 * R);
+         Hand : constant V3 := Sh + (0.24 * H) * D;
+      begin
+         Beam (T, Sh + (0.12 * H) * D, D, F, 0.12 * H, 0.017 * H, 0.017 * H, Mat_Verdigris, Seed);
+         Beam (T, Hand + (0.03 * H) * Up, Up, F, 0.04 * H, 0.012 * H, 0.012 * H, Mat_Verdigris, Seed);
+         Round (Hand + (0.07 * H) * Up, 0.012 * H, 0.03 * H, Hand.Y + 0.06 * H, Hand.Y + 0.085 * H, Mat_Verdigris);
+         Round (Hand + (0.09 * H) * Up, 0.022 * H, 0.002 * H, Hand.Y + 0.085 * H, Hand.Y + 0.15 * H, Mat_Gilt);
+      end;
+   end Liberty;
+
+   --  The Flame of Liberty by the Pont de l'Alma: the torch's gilded flame,
+   --  full size, on a dark stone base.  H: from the ground to its tip.
+   procedure Liberty_Flame (C : P2; H : Long_Float) is
+      T    : Tile_Builder renames Tile_At (C).all;
+      U    : constant P2 := (1.0, 0.0);
+      V    : constant P2 := (0.0, 1.0);
+      Seed : constant Long_Float := 0.8;
+      Base : constant Long_Float := 0.45 * H;
+   begin
+      Frustum (T, U, V, C, 1.3, 1.3, 0.0, C, 1.3, 1.3, 0.25, Mat_Stone, Seed, True);
+      Frustum (T, U, V, C, 0.85, 0.85, 0.25, C, 0.7, 0.7, Base, Mat_Lamp_Post, Seed, True);
+      --  the cup of the torch, and the flame in tongues
+      Frustum (T, U, V, C, 0.35, 0.35, Base, C, 0.75, 0.75, Base + 0.45, Mat_Gilt, Seed, True);
+      for K in 0 .. 4 loop
+         declare
+            Ang : constant Long_Float := Long_Float (K) * 2.0 * Ada.Numerics.Pi / 5.0;
+            D   : constant V3 := Normalize ((0.25 * Cos (Ang), 1.0, 0.25 * Sin (Ang)));
+            P0  : constant V3 := (C.X + 0.25 * Cos (Ang), Base + 0.45, C.Z + 0.25 * Sin (Ang));
+            L   : constant Long_Float := (H - Base - 0.45) * (if K = 0 then 1.0 else 0.75);
+         begin
+            Beam (T, P0 + (0.5 * L) * D, D, (-Sin (Ang), 0.0, Cos (Ang)), 0.5 * L, 0.32, 0.18, Mat_Gilt, Seed);
+         end;
+      end loop;
+      Frustum (T, U, V, C, 0.45, 0.45, Base + 0.45, C, 0.05, 0.05, H, Mat_Gilt, Seed, True);
+      Add_Edge (C + (-1.3, -1.3), C + (1.3, -1.3), 0.0, Base);
+      Add_Edge (C + (1.3, -1.3), C + (1.3, 1.3), 0.0, Base);
+      Add_Edge (C + (1.3, 1.3), C + (-1.3, 1.3), 0.0, Base);
+      Add_Edge (C + (-1.3, 1.3), C + (-1.3, -1.3), 0.0, Base);
+   end Liberty_Flame;
+
    procedure Emit_Hand_Landmarks (File_Name : String) is
       F : Ada.Text_IO.File_Type;
    begin
@@ -3765,6 +3883,20 @@ package body World_Builder is
                   elsif In_Data (X, Z) and then To_String (Words (1)) = "town_hall_front" then
                      Town_Hall_Front ((X, Z), Long_Float'Value (To_String (Words (4))),
                                       Long_Float'Value (To_String (Words (5))));
+                     Ada.Text_IO.Put_Line ("  landmark: " & To_String (Words (1)));
+                  elsif In_Data (X, Z) and then To_String (Words (1)) = "liberty" then
+                     --  the size: the statue's height and, after a slash, the pedestal's
+                     declare
+                        W5 : constant String := To_String (Words (5));
+                        SL : constant Natural := Ada.Strings.Fixed.Index (W5, "/");
+                     begin
+                        Liberty ((X, Z), Long_Float'Value (To_String (Words (4))),
+                                 Long_Float'Value (W5 (W5'First .. SL - 1)),
+                                 Long_Float'Value (W5 (SL + 1 .. W5'Last)));
+                     end;
+                     Ada.Text_IO.Put_Line ("  landmark: " & To_String (Words (1)));
+                  elsif In_Data (X, Z) and then To_String (Words (1)) = "liberty_flame" then
+                     Liberty_Flame ((X, Z), Long_Float'Value (To_String (Words (5))));
                      Ada.Text_IO.Put_Line ("  landmark: " & To_String (Words (1)));
                   elsif In_Data (X, Z) and then To_String (Words (1)) = "pont_pylon" then
                      Bridge_Pylon ((X, Z), Long_Float'Value (To_String (Words (4))),

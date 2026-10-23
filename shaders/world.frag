@@ -1102,6 +1102,11 @@ void main()
         s = Surface(toLinear(mix(vec3(0.66, 0.5, 0.32), vec3(0.78, 0.66, 0.46), tape)), 0.05, 6.0, vec3(0), 0.0);
     } else if (m == 82) {          // a firm's blue band on a van
         s = Surface(toLinear(vec3(0.08, 0.2, 0.55)), 0.5, 40.0, vec3(0), 0.0);
+    } else if (m == 83) {          // copper gone green (verdigris), darker in the folds
+        float n = fbm(vWorld.xz * 3.0 + vWorld.y * 2.0);
+        vec3 c = mix(vec3(0.30, 0.55, 0.47), vec3(0.42, 0.66, 0.56), n);
+        c = mix(c * 0.7, c, smoothstep(-0.3, 0.6, N.y + 0.3));
+        s = Surface(toLinear(c), 0.25, 24.0, vec3(0), 0.0);
     } else if (m == 80) {          // a delivery van's white paint
         s = Surface(toLinear(vec3(0.9, 0.9, 0.88)), 0.5, 40.0, vec3(0), 0.0);
     } else if (m == 50) {          // a lamp in uExtraColor: the taxi sign, a police light bar

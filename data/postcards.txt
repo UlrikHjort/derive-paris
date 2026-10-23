@@ -113,3 +113,7 @@ text A railway station built for the World's Fair of 1900, left empty when train
 name Le Palais-Royal
 at 48.863800 2.337200 110
 text Cardinal Richelieu's palace, finished in 1639. Before the Revolution its arcades were the liveliest place in Paris; on the 12th of July 1789 Camille Desmoulins stood on a table here and called Paris to arms. Buren's striped columns stand in its courtyard since 1986.
+[card]
+name La Statue de la Liberté
+at 48.849951 2.279714 120
+text The Americans living in Paris gave this quarter-size bronze of Bartholdi's statue to the city in 1889, three years after New York had the great one. It stands at the tip of the Île aux Cygnes, looking down the Seine towards New York. A smaller one stands in the Jardin du Luxembourg, and by the Pont de l'Alma a full-size copy of her torch's flame, given in 1989, has become a memorial to Princess Diana.

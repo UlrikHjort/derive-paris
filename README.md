@@ -160,7 +160,7 @@ places show as green diamonds on the minimap.
 
 ### Postcards
 
-There are 27 famous places to find, from Notre-Dame and the Eiffel Tower
+There are 28 famous places to find, from Notre-Dame and the Eiffel Tower
 to the Moulin Rouge and the Palais-Royal (`data/postcards.txt`).  Come
 near one with it before you and in sight, by car, on foot or flying low,
 and the game takes its picture for your album, with a little of its
