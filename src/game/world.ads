@@ -47,7 +47,7 @@ package World is
    function On_Road (X, Z : Float) return Boolean;
    --  True on a carriageway (or where no tile is loaded)
 
-   function Obstacle_At (X, Y, Z, Radius : Float) return Boolean;
+   function Obstacle_At (X, Y, Z, Radius : Float; Up_Down : Float := -1.0) return Boolean;
 
    generic
       with procedure Visit (AX, AZ, BX, BZ, Bottom, Top : Float);

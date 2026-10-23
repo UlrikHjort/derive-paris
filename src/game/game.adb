@@ -69,6 +69,7 @@ with Moulin;
 with Rooms;
 with Postcards;
 with Closures;
+with Stunts;
 with Gdk.Keyval;
 with Gtkada.Bindings;
 with Glib.Unicode;
@@ -3742,9 +3743,26 @@ package body Game is
                      Roll_Right    => Keys.Right or else Keys.D);
                begin
                   for I in 1 .. Steps loop
-                     Plane.Update (Aircraft, Input, Dt / Float (Steps));
+                     declare
+                        Before : constant Vec3 := Aircraft.Pos;
+                     begin
+                        Plane.Update (Aircraft, Input, Dt / Float (Steps));
+                        Stunts.Update (Before, Aircraft.Pos, Flying => Aircraft.Crashed <= 0.0);
+                     end;
                   end loop;
                end;
+               declare
+                  News : constant String := Stunts.News;
+               begin
+                  if News /= "" then
+                     Announce := Ada.Strings.Unbounded.To_Unbounded_String (News);
+                     Announce_Timer := 4.0;
+                     Street_Timer := 1.0;
+                  end if;
+               end;
+            end if;
+            if Mode /= Flying then
+               Stunts.Update (Vec3'(0.0, 0.0, 0.0), Vec3'(0.0, 0.0, 0.0), Flying => False);
             end if;
             Race.Update (Dt, Player);
             Taxi.Update (Dt, Player, Hour, Almanac.Sunday, Rain_Amount);

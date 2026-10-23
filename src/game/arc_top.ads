@@ -8,6 +8,7 @@
 --  writes where the arch is to tiles/arc.txt.
 
 with GL;
+with Math3D;
 
 package Arc_Top is
 
@@ -36,6 +37,11 @@ package Arc_Top is
    --  Back down, beside the arch
 
    procedure Keep_On_Roof (X, Z : in out Float);
+
+   type Passage is (None, Great_Vault, Side_Arches);
+   function Through (From, To : Math3D.Vec3) return Passage;
+   --  Did the line From -> To pass through the great vault (along its
+   --  axis) or through the small arches (across), under their crowns?
 
    procedure Draw (Model : GL.GLint);
 

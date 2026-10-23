@@ -7,6 +7,7 @@ with Ada.Numerics.Elementary_Functions;
 
 with Meshes;
 with Shaders;
+with River;
 with Terrain;
 with World;
 
@@ -94,9 +95,11 @@ package body Plane is
 
       --  Ground and buildings
       declare
-         G : constant Float := Terrain.Height (S.Pos.X, S.Pos.Z) + 1.0;
+         --  over the Seine: down to just above the water, under the bridges
+         G : constant Float := Terrain.Height (S.Pos.X, S.Pos.Z) + 1.0
+           - (if River.In_Channel (S.Pos.X, S.Pos.Z) then River.Depth else 0.0);
       begin
-         if S.Pos.Y < G or else World.Obstacle_At (S.Pos.X, S.Pos.Y, S.Pos.Z, 3.0) then
+         if S.Pos.Y < G or else World.Obstacle_At (S.Pos.X, S.Pos.Y, S.Pos.Z, 3.0, Up_Down => 0.8) then
             S.Crashed := 2.0;
             S.Speed := 0.0;
             if S.Pos.Y < G then

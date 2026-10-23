@@ -569,15 +569,16 @@ package body World is
       return Result or else not Any;   --  outside the map: treat as road
    end On_Road;
 
-   function Obstacle_At (X, Y, Z, Radius : Float) return Boolean is
+   function Obstacle_At (X, Y, Z, Radius : Float; Up_Down : Float := -1.0) return Boolean is
       Result : Boolean := False;
+      V : constant Float := (if Up_Down < 0.0 then Radius else Up_Down);   --  (how far up and down)
 
       procedure Visit (Slot : Tile_Slot) is
          E : Float_Array renames Slot.Edges.all;
          I : Natural := E'First;
       begin
          while not Result and then I + Floats_Per_Edge - 1 <= E'Last loop
-            if Y >= E (I + 4) - Radius and then Y <= E (I + 5) + Radius
+            if Y >= E (I + 4) - V and then Y <= E (I + 5) + V
               and then Segment_Distance (X, Z, E (I), E (I + 1), E (I + 2), E (I + 3)) < Radius
             then
                Result := True;

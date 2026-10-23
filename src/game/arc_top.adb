@@ -10,6 +10,7 @@ with Geo;
 with Math3D;
 with Meshes;
 with Shaders;
+with Terrain;
 
 package body Arc_Top is
 
@@ -71,6 +72,45 @@ package body Arc_Top is
       X := CX + U * UX - V * UZ;
       Z := CZ + U * UZ + V * UX;
    end From_UV;
+
+   function Through (From, To : Vec3) return Passage is
+      U0, V0, U1, V1 : Float;
+      G : Float;
+      H : Float;
+   begin
+      if not Is_Known then
+         return None;
+      end if;
+      To_UV (From.X, From.Z, U0, V0);
+      To_UV (To.X, To.Z, U1, V1);
+      G := Terrain.Height (CX, CZ);
+      H := Top_Y - G;   --  the height of the arch
+      --  the great vault runs along V: crossing V = 0 under its crown
+      if (V0 < 0.0) /= (V1 < 0.0) then
+         declare
+            T : constant Float := V0 / (V0 - V1);
+            U : constant Float := U0 + T * (U1 - U0);
+            Y : constant Float := From.Y + T * (To.Y - From.Y) - G;
+         begin
+            if abs U < Vault - 1.0 and then Y > 0.0 and then Y < 0.56 * H then
+               return Great_Vault;
+            end if;
+         end;
+      end if;
+      --  the small arches pierce the short sides, along U
+      if (U0 < 0.0) /= (U1 < 0.0) then
+         declare
+            T : constant Float := U0 / (U0 - U1);
+            V : constant Float := V0 + T * (V1 - V0);
+            Y : constant Float := From.Y + T * (To.Y - From.Y) - G;
+         begin
+            if abs V < 0.36 * HV and then Y > 0.0 and then Y < 0.35 * H then
+               return Side_Arches;
+            end if;
+         end;
+      end if;
+      return None;
+   end Through;
 
    --  Which way along V the Champs-Élysées runs (towards Concorde)
    function Champs_Side return Float is

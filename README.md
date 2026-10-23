@@ -171,6 +171,15 @@ forgets it.  They are kept in `~/.derive_places`, one per line as
 `latitude longitude name`, so the names can be changed there.  Saved
 places show as green diamonds on the minimap.
 
+### Stunts in the plane
+
+Fly through the great vault of the Arc de Triomphe, as Charles Godefroy
+did in his biplane on the 7th of August 1919 (or, harder, through the
+narrow side arches), and down over the Seine, below the quays, under its
+bridges.  The game counts the bridges: how many in one flight, and which
+ones you have ever flown under; they are kept in `~/.derive_stunts`.
+Mind the quay walls in the bends.
+
 ### Streets closed
 
 Here and there a street is closed for roadworks: barriers, the
