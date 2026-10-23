@@ -33,7 +33,7 @@ ornate_lamps  48.856500  2.351200  0  70
 # the tip of the Île aux Cygnes, looking down the Seine, and the small one
 # in the Jardin du Luxembourg.  Size: statue height / pedestal height.
 #   liberty  lat  lon  facing_deg  statue_m/pedestal_m
-liberty  48.850005  2.279786  131.4  11.5/9.0
+liberty  48.850074  2.279807  131.4  11.5/9.0
 liberty  48.846100  2.332800  0.0  2.9/1.4
 # The Flame of Liberty by the Pont de l'Alma (size: height to its tip)
 liberty_flame  48.864200  2.301100  0  3.5
