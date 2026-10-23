@@ -1663,6 +1663,27 @@ package body Game is
    end Capture_Mouse;
 
    --  H, after "yes": straight to the home, exactly as you start the game
+   --  R: the car back on the nearest street, stopped, facing the way it
+   --  was going (stuck against a wall, on a pavement, in the river...)
+   procedure Back_On_The_Road is
+      Found : Boolean;
+      RX, RZ, H : Float;
+   begin
+      Road_Network.Nearest_Road (Player.X, Player.Z, Found, RX, RZ, H);
+      if not Found then
+         return;
+      end if;
+      --  the road's direction that is nearer to the car's
+      if Cos (H - Player.Heading) < 0.0 then
+         H := H + Ada.Numerics.Pi;
+      end if;
+      Player := (X => RX, Z => RZ, Heading => H, others => <>);
+      Player.Ground := Terrain.Height (RX, RZ);
+      Announce := Ada.Strings.Unbounded.To_Unbounded_String ("Back on the road");
+      Announce_Timer := 1.5;
+      Street_Timer := 1.0;
+   end Back_On_The_Road;
+
    procedure Go_Home_Now is
       X, Z : Long_Float;
    begin
@@ -2194,7 +2215,7 @@ package body Game is
              & "  Q                get out and walk" & LF
              & "  E                gearbox: manual or automatic" & LF
              & "  I                instruments (gear, revs, speed)" & LF
-             & "  R                reset the car" & LF & LF
+             & "  R                back on the road, here" & LF & LF
            else
              Head ("Flying")
              & "  W / S            throttle" & LF
@@ -4187,8 +4208,8 @@ package body Game is
             if Down then
                if Mode = Flying then
                   Plane.Start (Aircraft, Aircraft.Pos.X, Aircraft.Pos.Z, Aircraft.Heading);
-               else
-                  Reset_Car;
+               elsif not Visiting and then not Race.Active then
+                  Back_On_The_Road;
                end if;
             end if;
          when 16#FFC9# =>                                     --  F12: photo

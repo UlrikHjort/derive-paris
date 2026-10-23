@@ -114,7 +114,7 @@ fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 | 1 .. 9, 0 | jump to Saint-Sulpice, Notre-Dame, Louvre, Tour Eiffel, Arc de Triomphe, Sacré-Cœur, Panthéon, Concorde, Opéra, Bastille |
 | H | home (asks first): Rue Bonaparte by the Place Saint-Sulpice, where the game starts |
 | Shift + H | make where the car is your home (saved in `~/.deriverc` as `home`) |
-| R | reset |
+| R | the car back on the nearest street, stopped (stuck against a wall, on a pavement...); in the air, the plane level again |
 | F2 | games: street races and the track editor |
 | F9 | record a video with sound; F9 again stops (saved in `~/Videos/Derive`) |
 | F12 | take a photo (saved in `~/Pictures/Derive`) |
