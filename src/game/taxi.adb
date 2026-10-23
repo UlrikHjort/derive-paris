@@ -9,6 +9,7 @@ with Ada.Numerics.Float_Random;
 with Ada.Strings.Fixed;
 with Ada.Text_IO;
 
+with Chase;
 with Config;
 with Figures;
 with Geo;
@@ -142,10 +143,14 @@ package body Taxi is
    Ride_Fines : Float := 0.0;
    Pending, Pending_Time : Float := 0.0;   --  a knock going on
    Slow_Time  : Float := 0.0;
+   Chasing    : Boolean := False;   --  "Suivez cette voiture !"
+   Chase_Lost : Boolean := False;
+   Goal_Wait  : Float := 0.0;       --  (the GPS follows the car, now and then)
 
    --  the last ride, for the panel
    Last_Meter, Last_Tip, Last_Bonus, Last_Fines, Last_Mood : Float := 0.0;
    Last_Late  : Boolean := False;
+   Last_Chase : Natural := 0;   --  1: followed the car, 2: lost it
    Last_Dest  : UString;
 
    --  the shift
@@ -423,6 +428,8 @@ package body Taxi is
 
    procedure End_Shift is
    begin
+      Chase.Stop;
+      Chasing := False;
       if Current /= Off and then Current /= Summary then
          Read_Record;
          New_Record := Rides > 0 and then Total > Record_Total;
@@ -447,6 +454,8 @@ package body Taxi is
 
    procedure Close is
    begin
+      Chase.Stop;
+      Chasing := False;
       Current := Off;
       Police.On := False;
       Goal_Serial := Goal_Serial + 1;
@@ -505,6 +514,23 @@ package body Taxi is
       end if;
       Current := Carrying;
       Waiting := False;
+      --  now and then: "follow that car!"
+      Chasing := False;
+      Chase_Lost := False;
+      if Rnd < 0.12 or else Test ("PARIS_CHASE") then
+         Chase.Start (Player);
+         Chasing := Chase.Active;
+      end if;
+      if Chasing then
+         Dest_Name := +"that car";
+         Allowed := 400.0;            --  the bonus for keeping up, not for speed
+         Bonus_Max := 25.0;
+         Set_Goal (Chase.Where.X, Chase.Where.Z, "Follow that car");
+         Sound.Effect (Sound.Thud, 0.35, 0.0);
+         Say ("Suivez cette voiture ! Vite, et qu'elle ne vous voie pas !",
+              "Follow that car! Quick, and don't let it see you!");
+         return;
+      end if;
       Set_Goal (Dest_X, Dest_Z, To_String (Dest_Name));
       Sound.Effect (Sound.Thud, 0.35, 0.0);   --  the door
       declare
@@ -535,9 +561,16 @@ package body Taxi is
       if Who_Kind = Business and then Late then
          Tip := 0.0;
       end if;
+      if Chasing then
+         Chase.Stop;
+         Chasing := False;
+         Last_Chase := (if Chase_Lost then 2 else 1);
+      else
+         Last_Chase := 0;
+      end if;
       Last_Meter := Meter_Now;
       Last_Tip := Tip;
-      Last_Bonus := Bonus_Now;
+      Last_Bonus := (if Chase_Lost then 0.0 else Bonus_Now);
       Last_Fines := Ride_Fines;
       Last_Mood := Mood;
       Last_Late := Late;
@@ -721,8 +754,41 @@ package body Taxi is
                end case;
             end;
             Mood := Float'Max (0.0, Float'Min (1.0, Mood));
+            if Chasing then
+               Chase.Update (Dt, Player);
+               Dest_X := Chase.Where.X;
+               Dest_Z := Chase.Where.Z;
+               Goal_Wait := Goal_Wait - Dt;
+               if Goal_Wait <= 0.0 then
+                  Goal_Wait := 1.5;
+                  Set_Goal (Dest_X, Dest_Z, "Follow that car");
+               end if;
+               case Chase.State is
+                  when Chase.Going =>
+                     if Chase.Lost_For > 3.0 and then Complain_Wait = 0.0 then
+                        Say ("Elle s'échappe ! Plus vite !", "It's getting away! Faster!");
+                        Complain_Wait := 8.0;
+                     end if;
+                  when Chase.Lost =>
+                     --  they get out here, cross, and pay the meter only
+                     Chase_Lost := True;
+                     Mood := 0.0;
+                     Say ("Vous l'avez perdue ! Laissez-moi ici.", "You lost it! Let me out here.");
+                     Pay;
+                  when Chase.Stopped =>
+                     if Complain_Wait = 0.0 then
+                        Say ("Elle s'arrête ! Garez-vous derrière.", "It's stopping! Pull up behind it.");
+                        Complain_Wait := 20.0;
+                     end if;
+                     if (Player.X - Dest_X) ** 2 + (Player.Z - Dest_Z) ** 2 < 25.0 ** 2
+                       and then abs Player.Speed < 2.0
+                     then
+                        Mood := Float'Max (Mood, 0.8);   --  delighted
+                        Pay;
+                     end if;
+               end case;
             --  there: stop near the place
-            if (Player.X - Dest_X) ** 2 + (Player.Z - Dest_Z) ** 2 < 20.0 ** 2
+            elsif (Player.X - Dest_X) ** 2 + (Player.Z - Dest_Z) ** 2 < 20.0 ** 2
               and then abs Player.Speed < 2.0
             then
                Pay;
@@ -806,15 +872,19 @@ package body Taxi is
       end Row;
    begin
       if Current = Paid then
-         return "<span font_family='monospace'><b><span foreground='#ffd27a'>Ride done: "
-           & To_String (Last_Dest) & "</span></b>" & LF & LF
+         return "<span font_family='monospace'><b><span foreground='#ffd27a'>"
+           & (case Last_Chase is
+                 when 1 => "You kept on its tail!",
+                 when 2 => "You lost it",
+                 when others => "Ride done: " & To_String (Last_Dest))
+           & "</span></b>" & LF & LF
            & Row ("Meter", Last_Meter)
            & Row ("Tip", Last_Tip,
                   (if Last_Tip = 0.0 and then Last_Late then "(late)"
                    elsif Last_Mood >= 0.8 then "(delighted)"
                    elsif Last_Mood >= 0.5 then "(pleased)"
                    elsif Last_Mood >= 0.25 then "(not happy)" else "(furious)"))
-           & Row ("Bonus", Last_Bonus)
+           & Row ("Bonus", Last_Bonus, (if Last_Chase = 1 then "(for the chase)" else ""))
            & (if Last_Fines > 0.0 then Row ("Fines", -Last_Fines) else "")
            & LF
            & Row ("This ride", Last_Meter + Last_Tip + Last_Bonus - Last_Fines)
@@ -887,6 +957,11 @@ package body Taxi is
                              else Vec3'(0.2, 1.0, 0.35)));
          Shaders.Set (Model, Car.Model_Matrix (Player));
          Meshes.Draw (Lamp_Mesh);
+      end if;
+
+      --  the car you follow
+      if Chasing then
+         Chase.Draw (Model, Paint);
       end if;
 
       --  the police car, its lights going, and the officer
