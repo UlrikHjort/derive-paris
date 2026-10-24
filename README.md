@@ -330,6 +330,12 @@ stand by the road with a speed gun: 45 € up to 20 km/h too fast, 135 €
 up to 40, 375 € beyond.  How often, and how much, can be changed in
 `~/.deriverc` (`taxi_police = 1.0`, `taxi_fines = 1.0`).
 
+Tourists sometimes ask to go past a sight on the way: the Eiffel Tower,
+Notre-Dame, the Arc de Triomphe, the Louvre's Pyramid, and others. The
+GPS takes you past it first. Drive by slowly, under 30 km/h, so they can
+take their photos: that pays 9 € extra, or 5 € if you go too fast. Skip
+the sight and they are upset.
+
 Now and then someone gets in and says *Suivez cette voiture !*: a car
 pulls away ahead of you and the GPS follows it instead of an address.
 Keep it in reach (it does not wait for you) until it stops after a few

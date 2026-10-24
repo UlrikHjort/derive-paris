@@ -89,6 +89,21 @@ package body Taxi is
       (+"Saint-Germain-des-Prés", 48.85390, 2.33380),
       (+"the Champs-Élysées", 48.86980, 2.30750));
 
+   --  The sights a tourist may ask to pass on the way (where the road
+   --  goes by them)
+   Sights : constant array (Positive range <>) of Place :=
+     ((+"the Eiffel Tower", 48.85820, 2.29380),
+      (+"the Arc de Triomphe", 48.87330, 2.29520),
+      (+"the Louvre's Pyramid", 48.86170, 2.33480),
+      (+"Notre-Dame", 48.85300, 2.34840),
+      (+"the Place de la Concorde", 48.86560, 2.32120),
+      (+"the Opéra Garnier", 48.87100, 2.33170),
+      (+"Les Invalides", 48.85890, 2.31310),
+      (+"the Pont Alexandre III", 48.86380, 2.31360),
+      (+"the Place Vendôme", 48.86750, 2.32940),
+      (+"the Panthéon", 48.84660, 2.34560),
+      (+"the Moulin Rouge", 48.88380, 2.33240));
+
    ---------------------------------------------------------------------------
    --  Who rides with you
    ---------------------------------------------------------------------------
@@ -128,6 +143,13 @@ package body Taxi is
    Pick_X, Pick_Z : Float := 0.0;   --  the road beside them
    Fare_Shirt, Fare_Skin, Fare_Legs : Vec3 := (0.5, 0.5, 0.5);
    Dest_Name  : UString;
+   --  a detour past a sight (a tourist's wish): which, where, passed yet
+   Via        : Natural := 0;
+   Via_X, Via_Z : Float := 0.0;
+   Via_Passed : Boolean := False;
+   Via_Slow   : Boolean := False;    --  slowly enough for the photos
+   Last_Sight : Float := 0.0;        --  the extra for it, last ride
+   Last_Via   : UString;
    Dest_X, Dest_Z : Float := 0.0;
 
    --  the GPS
@@ -264,7 +286,8 @@ package body Taxi is
                         Fare_Z := Pick_Z + Side * Off * DX;
                         --  facing the street
                         Fare_Face := Arctan (Side * DZ, Side * DX);
-                        Who_Kind := (if Night and then R < 0.45 then Party
+                        Who_Kind := (if Test ("PARIS_DETOUR") then Tourist
+                                     elsif Night and then R < 0.45 then Party
                                      elsif R < 0.35 then Business
                                      elsif R < 0.6 then Elderly
                                      elsif R < 0.9 or else not Night then Tourist
@@ -531,6 +554,51 @@ package body Taxi is
               "Follow that car! Quick, and don't let it see you!");
          return;
       end if;
+      --  a tourist, now and then: "could we pass by the Eiffel Tower?" -
+      --  the sight that makes the smallest detour
+      Via := 0;
+      Via_Passed := False;
+      Via_Slow := False;
+      if Who_Kind = Tourist and then (Rnd < 0.5 or else Test ("PARIS_DETOUR")) then
+         declare
+            Direct : constant Float := Sqrt ((Dest_X - Player.X) ** 2 + (Dest_Z - Player.Z) ** 2);
+            Least  : Float := 3000.0;
+         begin
+            for I in Sights'Range loop
+               declare
+                  X, Z : Long_Float;
+                  To_It, From_It : Float;
+               begin
+                  Geo.To_Local (Sights (I).Lat, Sights (I).Lon, X, Z);
+                  To_It := Sqrt ((Float (X) - Player.X) ** 2 + (Float (Z) - Player.Z) ** 2);
+                  From_It := Sqrt ((Dest_X - Float (X)) ** 2 + (Dest_Z - Float (Z)) ** 2);
+                  if To_It > 300.0 and then From_It > 300.0 and then To_It + From_It - Direct < Least then
+                     Least := To_It + From_It - Direct;
+                     Via := I;
+                  end if;
+               end;
+            end loop;
+            if Via /= 0 then
+               declare
+                  X, Z : Long_Float;
+                  Ok : Boolean;
+                  RX, RZ, RH : Float;
+               begin
+                  Geo.To_Local (Sights (Via).Lat, Sights (Via).Lon, X, Z);
+                  Road_Network.Nearest_Road (Float (X), Float (Z), Ok, RX, RZ, RH);
+                  Via_X := (if Ok then RX else Float (X));
+                  Via_Z := (if Ok then RZ else Float (Z));
+                  Allowed := Allowed + Least / 9.0 + 20.0;   --  no hurry: they came to see Paris
+               end;
+               Set_Goal (Via_X, Via_Z, "Past " & To_String (Sights (Via).Name));
+               Sound.Effect (Sound.Thud, 0.35, 0.0);
+               Say ("Hello! " & To_String (Dest_Name) & ", please... but can we drive past "
+                    & To_String (Sights (Via).Name) & "? Slowly, for the photos!",
+                    "(a tourist: a detour past a sight, for a good tip)");
+               return;
+            end if;
+         end;
+      end if;
       Set_Goal (Dest_X, Dest_Z, To_String (Dest_Name));
       Sound.Effect (Sound.Thud, 0.35, 0.0);   --  the door
       declare
@@ -568,6 +636,13 @@ package body Taxi is
       else
          Last_Chase := 0;
       end if;
+      Last_Sight := 0.0;
+      Last_Via := Null_Unbounded_String;
+      if Via /= 0 then
+         Last_Via := Sights (Via).Name;
+         Last_Sight := (if not Via_Passed then 0.0 elsif Via_Slow then 9.0 else 5.0);
+         Via := 0;
+      end if;
       Last_Meter := Meter_Now;
       Last_Tip := Tip;
       Last_Bonus := (if Chase_Lost then 0.0 else Bonus_Now);
@@ -575,11 +650,11 @@ package body Taxi is
       Last_Mood := Mood;
       Last_Late := Late;
       Last_Dest := Dest_Name;
-      Ride := Last_Meter + Last_Tip + Last_Bonus;
+      Ride := Last_Meter + Last_Tip + Last_Bonus + Last_Sight;
       Total := Total + Ride;
       Sum_Meter := Sum_Meter + Last_Meter;
       Sum_Tips := Sum_Tips + Last_Tip;
-      Sum_Bonus := Sum_Bonus + Last_Bonus;
+      Sum_Bonus := Sum_Bonus + Last_Bonus + Last_Sight;
       Km := Km + Driven / 1000.0;
       Best := Float'Max (Best, Ride - Ride_Fines);
       Rides := Rides + 1;
@@ -787,10 +862,30 @@ package body Taxi is
                         Pay;
                      end if;
                end case;
+            --  the sight on the way: past it, then on to where they go
+            elsif Via /= 0 and then not Via_Passed
+              and then (Player.X - Via_X) ** 2 + (Player.Z - Via_Z) ** 2 < 40.0 ** 2
+            then
+               Via_Passed := True;
+               Via_Slow := Kmh (Player) < 30.0;
+               if Via_Slow then
+                  Mood := Float'Min (1.0, Mood + 0.2);
+                  Say ("Oh, look! " & To_String (Sights (Via).Name) & "! Magnifique! *click* *click*",
+                       "(slowly enough for the photos: they are delighted)");
+               else
+                  Say ("Oh! " & To_String (Sights (Via).Name) & "... too fast, my photo is all blurred!",
+                       "(too fast for a good photo)");
+               end if;
+               Set_Goal (Dest_X, Dest_Z, To_String (Dest_Name));
             --  there: stop near the place
             elsif (Player.X - Dest_X) ** 2 + (Player.Z - Dest_Z) ** 2 < 20.0 ** 2
               and then abs Player.Speed < 2.0
             then
+               if Via /= 0 and then not Via_Passed then
+                  Mood := Mood - 0.35;
+                  Say ("But... we did not see " & To_String (Sights (Via).Name) & "!",
+                       "(they wanted the detour)");
+               end if;
                Pay;
             end if;
 
@@ -851,6 +946,7 @@ package body Taxi is
          end if;
       else
          Append (Line, "   to " & To_String (Dest_Name)
+                 & (if Via /= 0 and then not Via_Passed then " past " & To_String (Sights (Via).Name) else "")
                  & "   meter " & Money (Meter_Now) & " (tarif " & Tariff & ")"
                  & "   bonus " & Money (Bonus_Now));
       end if;
@@ -885,6 +981,12 @@ package body Taxi is
                    elsif Last_Mood >= 0.5 then "(pleased)"
                    elsif Last_Mood >= 0.25 then "(not happy)" else "(furious)"))
            & Row ("Bonus", Last_Bonus, (if Last_Chase = 1 then "(for the chase)" else ""))
+           & (if Length (Last_Via) > 0 then
+                Row ("Sightseeing", Last_Sight,
+                     (if Last_Sight = 0.0 then "(not past " & To_String (Last_Via) & ")"
+                      elsif Last_Sight > 5.0 then "(" & To_String (Last_Via) & ", slowly)"
+                      else "(" & To_String (Last_Via) & ")"))
+              else "")
            & (if Last_Fines > 0.0 then Row ("Fines", -Last_Fines) else "")
            & LF
            & Row ("This ride", Last_Meter + Last_Tip + Last_Bonus - Last_Fines)
