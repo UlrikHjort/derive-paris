@@ -1117,6 +1117,18 @@ void main()
                     vec3(0.25, 0.08, 0.0) * uNight, 0.0);
     } else if (m == 86) {          // signal red paint (barriers, signs)
         s = Surface(toLinear(vec3(0.75, 0.06, 0.05)), 0.3, 24.0, vec3(0), 0.0);
+    } else if (m == 88) {          // the metro's white bevelled tiles, in rows
+        vec2 q = vec2(vWorld.x + (abs(N.x) > 0.5 ? vWorld.z : 0.0), vWorld.y + (abs(N.y) > 0.5 ? vWorld.z : 0.0));
+        vec2 g = vec2(q.x / 0.3, q.y / 0.15);
+        g.x += 0.5 * mod(floor(g.y), 2.0);
+        vec2 fw = fwidth(g);
+        vec2 f = fract(g);
+        float e = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
+        float detail = 1.0 - smoothstep(0.15, 0.45, max(fw.x, fw.y));   // fade out far off, no flicker
+        float grout = (1.0 - smoothstep(0.0, 0.05 + fw.x, e)) * detail;
+        float bevel = mix(1.0, smoothstep(0.0, 0.25, e), detail);
+        vec3 c = mix(vec3(0.93, 0.92, 0.88) * (0.85 + 0.15 * bevel), vec3(0.62, 0.6, 0.55), grout);
+        s = Surface(toLinear(c), 0.6, 70.0, vec3(0), 0.0);
     } else if (m == 87) {          // a Vélib' bike's mint-green frame
         s = Surface(toLinear(vec3(0.45, 0.78, 0.62)), 0.45, 36.0, vec3(0), 0.0);
     } else if (m == 80) {          // a delivery van's white paint

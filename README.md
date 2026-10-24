@@ -182,6 +182,15 @@ brooms.  The morning after the 14th of July, the Fête de la Musique and
 New Year's Eve, the pavements are strewn with flyers, cups and cans, and
 the sweepers are out in force; by noon it is clean again.
 
+### The metro
+
+On foot, walk down the stairs of any metro entrance: you come to a
+platform under a vault of white tiles, the station's name on the wall.
+Choose where to go with the arrow keys (20 stations across Paris, with
+their lines, in `data/metro_stations.txt`) and Enter: you ride in the car
+while the tunnel lights rush by, and come up the stairs of the entrance
+nearest that station.  Q takes you back up where you came down.
+
 ### On the Seine
 
 Bateaux-mouches go up and down the river with tourists on their open

@@ -13,6 +13,7 @@ with Interfaces;
 with Figures;
 with Geo;
 with Math3D;
+with Metro;
 with Meshes;
 with Shaders;
 with Sound;
@@ -174,6 +175,12 @@ package body Rooms is
    procedure Mark (K : Room_Kind; X, Z : out Float; Found : out Boolean) is
       LX, LZ : Long_Float;
    begin
+      if K = Room_Metro then
+         X := 0.0;
+         Z := 0.0;
+         Found := False;
+         return;
+      end if;
       if not Loaded then
          Load;
       end if;
@@ -182,14 +189,16 @@ package body Rooms is
       X := Float (LX);
       Z := Float (LZ);
    end Mark;
-   function Floor_Y return Float is (Origin.Y);
+   function Floor_Y return Float is (if Kind = Room_Metro then Metro.Floor_Y else Origin.Y);
    function G (X, Y, Z : Float) return Vec3 is (Origin + Vec3'(X, Y, Z));
 
    --  the size of each room: along X from the door, across Z
    function Length_Of return Float is
-     (case Kind is when Room_A => 64.0, when Room_B => 24.0, when Room_C => 14.0, when Room_D => 33.0);
+     (case Kind is when Room_A => 64.0, when Room_B => 24.0, when Room_C => 14.0, when Room_D => 33.0,
+                   when Room_Metro => 76.0);
    function Half_W return Float is
-     (case Kind is when Room_A => 14.0, when Room_B => 10.0, when Room_C => 7.0, when Room_D => 16.5);
+     (case Kind is when Room_A => 14.0, when Room_B => 10.0, when Room_C => 7.0, when Room_D => 16.5,
+                   when Room_Metro => 5.0);
 
    ---------------------------------------------------------------------------
    --  Shapes
@@ -599,6 +608,14 @@ package body Rooms is
    procedure Enter (K : Room_Kind; From_X, From_Z, From_Yaw : Float) is
       X, Z : Long_Float;
    begin
+      if K = Room_Metro then
+         Kind := K;
+         Back_X := From_X;
+         Back_Z := From_Z;
+         Back_Yaw := From_Yaw;
+         Metro.Enter (From_X, From_Z);
+         return;
+      end if;
       if not Seeded then
          Ada.Numerics.Float_Random.Reset (Gen);
          Seeded := True;
@@ -624,6 +641,10 @@ package body Rooms is
 
    procedure Entrance (X, Z, Yaw : out Float) is
    begin
+      if Kind = Room_Metro then
+         Metro.Entrance (X, Z, Yaw);
+         return;
+      end if;
       case Kind is
          when Room_C =>
             X := Origin.X + 3.0;
@@ -642,6 +663,10 @@ package body Rooms is
       D : Room_Data renames Data (Kind);
       LX, LZ : Long_Float;
    begin
+      if Kind = Room_Metro then
+         Metro.Way_Out (X, Z, Yaw);
+         return;
+      end if;
       if D.Has_Out then
          Geo.To_Local (D.Out_Lat, D.Out_Lon, LX, LZ);
          X := Float (LX);
@@ -659,6 +684,10 @@ package body Rooms is
       LZ : Float := Z - Origin.Z;
       M  : constant Float := 0.4;
    begin
+      if Kind = Room_Metro then
+         Metro.Keep_Inside (X, Z);
+         return;
+      end if;
       case Kind is
          when Room_C =>
             declare
@@ -704,6 +733,9 @@ package body Rooms is
       LX : constant Float := X - Origin.X;
       LZ : constant Float := Z - Origin.Z;
    begin
+      if Kind = Room_Metro then
+         return Metro.At_Exit (X, Z);
+      end if;
       case Kind is
          when Room_C =>
             return Inside_Time > 12.0;
@@ -716,10 +748,14 @@ package body Rooms is
    end At_Exit;
 
    function Light return Float is
-     (case Kind is when Room_C => 2.0, when Room_D => 3.0, when others => 1.0);
+     (case Kind is when Room_C => 2.0, when Room_D => 3.0, when Room_Metro => 1.0, when others => 1.0);
 
    procedure Update (Dt : Float; X, Z : Float) is
    begin
+      if Kind = Room_Metro then
+         Metro.Update (Dt, X, Z);
+         return;
+      end if;
       Clock := Clock + Dt;
       Inside_Time := Inside_Time + Dt;
       Me_X := X;
@@ -748,6 +784,9 @@ package body Rooms is
 
    function Status return String is
    begin
+      if Kind = Room_Metro then
+         return Metro.Status;
+      end if;
       case Kind is
          when Room_D =>
             return "<span font_family='sans' weight='bold'>" & To_String (Data (Kind).Note) & "  "
@@ -765,14 +804,20 @@ package body Rooms is
                return "<span font_family='serif' size='large'><i>" & To_String (Data (Kind).Note) & "</i></span>";
             end if;
             return "";
-         when Room_C =>
+         when Room_C | Room_Metro =>
             return "";
       end case;
    end Status;
 
-   function Heading return String is (To_String (Data (Kind).Head));
-   function Arrival return String is (To_String (Data (Kind).Arrive));
-   function Leaving return String is (To_String (Data (Kind).Leave));
+   function Heading return String is
+     (if Kind = Room_Metro then Metro.Heading else To_String (Data (Kind).Head));
+   function Arrival return String is
+     (if Kind = Room_Metro then Metro.Arrival else To_String (Data (Kind).Arrive));
+   function Leaving return String is
+     (if Kind = Room_Metro then Metro.Leaving else To_String (Data (Kind).Leave));
+
+   function Key (K : Natural) return Boolean is
+     (Kind = Room_Metro and then Metro.Key (K));
 
    procedure Draw (Model, Paint, Skin, Legs, Gallery : GL.GLint) is
       Skins : constant array (0 .. 3) of Vec3 :=
@@ -780,6 +825,10 @@ package body Rooms is
       Coats : constant array (0 .. 5) of Vec3 :=
         ((0.1, 0.1, 0.12), (0.35, 0.25, 0.2), (0.2, 0.22, 0.35), (0.5, 0.1, 0.1), (0.3, 0.3, 0.3), (0.15, 0.25, 0.15));
    begin
+      if Kind = Room_Metro then
+         Metro.Draw (Model, Paint, Skin, Gallery);
+         return;
+      end if;
       if Need_Build then
          Need_Build := False;
          if Built then
@@ -794,6 +843,7 @@ package body Rooms is
             when Room_B => Build_B;
             when Room_C => Build_C;
             when Room_D => Build_D;
+            when Room_Metro => null;
          end case;
          Meshes.Finish (Hall);
          Built := True;
@@ -874,6 +924,8 @@ package body Rooms is
                   end if;
                end loop;
             end if;
+         when Room_Metro =>
+            null;
       end case;
       Shaders.Set (Gallery, 0.0);
       Shaders.Set (Model, Identity);

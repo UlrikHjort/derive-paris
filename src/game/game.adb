@@ -824,10 +824,10 @@ package body Game is
             Decals.Set (Decals.Decal_D, X, Z);
             declare
                Found : Boolean;
-               Marks : constant array (Rooms.Room_Kind) of Decals.Decal_Kind :=
+               Marks : constant array (Rooms.Room_A .. Rooms.Room_D) of Decals.Decal_Kind :=
                  (Decals.Decal_F, Decals.Decal_G, Decals.Decal_E, Decals.Decal_H);
             begin
-               for K in Rooms.Room_Kind loop
+               for K in Marks'Range loop
                   Rooms.Mark (K, X, Z, Found);
                   if Found then
                      Decals.Set (Marks (K), X, Z);
@@ -2012,6 +2012,7 @@ package body Game is
       end if;
       if In_Room then
          Rooms.Update (Dt, Walk_X, Walk_Z);
+         Rooms.Keep_Inside (Walk_X, Walk_Z);   --  (the metro: into the car when it leaves)
          if Rooms.At_Exit (Walk_X, Walk_Z) then
             Leave_Room;
             return;
@@ -2020,6 +2021,11 @@ package body Game is
         and then Ufo.In_Beam (Walk_X, Walk_Z)
       then
          Enter_Room (Rooms.Room_C);
+         return;
+      elsif not In_Museum and then not In_Hall_B and then not On_Tower and then not On_Arc
+        and then Street_Life.At_Entrance (Walk_X, Walk_Z)
+      then
+         Enter_Room (Rooms.Room_Metro);   --  down into the metro
          return;
       end if;
       --  the arrows turn too, for those without a mouse
@@ -3713,6 +3719,20 @@ package body Game is
             Set_Key (16#FF0D#, True);   --  Race on a track
          end if;
       end if;
+      --  PARIS_METRO=1: down the nearest metro entrance; PARIS_METRO_GO=n:
+      --  then n stations down the list and aboard (testing)
+      if Ready and then Frame_Number = 30 and then Env ("PARIS_METRO") /= "" then
+         if not Walking then
+            Toggle_Walk;
+         end if;
+         Enter_Room (Rooms.Room_Metro);
+      end if;
+      if Ready and then Frame_Number = 60 and then Env ("PARIS_METRO_GO") /= "" then
+         for I in 1 .. Natural'Value (Env ("PARIS_METRO_GO")) loop
+            Set_Key (16#FF54#, True);
+         end loop;
+         Set_Key (16#FF0D#, True);
+      end if;
       --  PARIS_BOAT=1: aboard a bateau-mouche at the Pont de l'Alma (testing)
       if Ready and then Frame_Number = 30 and then Env ("PARIS_BOAT") /= "" then
          if not Walking then
@@ -4300,6 +4320,9 @@ package body Game is
       end if;
       if Postcards.Album_Open and then Down and then Postcards.Album_Key (Natural (K)) then
          return;
+      end if;
+      if In_Room and then Walking and then Down and then Rooms.Key (Natural (K)) then
+         return;   --  (the metro: choosing a station)
       end if;
       if Menu_Open and then Down and then Menu_Key (K) then
          return;

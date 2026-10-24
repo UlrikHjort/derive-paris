@@ -1,0 +1,23 @@
+# Metro stations you can ride between (the entrances are those in the
+# map; you come up at the one nearest the station).  One per line:
+#   lat lon lines name
+48.858400 2.347000 1·4·7·11·14 Châtelet
+48.851200 2.330400 4 Saint-Sulpice
+48.853600 2.344100 4·B·C Saint-Michel
+48.855000 2.347100 4 Cité
+48.860800 2.340900 1 Louvre - Rivoli
+48.857400 2.352200 1·11 Hôtel de Ville
+48.853100 2.369100 1·5·8 Bastille
+48.865600 2.321200 1·8·12 Concorde
+48.873800 2.295000 1·2·6·A Charles de Gaulle - Étoile
+48.863100 2.287500 6·9 Trocadéro
+48.853900 2.289400 6 Bir-Hakeim (Tour Eiffel)
+48.871000 2.331500 3·7·8 Opéra
+48.884400 2.338400 12 Abbesses (Montmartre)
+48.882200 2.337300 2·12 Pigalle
+48.867500 2.363700 3·5·8·9·11 République
+48.862500 2.387000 2·3 Père Lachaise
+48.843200 2.322700 4·6·12·13 Montparnasse - Bienvenüe
+48.844300 2.373000 1·14·A Gare de Lyon
+48.880100 2.355000 4·5 Gare du Nord
+48.846200 2.343200 10 Cardinal Lemoine (Panthéon)

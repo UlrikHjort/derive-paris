@@ -649,6 +649,50 @@ package body Street_Life is
       end;
    end Velib_Station;
 
+   procedure Nearest_Entrance (X, Z, Max : Float; Found : out Boolean; EX, EZ, UX, UZ : out Float) is
+      Best : Float := Max * Max;
+   begin
+      if not Entrances_Read then
+         Read_Entrances;
+      end if;
+      Found := False;
+      EX := X;
+      EZ := Z;
+      UX := 1.0;
+      UZ := 0.0;
+      for P of Entrances loop
+         declare
+            D2 : constant Float := (P.X - X) ** 2 + (P.Z - Z) ** 2;
+         begin
+            if D2 < Best then
+               declare
+                  Ok : Boolean;
+                  RX, RZ, RH : Float;
+               begin
+                  Road_Network.Nearest_Road (P.X, P.Z, Ok, RX, RZ, RH);
+                  if Ok then
+                     Best := D2;
+                     Found := True;
+                     EX := P.X;
+                     EZ := P.Z;
+                     UX := Sin (RH);
+                     UZ := -Cos (RH);
+                  end if;
+               end;
+            end if;
+         end;
+      end loop;
+   end Nearest_Entrance;
+
+   function At_Entrance (X, Z : Float) return Boolean is
+      Found : Boolean;
+      EX, EZ, UX, UZ : Float;
+   begin
+      Nearest_Entrance (X, Z, 8.0, Found, EX, EZ, UX, UZ);
+      --  on the stairs, between the railings (from either end)
+      return Found and then (X - (EX + 2.1 * UX)) ** 2 + (Z - (EZ + 2.1 * UZ)) ** 2 < 1.6 ** 2;
+   end At_Entrance;
+
    procedure Build_Cell (K : Cell_Key; C : out Cell) is
       X0 : constant Float := Float (K.CX) * Cell_Size;
       Z0 : constant Float := Float (K.CZ) * Cell_Size;

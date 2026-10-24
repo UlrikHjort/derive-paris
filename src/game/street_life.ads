@@ -25,6 +25,13 @@ package Street_Life is
    --  In the solid pass, with alpha to coverage on (posters and tags have
    --  holes); builds the cells it needs (GL context current)
 
+   procedure Nearest_Entrance (X, Z, Max : Float; Found : out Boolean; EX, EZ, UX, UZ : out Float);
+   --  The metro entrance nearest (X, Z) within Max metres: where its
+   --  stairs begin, and the way they go down (U)
+
+   function At_Entrance (X, Z : Float) return Boolean;
+   --  On foot at the top of a metro entrance's stairs
+
    procedure Collide (S : in out Car.State);
    --  The car against what stands on the pavement
 

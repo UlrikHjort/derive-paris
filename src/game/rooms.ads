@@ -9,7 +9,7 @@ with GL;
 
 package Rooms is
 
-   type Room_Kind is (Room_A, Room_B, Room_C, Room_D);
+   type Room_Kind is (Room_A, Room_B, Room_C, Room_D, Room_Metro);
 
    procedure Enter (K : Room_Kind; From_X, From_Z, From_Yaw : Float);
    --  Set the room up; From: where you were (some rooms take you back)
@@ -41,5 +41,8 @@ package Rooms is
    function Leaving return String;   --  said when you go
 
    procedure Draw (Model, Paint, Skin, Legs, Gallery : GL.GLint);
+
+   function Key (K : Natural) return Boolean;
+   --  A key for the room (the metro's choice of station); True if used
 
 end Rooms;
