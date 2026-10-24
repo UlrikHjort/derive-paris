@@ -71,6 +71,7 @@ with Postcards;
 with Closures;
 with Stunts;
 with Trials;
+with Boats;
 with Altimeter;
 with River;
 with Gdk.Keyval;
@@ -292,6 +293,8 @@ package body Game is
    Caption_Shown : Ada.Strings.Unbounded.Unbounded_String;
    On_Tower   : Boolean := False;  --  on top of the Eiffel Tower
    On_Arc     : Boolean := False;  --  on the roof of the Arc de Triomphe
+   On_Boat    : Boolean := False;  --  on a bateau-mouche's upper deck
+   Boat_Deck  : Float := 0.0;
 
    Player   : Car.State;
    Aircraft : Plane.State;
@@ -890,6 +893,7 @@ package body Game is
                 elsif In_Room then Rooms.Floor_Y
                 elsif On_Tower then Tower.Top_Floor_Y
                 elsif On_Arc then Arc_Top.Roof_Y
+                elsif On_Boat then Boat_Deck
                 else Terrain.Height (Walk_X, Walk_Z))
                + 1.65 + 0.03 * abs Sin (Walk_Step), Walk_Z));
 
@@ -1274,6 +1278,7 @@ package body Game is
          if not In_Museum and then not In_Hall_B and then not In_Room then
             Birds.Draw (WU.Model, WU.Car_Color, Cam_Pos);
             Extras.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos);
+            Boats.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos, Night);
             Closures.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, WU.Extra_Color, Cam_Pos, Time);
             Set (WU.Car_Color, Car_Color);
          end if;
@@ -1330,6 +1335,7 @@ package body Game is
          Storm.Draw (VP, Cam_Pos);
          Ufo.Draw_Beam (VP, Cam_Pos);
          Surprises.Draw_Lights (VP, Cam_Pos);
+         Boats.Draw_Lights (VP, Cam_Pos, Night);
          Sky_Life.Draw (VP, Float (H) / (2.0 * Tan (0.525)), Night);
          Rain.Draw (VP, Cam_Pos, Time, (if In_Museum or else In_Hall_B or else In_Room then 0.0 else Float'Max (Rain_Amount, Snow_Amount)),
                     Snow_Amount > Rain_Amount, Float (H) / (2.0 * Tan (0.525)),
@@ -1907,6 +1913,13 @@ package body Game is
          Go_Down;
       elsif On_Arc then
          Down_The_Arc;
+      elsif On_Boat then
+         On_Boat := False;
+         Boats.Ashore (Walk_X, Walk_Z);
+         Walk_Pitch := 0.0;
+         Announce := Ada.Strings.Unbounded.To_Unbounded_String ("Ashore");
+         Announce_Timer := 2.0;
+         Street_Timer := 1.0;
       else
          declare
             DX : constant Float := Player.X - Walk_X;
@@ -1961,9 +1974,40 @@ package body Game is
       DX, DZ : Float := 0.0;
       Turn  : constant Float := 1.8 * Dt;
    begin
+      --  on a boat: carried along (the mouse looks round)
+      if On_Boat then
+         declare
+            Heading : Float;
+         begin
+            Boats.Ride_Eye (Walk_X, Walk_Z, Boat_Deck, Heading);
+         end;
+         return;
+      end if;
       if not In_Museum and then not In_Hall_B and then not In_Room and then not On_Tower
         and then not On_Arc and then On_A_Decal
       then
+         return;
+      end if;
+      --  the bateaux-mouches' landing: aboard
+      if not In_Museum and then not In_Hall_B and then not In_Room and then not On_Tower
+        and then not On_Arc and then Boats.At_Landing (Walk_X, Walk_Z)
+      then
+         declare
+            Heading : Float;
+         begin
+            Boats.Board;
+            if Boats.Riding then
+               On_Boat := True;
+               Boats.Ride_Eye (Walk_X, Walk_Z, Boat_Deck, Heading);
+               Walk_Yaw := Heading;
+               Walk_Pitch := 0.0;
+               Traffic.Set_Walker (False, 0.0, 0.0);
+               Announce := Ada.Strings.Unbounded.To_Unbounded_String
+                 ("Aboard a bateau-mouche: down the Seine to the Eiffel Tower and back (Q: ashore)");
+               Announce_Timer := 5.0;
+               Street_Timer := 1.0;
+            end if;
+         end;
          return;
       end if;
       if In_Room then
@@ -2198,6 +2242,10 @@ package body Game is
              & "  mouse            look all round" & LF
              & "  W / S, A / D     walk round the platform" & LF
              & "  Q                the lift down" & LF & LF
+           elsif Walking and then On_Boat then
+             Head ("Aboard a bateau-mouche")
+             & "  mouse            look all round" & LF
+             & "  Q                ashore, on the quay beside it" & LF & LF
            elsif Walking and then On_Arc then
              Head ("On the Arc de Triomphe")
              & "  mouse            look all round" & LF
@@ -3665,6 +3713,14 @@ package body Game is
             Set_Key (16#FF0D#, True);   --  Race on a track
          end if;
       end if;
+      --  PARIS_BOAT=1: aboard a bateau-mouche at the Pont de l'Alma (testing)
+      if Ready and then Frame_Number = 30 and then Env ("PARIS_BOAT") /= "" then
+         if not Walking then
+            Toggle_Walk;
+         end if;
+         Boats.Landing (Walk_X, Walk_Z);
+         Walk_Z := Walk_Z + 1.5;
+      end if;
       --  PARIS_TRIAL=n: start that time trial; PARIS_TRIAL_AUTO=1: jump to
       --  each checkpoint in turn (testing)
       if Ready and then Frame_Number = 30 and then Env ("PARIS_TRIAL") /= "" then
@@ -3977,6 +4033,7 @@ package body Game is
                end if;
             end;
             Stravinsky.Update (Dt);
+            Boats.Update (Dt);
             Moulin.Update (Dt);
             Extras.Update (Dt, Hour, Night,
                            (if Walking then Vec3'(Walk_X, 0.0, Walk_Z) else Vec3'(Player.X, 0.0, Player.Z)));

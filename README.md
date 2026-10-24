@@ -182,6 +182,16 @@ brooms.  The morning after the 14th of July, the Fête de la Musique and
 New Year's Eve, the pavements are strewn with flyers, cups and cans, and
 the sweepers are out in force; by noon it is clean again.
 
+### On the Seine
+
+Bateaux-mouches go up and down the river with tourists on their open
+upper decks, their floodlights sweeping the quays after dark, and long
+péniches carry sand and gravel, each keeping to its side.  On foot, stand
+on the blue mark at the bateaux-mouches' landing by the Pont de l'Alma
+(Port de la Conférence) to go aboard: you ride at the front of the deck
+down to the Eiffel Tower and back up the river.  Q takes you ashore on
+the quay beside the boat.
+
 ### Time trials
 
 F2, **Time trials**: runs through Paris against the clock, in the

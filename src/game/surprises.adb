@@ -188,7 +188,7 @@ package body Surprises is
    Mat_Ghost : constant := 42.0;
    Mat_Asteroid : constant := 43.0;   --  a little planet, glowing softly at night
 
-   Tank, Truck, Jet, Boat, Balloon_M, Cable, Asteroid_M, Mask : Meshes.Mesh;
+   Tank, Truck, Jet, Balloon_M, Cable, Asteroid_M, Mask : Meshes.Mesh;
    Beach_Plain : Meshes.Mesh;
    Beach_Colour : array (0 .. 3) of Meshes.Mesh;
    Beach_Tint : constant array (0 .. 3) of Vec3 :=
@@ -357,16 +357,6 @@ package body Surprises is
       Box (-2.0, 2.0, 0.1, 0.25, 4.0, 5.6, Mat_Paint);                      --  tailplane
       Box (-0.1, 0.1, 0.6, 2.6, 3.8, 6.0, Mat_Paint, Top_Inset_Front => 1.2); --  fin
       Finish (Jet);
-      --  a bateau-mouche: a long low hull, a glass cabin lit at night
-      Start;
-      Box (-3.2, 3.2, -6.7, -5.0, -15.0, 15.0, Mat_Paint, Top_Inset_Front => 1.5);
-      Box (-2.9, 2.9, -5.0, -3.2, -10.0, 12.0, Mat_Glow, Side_Mat => Mat_Glass);
-      Box (-3.0, 3.0, -3.2, -3.0, -10.5, 12.5, Mat_White);                 --  roof deck
-      for Z of Float_Array'(-8.0, -2.0, 4.0, 10.0) loop
-         Box (-3.25, -3.1, -4.6, -4.3, Z - 0.4, Z + 0.4, Mat_Lamp);          --  floodlights
-         Box (3.1, 3.25, -4.6, -4.3, Z - 0.4, Z + 0.4, Mat_Lamp);
-      end loop;
-      Finish (Boat);
       --  the balloon: striped, with the basket ring under it
       Start;
       Ball ((0.0, 0.0, 0.0), 11.0, 1.05, 16, 10, Mat_Paint, Mat_White);
@@ -585,20 +575,6 @@ package body Surprises is
    end Asteroid_Pos;
 
    function Opera_Mask return Vec3 is (On_Ground (Local (48.87131, 2.33173, 22.0)));
-
-   type Boat_State is record
-      S, Dir : Float := 0.0;
-   end record;
-   Boats : array (1 .. 6) of Boat_State;
-   Boats_Placed : Boolean := False;
-
-   procedure Boat_At (B : Boat_State; P, D : out Vec3) is
-      C : Vec3;
-   begin
-      At_Distance (Seine, B.S, C, D);
-      D := B.Dir * D;
-      P := On_Ground (C + 16.0 * Right_Of (D));
-   end Boat_At;
 
    ---------------------------------------------------------------------------
 
@@ -870,25 +846,6 @@ package body Surprises is
          end if;
       end if;
 
-      --  the boats go up and down the Seine
-      if Seine.N > 1 then
-         if not Boats_Placed then
-            Boats_Placed := True;
-            for I in Boats'Range loop
-               Boats (I) := (S => Length_Of (Seine) * (Float (I) - 0.5) / Float (Boats'Length),
-                             Dir => (if I mod 2 = 0 then 1.0 else -1.0));
-            end loop;
-         end if;
-         for B of Boats loop
-            B.S := B.S + B.Dir * 3.5 * Dt;
-            if B.S > Length_Of (Seine) - 30.0 then
-               B.Dir := -1.0;
-            elsif B.S < 30.0 then
-               B.Dir := 1.0;
-            end if;
-         end loop;
-      end if;
-
       --  the balloon goes up and down every ten minutes, in fair weather
       declare
          Phase : constant Float := (Clock + 250.0) - 600.0 * Float'Floor ((Clock + 250.0) / 600.0);
@@ -1146,22 +1103,6 @@ package body Surprises is
                       (if Cat_Sit > 0.0 then 0.0 else Sin (Clock * 8.0)), Cat_Sit > 0.0);
       end if;
 
-      --  the boats
-      if Seine.N > 1 then
-         Paint ((0.12, 0.17, 0.32));
-         for B of Boats loop
-            declare
-               P, D : Vec3;
-            begin
-               Boat_At (B, P, D);
-               if Near (P, 1500.0) then
-                  Shaders.Set (Model, Place (P, Heading_Of (D)));
-                  Meshes.Draw (Boat);
-               end if;
-            end;
-         end loop;
-      end if;
-
       --  the balloon
       if Near (Balloon_Pos, 3000.0) then
          Paint ((0.1, 0.5, 0.3));
@@ -1203,23 +1144,7 @@ package body Surprises is
 
    procedure Draw_Lights (VP : Mat4; Cam : Vec3) is
    begin
-      --  the boats' floodlights on the quays at night
-      if Seine.N > 1 and then Now.Night > 0.3 then
-         for B of Boats loop
-            declare
-               P, D : Vec3;
-            begin
-               Boat_At (B, P, D);
-               if Dist2 (P, Cam) < 1200.0 ** 2 then
-                  for Side of Float_Array'(-1.0, 1.0) loop
-                     Beacon.Draw_Shaft (VP, Cam, P + (3.3 * Side) * Right_Of (D) + Vec3'(0.0, 1.6, 0.0),
-                                        P + (30.0 * Side) * Right_Of (D) + Vec3'(0.0, 7.0, 0.0),
-                                        1.2, 10.0, (1.0, 0.9, 0.7), 0.35 * Now.Night);
-                  end loop;
-               end if;
-            end;
-         end loop;
-      end if;
+      null;   --  (the boats' floodlights: Boats.Draw_Lights)
    end Draw_Lights;
 
    function Kids_Report return String is

@@ -9,6 +9,15 @@
 package River is
 
    function In_Channel (X, Z : Float) return Boolean;
+
+   function Length return Float;
+   --  Of the middle line, from Austerlitz (0) down to Bir-Hakeim
+
+   procedure At_Distance (S : Float; X, Z, DX, DZ : out Float);
+   --  The point that far along the middle line, and the way downstream
+
+   function Distance_Of (X, Z : Float) return Float;
+   --  How far along the middle line the point nearest (X, Z) is
    --  Over the water, well clear of the quay walls
 
    Depth : constant := 6.0;

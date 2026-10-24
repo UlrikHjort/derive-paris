@@ -71,6 +71,76 @@ package body River is
          end if;
    end Load;
 
+   function Length return Float is
+      L : Float := 0.0;
+   begin
+      if not Loaded then
+         Load;
+      end if;
+      for I in 1 .. Count - 1 loop
+         L := L + Sqrt ((Line (I + 1).X - Line (I).X) ** 2 + (Line (I + 1).Z - Line (I).Z) ** 2);
+      end loop;
+      return L;
+   end Length;
+
+   procedure At_Distance (S : Float; X, Z, DX, DZ : out Float) is
+      Left : Float := Float'Max (0.0, S);
+   begin
+      if not Loaded then
+         Load;
+      end if;
+      X := 0.0;
+      Z := 0.0;
+      DX := 1.0;
+      DZ := 0.0;
+      for I in 1 .. Count - 1 loop
+         declare
+            A : constant Point := Line (I);
+            B : constant Point := Line (I + 1);
+            L : constant Float := Sqrt ((B.X - A.X) ** 2 + (B.Z - A.Z) ** 2);
+         begin
+            if L > 0.01 then
+               DX := (B.X - A.X) / L;
+               DZ := (B.Z - A.Z) / L;
+               if Left <= L or else I = Count - 1 then
+                  X := A.X + Float'Min (Left, L) * DX;
+                  Z := A.Z + Float'Min (Left, L) * DZ;
+                  return;
+               end if;
+               Left := Left - L;
+            end if;
+         end;
+      end loop;
+   end At_Distance;
+
+   function Distance_Of (X, Z : Float) return Float is
+      Best, Best_S, Run : Float := 0.0;
+      First : Boolean := True;
+   begin
+      if not Loaded then
+         Load;
+      end if;
+      for I in 1 .. Count - 1 loop
+         declare
+            A  : constant Point := Line (I);
+            B  : constant Point := Line (I + 1);
+            DX : constant Float := B.X - A.X;
+            DZ : constant Float := B.Z - A.Z;
+            L2 : constant Float := Float'Max (1.0E-6, DX * DX + DZ * DZ);
+            T  : constant Float := Float'Max (0.0, Float'Min (1.0, ((X - A.X) * DX + (Z - A.Z) * DZ) / L2));
+            D2 : constant Float := (A.X + T * DX - X) ** 2 + (A.Z + T * DZ - Z) ** 2;
+         begin
+            if First or else D2 < Best then
+               First := False;
+               Best := D2;
+               Best_S := Run + T * Sqrt (L2);
+            end if;
+            Run := Run + Sqrt (L2);
+         end;
+      end loop;
+      return Best_S;
+   end Distance_Of;
+
    function In_Channel (X, Z : Float) return Boolean is
    begin
       if not Loaded then
