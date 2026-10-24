@@ -606,6 +606,17 @@ package body Closures is
       Shaders.Set (Model, Identity);
    end Draw;
 
+   function Count return Natural is
+      N : Natural := 0;
+   begin
+      for E of Events loop
+         if E.Active then
+            N := N + 1;
+         end if;
+      end loop;
+      return N;
+   end Count;
+
    procedure Collide (S : in out Car.State) is
       procedure Push (PX, PZ, R : Float) is
          EX : constant Float := S.X - PX;

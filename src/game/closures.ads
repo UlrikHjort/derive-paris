@@ -22,6 +22,9 @@ package Closures is
 
    procedure Collide (S : in out Car.State);
 
+   function Count return Natural;
+   --  How many are closed now
+
    procedure Clear;
    --  All open again (a jump across town, a race)
 

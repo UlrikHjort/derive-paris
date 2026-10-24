@@ -979,6 +979,16 @@ package body Sound is
                when Go_Beep =>
                   Add ((Kind => Tone, Dur => 0.7, Volume => 0.2 * Loud, Freq => 1320.0,
                         Pan => 0.5 * Where, others => <>));
+               when Chime =>
+                  --  the radio's little tune before the news: four notes up
+                  declare
+                     Notes : constant array (1 .. 4) of Float := (392.0, 523.3, 659.3, 784.0);
+                  begin
+                     for K in Notes'Range loop
+                        Add ((Kind => Tone, Dur => (if K = 4 then 0.8 else 0.3), T => -0.2 * Float (K - 1),
+                              Volume => 0.12 * Loud, Freq => Notes (K), Pan => 0.0, others => <>));
+                     end loop;
+                  end;
                when Organ =>
                   --  the opening of Bach's Toccata in D minor, in octaves
                   declare

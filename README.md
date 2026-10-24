@@ -352,6 +352,15 @@ better.  Your best shift and best ride are kept in `~/.derive_taxi`.
 The traffic follows the clock: busier at rush hour, thin in the middle
 of the night.
 
+### The radio
+
+**Z** switches on the car radio. After a little tune you hear the news,
+when you switch it on and again on every hour, in French with the
+English beside it: the time, the weather and how warm it is, mist or a
+heat wave, the Seine's level at Austerlitz (and the flood when it comes),
+the traffic, streets closed for works or accidents, a demonstration on a
+Saturday afternoon, and when the sun rises or sets.
+
 ### The calendar and its surprises
 
 The game runs on today's date: the sun rises and sets as it does in Paris

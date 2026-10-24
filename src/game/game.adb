@@ -56,6 +56,7 @@ with Pedestrians;
 with Photo;
 with Plane;
 with Race;
+with Radio;
 with Taxi;
 with Arc_Top;
 with Hall_B;
@@ -210,6 +211,8 @@ package body Game is
    Menu_Open  : Boolean := False;
    Menu_Sel   : Positive := 1;
    Race_Hud   : Gtk.Label.Gtk_Label;   --  lap, position, time
+   Radio_Box  : Gtk.Label.Gtk_Label;   --  the radio's news
+   Radio_Shown : Ada.Strings.Unbounded.Unbounded_String;
    Race_Banner : Gtk.Label.Gtk_Label;  --  3, 2, 1, GO!
    Race_Shown : Ada.Strings.Unbounded.Unbounded_String;
    Banner_Shown : Ada.Strings.Unbounded.Unbounded_String;
@@ -2366,6 +2369,7 @@ package body Game is
         & Head ("Time and weather")
         & "  T                one hour later" & LF
         & "  U                Paris in 1973, or today" & LF
+        & "  Z                the radio: the news on the hour" & LF
         & "  P                weather: rain, storm, snow, dry" & LF
         & "  M                sound on / off" & LF
         & "  F2               games: racing, taxi, time trials, the morning round" & LF
@@ -3761,6 +3765,14 @@ package body Game is
               else Along (Weekend));
    end Traffic_Factor;
 
+   function Radio_Facts return Radio.Facts is
+     ((Hour    => Hour,
+       Rain    => Rain_Amount,
+       Snow    => Snow_Amount,
+       Storm   => Storm_On and then Rain_Amount > 0.5,
+       Closed  => Closures.Count,
+       Traffic => Traffic_Factor (Hour)));
+
    Tick_Failed : Natural := 0;   --  errors in frames told about
 
    function Tick
@@ -3960,6 +3972,10 @@ package body Game is
             Player.Ground := Terrain.Height (X, Z);
          end;
       end if;
+      --  PARIS_RADIO=1: the radio on (testing)
+      if Ready and then Frame_Number = 30 and then Env ("PARIS_RADIO") /= "" then
+         Radio.Toggle (Radio_Facts);
+      end if;
       --  PARIS_ROUND=n: the morning round from that bakery; PARIS_ROUND_AUTO=1:
       --  to each door in turn, 30 m short of it first (testing)
       if Ready and then Frame_Number = 30 and then Env ("PARIS_ROUND") /= "" then
@@ -4098,6 +4114,21 @@ package body Game is
       end if;
       --  (the morning round: the dawn comes up slowly)
       Seasons.Update (Dt, Hour, Rain_Amount, Cam_Pos);
+      Radio.Update (Dt, Radio_Facts);
+      declare
+         use Ada.Strings.Unbounded;
+         T : constant String := Radio.Text;
+      begin
+         if To_String (Radio_Shown) /= T then
+            Radio_Shown := To_Unbounded_String (T);
+            if T = "" then
+               Radio_Box.Hide;
+            else
+               Radio_Box.Set_Markup ("<span background='#101828d8'>" & T & (1 => ASCII.LF) & "</span>");
+               Radio_Box.Show;
+            end if;
+         end if;
+      end;
       declare
          N : constant String := Seasons.News;
       begin
@@ -4804,6 +4835,13 @@ package body Game is
                   Start_Recording := True;   --  at the next frame, its size
                end if;
             end if;
+         when 16#7A# =>                                       --  z: the radio
+            if Down then
+               Radio.Toggle (Radio_Facts);
+               if not Radio.On then
+                  Say ("Radio off", 1.5);
+               end if;
+            end if;
          when 16#75# =>                                       --  u: Paris in 1973, or today
             if Down then
                Set_Year (not Era.In_1973);
@@ -5263,6 +5301,13 @@ package body Game is
       Race_Hud.Set_Margin_Top (70);
       Race_Hud.Set_No_Show_All (True);
       Overlay.Add_Overlay (Race_Hud);
+
+      Gtk.Label.Gtk_New (Radio_Box);
+      Radio_Box.Set_Halign (Gtk.Widget.Align_Center);
+      Radio_Box.Set_Valign (Gtk.Widget.Align_End);
+      Radio_Box.Set_Margin_Bottom (60);
+      Radio_Box.Set_No_Show_All (True);
+      Overlay.Add_Overlay (Radio_Box);
 
       Gtk.Label.Gtk_New (Race_Banner);
       Race_Banner.Set_Halign (Gtk.Widget.Align_Center);
