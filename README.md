@@ -248,6 +248,19 @@ comes up as you ride.  The scooter slips through where a car would not,
 but goes no faster than 55 km/h.  The best morning of each bakery is
 kept in `~/.derive_rounds`; the bakeries are in `data/bakeries.txt`.
 
+### The night bus
+
+F2, **The night bus**: after midnight, at the wheel of a twelve-metre
+bus on a line of real stops: from the Gare de Lyon to the Gare de l'Est,
+along the left bank from Châtelet to the Invalides, or down from Pigalle
+to Châtelet.  The night owls wait under the lit sign; pull in at the
+stop, the doors open, some get off and some get on (a few even buy a
+ticket).  Keep to the timetable, on the minute, in real time: never leave
+a stop early (the doors stay open until it is time), try not to be late,
+and don't drive past anyone waiting.  The bus is long: take the corners
+wide.  At the terminus, the run in stars; the best of each line is kept
+in `~/.derive_nightbus`, the lines are in `data/night_bus.txt`.
+
 ### Stunts in the plane
 
 Fly through the great vault of the Arc de Triomphe, as Charles Godefroy

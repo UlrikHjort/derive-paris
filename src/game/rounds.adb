@@ -213,61 +213,9 @@ package body Rounds is
    ---------------------------------------------------------------------------
    --  Setting out
 
-   --  How far from the middle of the road the pavement is, at (X, Z)
-   function Kerb_Offset (X, Z : Float) return Float is
-      Best_D : Float := Float'Last;
-      Width  : Float := 10.0;
-      procedure Visit (AX, AZ, BX, BZ, W : Float; Named : Boolean) is
-         pragma Unreferenced (Named);
-         DX : constant Float := BX - AX;
-         DZ : constant Float := BZ - AZ;
-         L2 : constant Float := Float'Max (1.0E-4, DX * DX + DZ * DZ);
-         U  : constant Float := Float'Max (0.0, Float'Min (1.0, ((X - AX) * DX + (Z - AZ) * DZ) / L2));
-         D  : constant Float := (AX + U * DX - X) ** 2 + (AZ + U * DZ - Z) ** 2;
-      begin
-         if D < Best_D then
-            Best_D := D;
-            Width := W;
-         end if;
-      end Visit;
-      procedure Each is new Road_Network.For_Segments_Near (Visit);
-   begin
-      Each (X, Z, 20.0);
-      return Width / 2.0 + 1.3;
-   end Kerb_Offset;
+   procedure Door_Of (HX, HZ : Float; Ok : out Boolean; RX, RZ, DX, DZ, Face : out Float)
+     renames Road_Network.Kerb_Of;
 
-   --  The road before a house, and the pavement on its side
-   procedure Door_Of (HX, HZ : Float; Ok : out Boolean; RX, RZ, DX, DZ, Face : out Float) is
-      RH : Float;
-   begin
-      Road_Network.Nearest_Road (HX, HZ, Ok, RX, RZ, RH);
-      DX := HX;
-      DZ := HZ;
-      Face := 0.0;
-      if Ok then
-         declare
-            VX : Float := HX - RX;
-            VZ : Float := HZ - RZ;
-            D  : constant Float := Sqrt (VX * VX + VZ * VZ);
-            K  : constant Float := Kerb_Offset (RX, RZ);
-         begin
-            if D > 60.0 then
-               Ok := False;   --  a house far back from any street
-               return;
-            end if;
-            if D < 0.1 then
-               VX := Cos (RH);   --  across the road
-               VZ := Sin (RH);
-            else
-               VX := VX / D;
-               VZ := VZ / D;
-            end if;
-            DX := RX + K * VX;
-            DZ := RZ + K * VZ;
-            Face := Arctan (-VX, VZ);   --  looking at the road
-         end;
-      end if;
-   end Door_Of;
 
    function Sunrise return Float is
       H : Float := 3.0;

@@ -1,0 +1,30 @@
+# The night bus (F2, Games): lines through Paris after midnight, with
+# their stops in order.  Each line:
+#   [name]
+#   stop lat lon name
+[Night bus 1: Gare de Lyon - Gare de l'Est]
+stop 48.84470 2.37350 Gare de Lyon
+stop 48.85230 2.36980 Bastille
+stop 48.85980 2.36860 Bréguet - Sabin
+stop 48.86490 2.36830 Oberkampf
+stop 48.86740 2.36390 République
+stop 48.87160 2.36110 Château d'Eau
+stop 48.87600 2.35860 Gare de l'Est
+
+[Night bus 2: Châtelet - Invalides, the left bank]
+stop 48.85830 2.34720 Châtelet
+stop 48.85420 2.34430 Saint-Michel
+stop 48.85210 2.33930 Odéon
+stop 48.85390 2.33340 Saint-Germain-des-Prés
+stop 48.85590 2.32560 Rue du Bac
+stop 48.85830 2.31770 Assemblée nationale
+stop 48.86080 2.31440 Invalides
+
+[Night bus 3: Pigalle - Châtelet]
+stop 48.88220 2.33730 Pigalle
+stop 48.87840 2.33790 Saint-Georges
+stop 48.87470 2.33420 Le Peletier
+stop 48.87110 2.33300 Opéra
+stop 48.86700 2.33850 Quatre-Septembre
+stop 48.86290 2.34160 Louvre - Rivoli
+stop 48.85830 2.34720 Châtelet

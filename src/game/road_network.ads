@@ -81,6 +81,11 @@ package Road_Network is
 
    function Street_At (X, Z : Float; Max_Distance : Float := 14.0) return String;
 
+   procedure Kerb_Of (HX, HZ : Float; Ok : out Boolean; RX, RZ, DX, DZ, Face : out Float);
+   --  The road before a house at (HX, HZ) (RX, RZ), and the pavement on
+   --  its side, by the kerb (DX, DZ), with the heading that faces the road
+   --  (Face); not Ok without a street within 60 m
+
    function Limit_At (X, Z : Float; Heading : Float; Arcade : Boolean := False) return Natural;
    --  The speed limit (km/h) of the street at (X, Z), the one going the
    --  way of Heading where streets meet; 0 off the streets.  Arcade: the

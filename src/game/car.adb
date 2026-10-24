@@ -66,11 +66,17 @@ package body Car is
 
    Kerb_Height : constant := 0.14;
 
+   function Circles (Long : Boolean) return Float_Array is
+     (if Long then (5.0, 1.7, -1.7, -5.0) else (Circle_Offset, -Circle_Offset));
+
    Current_Model : Model_Kind := Modern;   --  the player's
+
+   --  From the front wheels to the back (the bus: long, it turns wide)
+   function Base_Of return Float is (if Current_Model = Bus then 6.2 else Wheel_Base);
 
    function Lean (S : State) return Float is
       --  the sideways pull of the turn against gravity
-      Side_G : constant Float := S.Speed * S.Speed * Tan (S.Steer) / (Wheel_Base * 9.81);
+      Side_G : constant Float := S.Speed * S.Speed * Tan (S.Steer) / (Base_Of * 9.81);
    begin
       return Float'Max (-0.6, Float'Min (0.6, Arctan (Side_G)));
    end Lean;
@@ -320,6 +326,9 @@ package body Car is
       if Current_Model = Scooter then
          --  a 50 cc scooter: 55 km/h at most, flat out
          S.Speed := Float'Max (-3.0, Float'Min (15.5, S.Speed));
+      elsif Current_Model = Bus then
+         --  a town bus: 50 km/h is plenty
+         S.Speed := Float'Max (-3.0, Float'Min (14.0, S.Speed));
       elsif Current_Model = Velib then
          --  a heavy town bike: 23 km/h pedalling hard, and walking it back
          S.Speed := Float'Max (-1.5, Float'Min (6.4, S.Speed));
@@ -345,7 +354,7 @@ package body Car is
       --  grip, beyond that it slides wide (and squeals).  Spinning rear
       --  wheels and the handbrake let the tail come round.
       declare
-         Yaw   : Float := S.Speed / Wheel_Base * Tan (S.Steer)
+         Yaw   : Float := S.Speed / Base_Of * Tan (S.Steer)
            * (if C.Handbrake then 1.4 elsif S.Spin > 1.0 then 1.25 else 1.0);
          Lat   : constant Float := abs (Yaw * S.Speed);
          Most  : constant Float := Grip (C) * 1.15;
@@ -359,13 +368,15 @@ package body Car is
       S.X := S.X + Sin (S.Heading) * S.Speed * Dt;
       S.Z := S.Z - Cos (S.Heading) * S.Speed * Dt;
 
-      --  Collision: two circles (front and rear) pushed out of edges
+      --  Collision: two circles (front and rear; four along the bus)
+      --  pushed out of edges
       S.Bumped := False;
-      for Offset of Float_Array'(Circle_Offset, -Circle_Offset) loop
+      for Offset of Circles (Current_Model = Bus) loop
          declare
             Two_Wheels : constant Boolean := Current_Model in Scooter | Velib;
             Along : constant Float := (if Two_Wheels then 0.45 * Offset else Offset);
-            Radius : constant Float := (if Two_Wheels then 0.45 else Body_Radius);
+            Radius : constant Float := (if Two_Wheels then 0.45 elsif Current_Model = Bus then 1.25
+                                        else Body_Radius);
             FX : constant Float := Sin (S.Heading) * Along;
             FZ : constant Float := -Cos (S.Heading) * Along;
             CX : Float := S.X + FX;
@@ -588,6 +599,29 @@ package body Car is
       Box (-0.12, 0.12, 1.74, 2.0, -0.1, 0.14, Mat_Skin, Top_Inset_X => 0.02);   --  head
       Box (-0.13, 0.13, 1.92, 2.04, -0.08, 0.16, Mat_Tyre, Top_Inset_X => 0.03);  --  hair
       Finish (Models (Velib));
+
+      --  The night bus: twelve metres long, low-floor, a band of windows
+      --  lit from inside (glass), the destination sign over the
+      --  windscreen, three doors on the right, in the paint
+      Start;
+      Box (-1.27, 1.27, 0.3, 3.0, -6.0, 6.0, Mat_Paint, Top_Inset_X => 0.05,
+           Side_Mat => Mat_Paint);                                        --  body
+      Box (-1.29, 1.29, 1.15, 2.55, -5.2, 5.6, 61.0);                   --  the windows, lit inside
+      Box (-1.22, 1.22, 0.9, 2.65, -6.04, -5.98, Mat_Glass);             --  windscreen
+      Box (-1.0, 1.0, 2.68, 2.92, -6.06, -6.0, Mat_Headlight);           --  destination sign
+      Box (-1.1, 1.1, 1.6, 2.6, 5.98, 6.03, Mat_Glass);                  --  rear window
+      for D of Float_Array'(-4.6, 0.2, 4.2) loop
+         Box (1.27, 1.31, 0.35, 2.6, D - 0.6, D + 0.6, Mat_Glass);      --  the doors (right)
+      end loop;
+      for Side of Float_Array'(-1.0, 1.0) loop
+         Box (Side * 0.95 - 0.18, Side * 0.95 + 0.18, 0.45, 0.62, -6.05, -6.0, Mat_Headlight);
+         Box (Side * 1.05 - 0.1, Side * 1.05 + 0.1, 0.7, 1.1, 6.0, 6.05, Mat_Taillight);
+         for WZ of Float_Array'(-3.6, 2.6) loop
+            Box (Side * 1.1 - 0.16, Side * 1.1 + 0.16, 0.0, 0.95, WZ - 0.5, WZ + 0.5, Mat_Tyre);
+         end loop;
+      end loop;
+      Box (-1.27, 1.27, 0.25, 0.45, -6.06, 6.06, Mat_Tyre);              --  the skirt
+      Finish (Models (Bus));
    end Create_Mesh;
 
    procedure Set_Player_Model (M : Model_Kind) is
