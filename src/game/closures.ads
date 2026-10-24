@@ -23,6 +23,9 @@ package Closures is
    procedure Collide (S : in out Car.State);
 
    function Count return Natural;
+
+   function Report (French : Boolean) return String;
+   --  For the radio: up to three, with the street ("" none)
    --  How many are closed now
 
    procedure Clear;

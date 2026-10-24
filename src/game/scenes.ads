@@ -27,6 +27,10 @@ package Scenes is
    --  In the solid pass with alpha to coverage on (GL context current)
 
    function Crowd (X, Z : Float) return Float;
+
+   function Markets_Now return String;
+   --  Two of the streets where a market is on just now, "a & b" ("" none)
+   function Markets_Count return Natural;
    --  0 .. 1: voices near (X, Z)
 
    function Banner return String;

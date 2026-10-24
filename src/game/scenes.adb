@@ -1372,4 +1372,47 @@ package body Scenes is
       end loop;
    end Collide;
 
+   function Markets_Count return Natural is
+      N : Natural := 0;
+   begin
+      for S of All_Scenes loop
+         if S.Kind = Stalls and then S.On then
+            N := N + 1;
+         end if;
+      end loop;
+      return N;
+   end Markets_Count;
+
+   function Markets_Now return String is
+      R : Unbounded_String;
+      N : Natural := 0;
+      Last : Unbounded_String;
+   begin
+      for S of All_Scenes loop
+         if S.Kind = Stalls and then S.On and then not S.Points.Is_Empty then
+            declare
+               P : constant Vec3 := S.Points.First_Element;
+               Name : constant String := Road_Network.Street_At (P.X, P.Z, 40.0);
+            begin
+               if Name /= "" and then N < 2 then
+                  if N > 0 then
+                     if Length (R) > 0 then
+                        Append (R, ", ");
+                     end if;
+                     Append (R, Last);
+                  end if;
+                  Last := To_Unbounded_String (Name);
+                  N := N + 1;
+               end if;
+            end;
+         end if;
+      end loop;
+      if N = 0 then
+         return "";
+      elsif N = 1 then
+         return To_String (Last);
+      end if;
+      return To_String (R) & " & " & To_String (Last);
+   end Markets_Now;
+
 end Scenes;

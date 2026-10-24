@@ -6,7 +6,9 @@ with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
 
 with Almanac;
+with Closures;
 with Era;
+with Scenes;
 with Seasons;
 with Sound;
 
@@ -31,6 +33,14 @@ package body Radio is
    begin
       return Img (M / 60) & " h " & S2 (S2'Last - 1 .. S2'Last);
    end Time_Fr;
+
+   --  "7:05"
+   function Time_En (H : Float) return String is
+      M  : constant Natural := Natural (Float'Floor (H * 60.0)) mod (24 * 60);
+      S2 : constant String := Natural'Image (100 + M mod 60);
+   begin
+      return Img (M / 60) & ":" & S2 (S2'Last - 1 .. S2'Last);
+   end Time_En;
 
    --  "1,40"
    function Metres_Fr (M : Float) return String is
@@ -75,6 +85,18 @@ package body Radio is
                       - 2.5 * F.Rain - 3.0 * F.Snow + 7.0 * Seasons.Heat);
    end Temperature;
 
+   --  "a & b" -> "a et b" / "a and b"
+   function Fr_And (S : String) return String is
+      I : constant Natural := Ada.Strings.Fixed.Index (S, " & ");
+   begin
+      return (if I = 0 then S else S (S'First .. I - 1) & " et " & S (I + 3 .. S'Last));
+   end Fr_And;
+   function En_And (S : String) return String is
+      I : constant Natural := Ada.Strings.Fixed.Index (S, " & ");
+   begin
+      return (if I = 0 then S else S (S'First .. I - 1) & " and " & S (I + 3 .. S'Last));
+   end En_And;
+
    procedure Compose (F : Facts) is
       LF : constant String := (1 => ASCII.LF);
       T  : Unbounded_String;
@@ -88,7 +110,7 @@ package body Radio is
       T := To_Unbounded_String
         ("<span font_family='sans' foreground='white'><b>  &#x266B; Radio Dérive"
          & (if Era.In_1973 then ", 1973" else "") & "  </b>");
-      Line ("Il est " & Time_Fr (F.Hour) & ".", "It is " & Time_Fr (F.Hour) & ".");
+      Line ("Il est " & Time_Fr (F.Hour) & ".", "It is " & Time_En (F.Hour) & ".");
 
       --  the weather
       if F.Storm then
@@ -126,21 +148,50 @@ package body Radio is
       elsif F.Traffic < 0.4 then
          Line ("Circulation fluide.", "The roads are clear.");
       end if;
-      if F.Closed > 0 then
-         Line (Img (F.Closed) & (if F.Closed = 1 then " rue fermée" else " rues fermées")
-               & " : travaux, accidents.",
-               Img (F.Closed) & (if F.Closed = 1 then " street" else " streets") & " closed: works, accidents.");
-      end if;
+      declare
+         Fr : constant String := Closures.Report (French => True);
+         En : constant String := Closures.Report (French => False);
+      begin
+         if Fr /= "" then
+            Line (Fr & ".", En & ".");
+         end if;
+      end;
       if Almanac.Saturday and then F.Hour >= 12.0 and then F.Hour < 18.0 then
          Line ("Manifestation cet après-midi sur les boulevards.", "A demonstration this afternoon on the boulevards.");
+      end if;
+
+      --  what is on today
+      declare
+         M : constant String := Scenes.Markets_Now;
+      begin
+         if M /= "" then
+            Line ((if Scenes.Markets_Count > 1 then "Marchés : " else "Marché : ") & Fr_And (M)
+                  & (if Scenes.Markets_Count > 2 then " et ailleurs." else "."),
+                  (if Scenes.Markets_Count > 1 then "Markets: " else "Market: ") & En_And (M)
+                  & (if Scenes.Markets_Count > 2 then " and elsewhere." else "."));
+         end if;
+      end;
+      if Almanac.Bastille_Day then
+         if F.Hour < 12.5 then
+            Line ("Défilé du 14 Juillet sur les Champs-Élysées, la Patrouille de France dans le ciel.",
+                  "The 14th of July parade on the Champs-Élysées, the Patrouille de France overhead.");
+         elsif F.Hour < 23.2 then
+            Line ("Ce soir à 23 h, le feu d'artifice à la tour Eiffel.",
+                  "Tonight at 11, the fireworks at the Eiffel Tower.");
+         end if;
+      elsif Almanac.New_Years_Eve and then F.Hour >= 18.0 then
+         Line ("À minuit, feu d'artifice à l'Arc de Triomphe. Bonne année !",
+               "At midnight, fireworks at the Arc de Triomphe. Happy New Year!");
+      elsif Almanac.Christmas_Eve and then F.Hour >= 16.0 then
+         Line ("Joyeux Noël à tous nos auditeurs.", "Merry Christmas to all our listeners.");
       end if;
       --  the sun
       if F.Hour < 11.0 then
          Line ("Lever du soleil à " & Time_Fr (Sun_Crossing (3.0, 11.0)) & ".",
-               "Sunrise at " & Time_Fr (Sun_Crossing (3.0, 11.0)) & ".");
+               "Sunrise at " & Time_En (Sun_Crossing (3.0, 11.0)) & ".");
       elsif F.Hour >= 15.0 and then F.Hour < 22.0 then
          Line ("Coucher du soleil à " & Time_Fr (Sun_Crossing (23.0, 15.0)) & ".",
-               "Sunset at " & Time_Fr (Sun_Crossing (23.0, 15.0)) & ".");
+               "Sunset at " & Time_En (Sun_Crossing (23.0, 15.0)) & ".");
       end if;
       Append (T, "</span>");
       Bulletin := T;

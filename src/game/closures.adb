@@ -606,6 +606,42 @@ package body Closures is
       Shaders.Set (Model, Identity);
    end Draw;
 
+   function Report (French : Boolean) return String is
+      R : Ada.Strings.Unbounded.Unbounded_String;
+      N : Natural := 0;
+      function Lower_First (S : String) return String is
+        (if S'Length > 0 and then S (S'First) in 'A' .. 'Z'
+         then Character'Val (Character'Pos (S (S'First)) + 32) & S (S'First + 1 .. S'Last) else S);
+   begin
+      for E of Events loop
+         if E.Active and then N < 3 then
+            declare
+               Street : constant String :=
+                 Ada.Strings.Unbounded.To_String (Road_Network.Ways (E.W).Name);
+            begin
+               if Street /= "" then
+                  Ada.Strings.Unbounded.Append
+                    (R, (if N > 0 then (if French then " ; " else "; ") else "")
+                     & (if French then
+                          (case E.Kind is when Works => "travaux ", when Accident => "accident ",
+                                          when Demo => "manifestation ")
+                          & Lower_First (Street)
+                        else
+                          (case E.Kind is when Works => "roadworks in ", when Accident => "an accident in ",
+                                          when Demo => "a demonstration in ")
+                          & Street));
+                  N := N + 1;
+               end if;
+            end;
+         end if;
+      end loop;
+      declare
+         S : constant String := Ada.Strings.Unbounded.To_String (R);
+      begin
+         return (if S = "" then "" else Character'Val (Character'Pos (S (S'First)) - 32) & S (S'First + 1 .. S'Last));
+      end;
+   end Report;
+
    function Count return Natural is
       N : Natural := 0;
    begin
