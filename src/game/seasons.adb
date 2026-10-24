@@ -92,10 +92,6 @@ package body Seasons is
    procedure Close_Quays is
       use Road_Network;
    begin
-               end;
-            end if;
-         end loop;
-      end if;
       Low_Way := new Bool_Array (Ways'Range);
       for W in Ways'Range loop
          Low_Way (W) := Ways (W).Count >= 2 and then Down_By_The_Water (W);
