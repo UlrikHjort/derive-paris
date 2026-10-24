@@ -38,6 +38,8 @@ package Math3D is
    function Scale (S : Float) return Mat4 is
      (S, 0.0, 0.0, 0.0,  0.0, S, 0.0, 0.0,  0.0, 0.0, S, 0.0,  0.0, 0.0, 0.0, 1.0);
    --  The same in every direction
+   function Scale_XYZ (X, Y, Z : Float) return Mat4 is
+     (X, 0.0, 0.0, 0.0,  0.0, Y, 0.0, 0.0,  0.0, 0.0, Z, 0.0,  0.0, 0.0, 0.0, 1.0);
    function Rotation_Y (Angle : Float) return Mat4;
    function Rotation_X (Angle : Float) return Mat4;
    function Rotation_Z (Angle : Float) return Mat4;

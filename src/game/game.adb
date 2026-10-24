@@ -4098,6 +4098,13 @@ package body Game is
       end if;
       --  (the morning round: the dawn comes up slowly)
       Seasons.Update (Dt, Hour, Rain_Amount, Cam_Pos);
+      declare
+         N : constant String := Seasons.News;
+      begin
+         if N /= "" then
+            Say (N, 5.0);
+         end if;
+      end;
       Hour := Hour + Dt * (if Rounds.Clock_Pace > 0.0 then Rounds.Clock_Pace else Clock_Rate);
       if Hour >= 24.0 then
          Hour := Hour - 24.0;
@@ -4164,6 +4171,7 @@ package body Game is
                         Street_Life.Collide (Player);
                         Scenes.Collide (Player);
                         Closures.Collide (Player);
+                        Seasons.Collide (Player);
                         Loss := Before - abs Player.Speed;
                         if Player.Bumped and then Loss > 0.0 then
                            Race.Impact (Loss);   --  damage, in a race

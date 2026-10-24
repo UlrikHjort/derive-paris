@@ -13,6 +13,8 @@
 with GL;
 with Math3D;
 
+with Car;
+
 package Seasons is
 
    procedure Update (Dt, Hour, Rain : Float; Cam : Math3D.Vec3);
@@ -25,6 +27,13 @@ package Seasons is
    --  For the world program (the vertex shader lifts the Seine's water)
 
    procedure Draw (Model, Paint : GL.GLint; Cam : Math3D.Vec3);
-   --  The Zouave on his pier, and the flood over the lower quays
+   --  The Zouave on his pier, the flood over the lower quays and the
+   --  barriers across the roads down to them
+
+   function News return String;
+   --  Once, when the lower quays close or open again for the flood ("" else)
+
+   procedure Collide (S : in out Car.State);
+   --  The barriers stand in the way
 
 end Seasons;

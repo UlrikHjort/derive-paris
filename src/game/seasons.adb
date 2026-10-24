@@ -6,10 +6,16 @@ with Ada.Environment_Variables;
 with Ada.Numerics;
 with Ada.Numerics.Elementary_Functions;
 
+with Ada.Containers.Vectors;
+with Ada.Strings.Fixed;
+with Ada.Strings.Unbounded;
+with Ada.Text_IO;
+
 with Almanac;
 with Geo;
 with Meshes;
 with River;
+with Road_Network;
 with Shaders;
 with Terrain;
 
@@ -35,6 +41,129 @@ package body Seasons is
    begin
       return T * T * (3.0 - 2.0 * T);
    end Smooth;
+
+   ---------------------------------------------------------------------------
+   --  The lower quays in a flood: the roads down by the water ("Port de
+   --  ...", the Voie Georges-Pompidou, the "Berges") close, with barriers
+   --  where the streets above lead down to them
+
+   type Barrier is record
+      X, Z   : Float;     --  across the road here
+      DX, DZ : Float;     --  along the road, into the closed part
+      Half   : Float;     --  half the road's width
+   end record;
+   package Barrier_Vectors is new Ada.Containers.Vectors (Positive, Barrier);
+   Barriers : Barrier_Vectors.Vector;
+
+   type Bool_Array is array (Natural range <>) of Boolean;
+   type Bool_Access is access Bool_Array;
+   Low_Way : Bool_Access;          --  the ways closed for the flood
+   Quays_Closed : Boolean := False;
+   Pending_News : Ada.Strings.Unbounded.Unbounded_String;
+
+   function News return String is
+      N : constant String := Ada.Strings.Unbounded.To_String (Pending_News);
+   begin
+      Pending_News := Ada.Strings.Unbounded.Null_Unbounded_String;
+      return N;
+   end News;
+
+   function Down_By_The_Water (W : Natural) return Boolean is
+      use Road_Network;
+      Name : constant String := Ada.Strings.Unbounded.To_String (Ways (W).Name);
+      function Starts (P : String) return Boolean is
+        (Name'Length >= P'Length and then Name (Name'First .. Name'First + P'Length - 1) = P);
+   begin
+      if not (Starts ("Port ") or else Starts ("Voie Georges") or else Starts ("Berge")
+              or else Starts ("Promenade") or else Ada.Strings.Fixed.Index (Name, "berges") > 0)
+      then
+         return False;
+      end if;
+      --  and by the Seine (not a "Promenade" anywhere in town)
+      declare
+         P : constant Node := Point (W, Ways (W).Count / 2);
+         X, Z, DX, DZ : Float;
+      begin
+         River.At_Distance (River.Distance_Of (P.X, P.Z), X, Z, DX, DZ);
+         return (P.X - X) ** 2 + (P.Z - Z) ** 2 < 140.0 ** 2;
+      end;
+   end Down_By_The_Water;
+
+   procedure Close_Quays is
+      use Road_Network;
+   begin
+               end;
+            end if;
+         end loop;
+      end if;
+      Low_Way := new Bool_Array (Ways'Range);
+      for W in Ways'Range loop
+         Low_Way (W) := Ways (W).Count >= 2 and then Down_By_The_Water (W);
+      end loop;
+      Barriers.Clear;
+      for W in Ways'Range loop
+         if Low_Way (W) then
+            for Pos in 0 .. Ways (W).Count - 2 loop
+               Close (W, Pos);
+            end loop;
+            --  a barrier at each end that meets a street still open
+            for End_Pos of Int_Array'(0, Ways (W).Count - 1) loop
+               declare
+                  N : constant Natural := Node_Index (W, End_Pos);
+                  Open_Way : Boolean := False;
+               begin
+                  for L of Walk_Links (N) loop
+                     if not Low_Way (L.W) then
+                        Open_Way := True;
+                     end if;
+                  end loop;
+                  if Open_Way then
+                     declare
+                        A : constant Node := Point (W, End_Pos);
+                        B : constant Node := Point (W, (if End_Pos = 0 then 1 else End_Pos - 1));
+                        L : constant Float := Float'Max (0.01, Sqrt ((B.X - A.X) ** 2 + (B.Z - A.Z) ** 2));
+                        DX : constant Float := (B.X - A.X) / L;
+                        DZ : constant Float := (B.Z - A.Z) / L;
+                        In_By : constant Float := Float'Min (5.0, L / 2.0);
+                     begin
+                        Barriers.Append ((A.X + In_By * DX, A.Z + In_By * DZ, DX, DZ, Ways (W).Width / 2.0 + 0.5));
+                     end;
+                  end if;
+               end;
+            end loop;
+         end if;
+      end loop;
+      declare
+         N : Natural := 0;
+      begin
+         for W in Ways'Range loop
+            if Low_Way (W) then
+               N := N + 1;
+            end if;
+         end loop;
+         Ada.Text_IO.Put_Line ("Closed for the flood:" & Natural'Image (N) & " ways,"
+                               & Natural'Image (Natural (Barriers.Length)) & " barriers");
+      end;
+      Quays_Closed := True;
+      Pending_News := Ada.Strings.Unbounded.To_Unbounded_String
+        ("Crue de la Seine : the lower quays are closed");
+   end Close_Quays;
+
+   procedure Open_Quays is
+      use Road_Network;
+   begin
+      for W in Ways'Range loop
+         if Low_Way (W) then
+            for Pos in 0 .. Ways (W).Count - 2 loop
+               Reopen (W, Pos);
+            end loop;
+         end if;
+      end loop;
+      Barriers.Clear;
+      Quays_Closed := False;
+      Pending_News := Ada.Strings.Unbounded.To_Unbounded_String
+        ("The Seine goes down: the lower quays are open again");
+   end Open_Quays;
 
    procedure Update (Dt, Hour, Rain : Float; Cam : Vec3) is
       Want_Mist, Want_Heat : Float;
@@ -68,6 +197,14 @@ package body Seasons is
       Heat_Now := Heat_Now + (Want_Heat - Heat_Now) * Float'Min (1.0, Dt * 0.3);
 
       Flood_Now := (if Env ("PARIS_FLOOD") /= "" then Float'Value (Env ("PARIS_FLOOD")) else Almanac.Flood_Rise);
+
+      if Road_Network.Loaded then
+         if not Quays_Closed and then Flood_Now > 1.0 then
+            Close_Quays;
+         elsif Quays_Closed and then Flood_Now < 0.8 then
+            Open_Quays;
+         end if;
+      end if;
 
       --  the water's level where the camera is, for the mist
       if River.Points >= 2 then
@@ -119,7 +256,7 @@ package body Seasons is
    Zouave_Lon : constant := 2.302040;
    Feet_Above : constant := 3.0;   --  his feet over the usual level of the river
 
-   Statue, Sheet : Meshes.Mesh;
+   Statue, Sheet, Fence : Meshes.Mesh;
    Built : Boolean := False;
    ZX, ZZ, ZY : Float := 0.0;
 
@@ -202,6 +339,21 @@ package body Seasons is
          end loop;
       end;
       Finish (Sheet);
+
+      --  a barrier one metre either side of the middle (scaled to the
+      --  road): feet, and a panel striped red and white
+      Start;
+      for K in 0 .. 9 loop
+         declare
+            X0 : constant Float := -1.0 + 0.2 * Float (K);
+         begin
+            Box (X0, X0 + 0.2, 0.55, 1.0, -0.03, 0.03, (if K mod 2 = 0 then 86.0 else 80.0));
+         end;
+      end loop;
+      Box (-1.0, -0.96, 0.0, 0.55, -0.03, 0.03, 80.0);
+      Box (0.96, 1.0, 0.0, 0.55, -0.03, 0.03, 80.0);
+      Box (-1.0, 1.0, 0.0, 0.05, -0.25, 0.25, 17.0);
+      Finish (Fence);
       Built := True;
    end Build;
 
@@ -223,7 +375,43 @@ package body Seasons is
          Shaders.Set (Model, Identity);
          Meshes.Draw (Sheet);
       end if;
+      --  the barriers: red and white panels on feet across the road
+      for B of Barriers loop
+         if (B.X - Cam.X) ** 2 + (B.Z - Cam.Z) ** 2 < 400.0 ** 2 then
+            declare
+               Y : constant Float := Terrain.Height (B.X, B.Z);
+            begin
+               Shaders.Set (Model, Translation ((B.X, Y, B.Z)) * Rotation_Y (-Arctan (B.DX, -B.DZ))
+                            * Scale_XYZ (B.Half, 1.0, 1.0));
+               Meshes.Draw (Fence);
+            end;
+         end if;
+      end loop;
       Shaders.Set (Model, Identity);
    end Draw;
+
+   procedure Collide (S : in out Car.State) is
+   begin
+      for B of Barriers loop
+         if (B.X - S.X) ** 2 + (B.Z - S.Z) ** 2 < (B.Half + 3.0) ** 2 then
+            declare
+               --  across the road (along X of the fence) and along it
+               U : constant Float := (S.X - B.X) * (-B.DZ) + (S.Z - B.Z) * B.DX;
+               V : constant Float := (S.X - B.X) * B.DX + (S.Z - B.Z) * B.DZ;
+            begin
+               if abs U < B.Half and then abs V < 1.6 then
+                  declare
+                     Out_By : constant Float := (if V >= 0.0 then 1.6 - V else -1.6 - V);
+                  begin
+                     S.X := S.X + Out_By * B.DX;
+                     S.Z := S.Z + Out_By * B.DZ;
+                     S.Speed := S.Speed * 0.3;
+                     S.Bumped := True;
+                  end;
+               end if;
+            end;
+         end if;
+      end loop;
+   end Collide;
 
 end Seasons;
