@@ -341,4 +341,48 @@ package body Addresses is
       end loop;
    end Search;
 
+   procedure Pick_Near (X, Z, Near, Far, R : Float; Found : out Boolean; Where : out Result) is
+      function In_Ring (H : House) return Boolean is
+         D2 : constant Float := (H.X - X) ** 2 + (H.Z - Z) ** 2;
+      begin
+         return D2 >= Near * Near and then D2 <= Far * Far;
+      end In_Ring;
+      Count : Natural := 0;
+      Want  : Natural;
+      Seen  : Natural := 0;
+   begin
+      Found := False;
+      Where := (others => <>);
+      for St of Streets loop
+         for H of St.Houses loop
+            if In_Ring (H) then
+               Count := Count + 1;
+            end if;
+         end loop;
+      end loop;
+      if Count = 0 then
+         return;
+      end if;
+      Want := 1 + Natural'Min (Count - 1, Natural (Float'Floor (R * Float (Count))));
+      for St of Streets loop
+         for H of St.Houses loop
+            if In_Ring (H) then
+               Seen := Seen + 1;
+               if Seen = Want then
+                  declare
+                     Label : constant String := To_String (H.Number) & " " & To_String (St.Name);
+                  begin
+                     Where.Last := Natural'Min (120, Label'Length);
+                     Where.Label (1 .. Where.Last) := Label (Label'First .. Label'First + Where.Last - 1);
+                     Where.X := H.X;
+                     Where.Z := H.Z;
+                     Found := True;
+                     return;
+                  end;
+               end if;
+            end if;
+         end loop;
+      end loop;
+   end Pick_Near;
+
 end Addresses;

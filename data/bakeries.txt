@@ -1,0 +1,10 @@
+# The morning round: the bakeries you can ride for (F2, Games).  The
+# cafés, hotels and restaurants you deliver to are found at real house
+# numbers around the bakery, different every morning.  One per line:
+#   lat lon name
+48.854830 2.337222 Le Fournil de Seine (rue de Seine)
+48.853300 2.324100 Boulangerie du Bac (rue du Bac)
+48.863427 2.346274 Boulangerie Montorgueil (rue Montorgueil)
+48.883262 2.339789 Au Pain des Martyrs (rue des Martyrs)
+48.866550 2.381100 La Fournée d'Oberkampf (rue Oberkampf)
+48.842000 2.349700 Au Levain de la Mouffe (rue Mouffetard)

@@ -224,6 +224,22 @@ checkpoint to the finish; your best time for each is kept in
 `~/.derive_trials`.  Enter at the end runs it again.  The runs are in
 `data/trials.txt`, easy to add to.
 
+### The morning round
+
+F2, **The morning round**: before the city wakes, on the baker's scooter
+with a crate of warm baguettes standing up behind you.  Choose a bakery
+(rue de Seine, rue du Bac, rue Montorgueil, rue des Martyrs, rue
+Oberkampf, rue Mouffetard); six cafés, hotels, restaurants and now and
+then a school canteen around it wait for their bread at real house
+numbers, different every morning, each by its opening time.  Stop at
+the door, where they wave under the arrow, to hand it over: on time
+they tip, late they grumble, and every knock breaks a baguette in the
+crate (three to spare).  The GPS goes to whoever opens first.  The round
+starts a little before sunrise and the clock runs slowly, so the dawn
+comes up as you ride.  The scooter slips through where a car would not,
+but goes no faster than 55 km/h.  The best morning of each bakery is
+kept in `~/.derive_rounds`; the bakeries are in `data/bakeries.txt`.
+
 ### Stunts in the plane
 
 Fly through the great vault of the Arc de Triomphe, as Charles Godefroy

@@ -1156,6 +1156,9 @@ void main()
         float bevel = mix(1.0, smoothstep(0.0, 0.25, e), detail);
         vec3 c = mix(vec3(0.93, 0.92, 0.88) * (0.85 + 0.15 * bevel), vec3(0.62, 0.6, 0.55), grout);
         s = Surface(toLinear(c), 0.6, 70.0, vec3(0), 0.0);
+    } else if (m == 89) {          // a baguette's crust: golden, the cuts paler
+        float cut = smoothstep(0.35, 0.5, abs(fract(vWorld.y * 9.0 + vWorld.x * 3.0) - 0.5));
+        s = Surface(toLinear(mix(vec3(0.78, 0.52, 0.22), vec3(0.93, 0.8, 0.55), cut)), 0.15, 12.0, vec3(0), 0.0);
     } else if (m == 87) {          // a Vélib' bike's mint-green frame
         s = Surface(toLinear(vec3(0.45, 0.78, 0.62)), 0.45, 36.0, vec3(0), 0.0);
     } else if (m == 80) {          // a delivery van's white paint

@@ -70,6 +70,7 @@ with Rooms;
 with Postcards;
 with Closures;
 with Stunts;
+with Rounds;
 with Trials;
 with Boats;
 with Era;
@@ -216,6 +217,7 @@ package body Game is
    Results_Open : Boolean := False;   --  and still on the screen
    Taxi_Goal    : Natural := 0;       --  the taxi goal the GPS has
    Trial_Goal   : Natural := Natural'Last;   --  the time trial goal the GPS has
+   Round_Goal   : Natural := Natural'Last;   --  the morning round's, likewise
    Panel_Shown  : Ada.Strings.Unbounded.Unbounded_String;   --  the taxi's ride panel
    Gate_X, Gate_Z : Float := 0.0;      --  where the GPS points
    Sign    : Gtk.Label.Gtk_Label;      --  street name, like a Paris plaque
@@ -812,6 +814,7 @@ package body Game is
          Scenes.Load;
          Postcards.Load;
          Trials.Load;
+         Rounds.Load;
          Addresses.Load (Dir);
          Scenes.Set_Override (Xmas_Setting);
          Scenes.Create;
@@ -1160,7 +1163,8 @@ package body Game is
          View : constant Mat4 := Look_At (Cam_Pos, Cam_Look, (0.0, 1.0, 0.0));
          VP   : constant Mat4 := Proj * View;
          LVP  : constant Mat4 := Light_View_Proj;
-         Car_M : constant Mat4 := Car.Model_Matrix (Player);
+         Car_M : constant Mat4 := Car.Model_Matrix (Player)
+           * (if Car."=" (Car.Player_Model, Car.Scooter) then Rotation_Z (-Car.Lean (Player)) else Identity);
       begin
          --  Shadow pass
          Begin_Pass (P_Shadow);
@@ -1305,7 +1309,8 @@ package body Game is
          Race.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos);
          if Mode = Driving and then not Visiting then
             Taxi.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Player, Time);
-         Trials.Draw (WU.Model, WU.Extra_Color, Time);
+            Trials.Draw (WU.Model, WU.Extra_Color, Time);
+            Rounds.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Time);
          end if;
          Set (WU.Car_Color, Car_Color);
          if Christmas then
@@ -2345,7 +2350,7 @@ package body Game is
         & "  U                Paris in 1973, or today" & LF
         & "  P                weather: rain, storm, snow, dry" & LF
         & "  M                sound on / off" & LF
-        & "  F2               games: street racing, taxi" & LF
+        & "  F2               games: racing, taxi, time trials, the morning round" & LF
         & "  F3               find an address (GPS)" & LF
         & "  F4               your postcards" & LF
         & "  Y / Shift+Y      one day later / earlier" & LF
@@ -2550,11 +2555,20 @@ package body Game is
    --  one around you, and a track editor
    ---------------------------------------------------------------------------
 
+   --  The player's own car: as chosen in ~/.deriverc, or a DS in 1973
+   function Usual_Model return Car.Model_Kind is
+      M : constant String := Config.Get ("car", "modern");
+   begin
+      return (if Era.In_1973 then Car.DS
+              elsif M = "2cv" then Car.Deux_Chevaux elsif M = "ds" then Car.DS elsif M = "r4" then Car.R4
+              else Car.Modern);
+   end Usual_Model;
+
    --  The games menu: the games at the top, each with its own menu below
-   type Menu_Level is (Games, Racing, Tracks, Taxi_Menu, Trials_Menu);
+   type Menu_Level is (Games, Racing, Tracks, Taxi_Menu, Trials_Menu, Rounds_Menu);
    Level : Menu_Level := Games;
    type Menu_Item is
-     (Go_Racing, Go_Taxi, Go_Trials, Go_Free, Race_Again, Leave_Race, Street_Race, Random_Race,
+     (Go_Racing, Go_Taxi, Go_Trials, Go_Rounds, Go_Free, Race_Again, Leave_Race, Street_Race, Random_Race,
       Make_Track, Save_Track, Drop_Track, Start_Shift, Stop_Shift, Up);
    type Item_Array is array (1 .. 8) of Menu_Item;
 
@@ -2572,6 +2586,7 @@ package body Game is
             Add (Go_Racing);
             Add (Go_Taxi);
             Add (Go_Trials);
+            Add (Go_Rounds);
             Add (Go_Free);
          when Taxi_Menu =>
             if Taxi.Active then
@@ -2594,8 +2609,8 @@ package body Game is
                Add (Make_Track);
             end if;
             Add (Up);
-         when Tracks | Trials_Menu =>
-            null;   --  the tracks or runs themselves (see Menu_Items)
+         when Tracks | Trials_Menu | Rounds_Menu =>
+            null;   --  the tracks, runs or bakeries themselves (see Menu_Items)
       end case;
    end List_Items;
 
@@ -2607,6 +2622,8 @@ package body Game is
          return Race.Track_Count + 1;
       elsif Level = Trials_Menu then
          return Trials.Count + 1;
+      elsif Level = Rounds_Menu then
+         return Rounds.Count + 1;
       end if;
       List_Items (L, N);
       return N;
@@ -2631,7 +2648,8 @@ package body Game is
                                   when Racing => "Street racing",
                                   when Tracks => "Street racing: choose a track",
                                   when Taxi_Menu => "Taxi",
-                                  when Trials_Menu => "Time trials: through Paris against the clock")
+                                  when Trials_Menu => "Time trials: through Paris against the clock",
+                                  when Rounds_Menu => "The morning round: bread before the cafés open")
                              & "</span></b>" & LF & LF
                              & (if Level = Tracks then
                                   "  Laps:  &lt; " & (if Race.Laps_Setting = 0 then "as the track suits"
@@ -2667,17 +2685,28 @@ package body Game is
                      else ""));
          end loop;
          Line (Trials.Count + 1, "back");
+      elsif Level = Rounds_Menu then
+         for I in 1 .. Rounds.Count loop
+            Line (I, Escape (Rounds.Name (I))
+                  & (if Rounds.Best (I) > 0.0
+                     then "  <span foreground='#9fd4a8'>(best" & Natural'Image (Natural (Float'Floor (Rounds.Best (I))))
+                          & " € in tips)</span>"
+                     else ""));
+         end loop;
+         Line (Rounds.Count + 1, "back");
       else
          for I in 1 .. Menu_Items loop
             Line (I, (case Item_At (I) is
                         when Go_Racing    => "Street racing  &gt;",
                         when Go_Taxi      => "Taxi  &gt;",
                         when Go_Trials    => "Time trials  &gt;",
+                        when Go_Rounds    => "The morning round  &gt;",
                         when Start_Shift  => "Start a shift",
                         when Stop_Shift   => "End the shift",
                         when Go_Free      =>
                           (if Race.Active then "Back to the city (leave the race)"
                            elsif Trials.Active then "Back to the city (leave the run)"
+                           elsif Rounds.Active then "Back to the city (leave the round)"
                            elsif Taxi.Active then "Back to the city (end the shift)"
                            elsif Race.Editing then "Back to the city (drop the track)"
                            else "Free driving"),
@@ -2715,7 +2744,8 @@ package body Game is
          --  in a race (or making a track) straight to its own menu
          Level := (if Race.Active or else Race.Editing then Racing
                    elsif Taxi.Active then Taxi_Menu
-                   elsif Trials.Active then Trials_Menu else Games);
+                   elsif Trials.Active then Trials_Menu
+                   elsif Rounds.Active then Rounds_Menu else Games);
          Menu_Sel := 1;
          Refresh_Menu;
          Game_Menu.Show;
@@ -2733,6 +2763,7 @@ package body Game is
          when Tracks => Level := Racing;
          when Taxi_Menu => Level := Games;
          when Trials_Menu => Level := Games;
+         when Rounds_Menu => Level := Games;
       end case;
       Menu_Sel := 1;
       if Menu_Open then
@@ -2750,6 +2781,12 @@ package body Game is
    --  Back to the city: the race (or the editor) away, the traffic back
    procedure End_Race is
    begin
+      if Rounds.Active then
+         Rounds.Stop;
+         Navigation.Clear;
+         Round_Goal := Natural'Last;
+         Car.Set_Player_Model (Usual_Model);
+      end if;
       if Trials.Active then
          Trials.Stop;
          Navigation.Clear;
@@ -2890,8 +2927,47 @@ package body Game is
       Race_Hud.Show;
    end Begin_Trial;
 
+   --  The morning round: on the baker's scooter at the bakery's door
+   procedure Begin_Round (I : Natural) is
+   begin
+      if Visiting or else Walking or else Mode /= Driving then
+         Say ("Get back in the car first");
+         return;
+      end if;
+      if I /= 0 then
+         End_Race;
+      end if;
+      Race.Edit_Cancel;
+      End_Taxi;
+      Trials.Stop;
+      if I = 0 then
+         Rounds.Again (Player, Hour);
+      else
+         Rounds.Start (I, Player, Hour);
+      end if;
+      Car.Set_Player_Model (Car.Scooter);
+      Cam_Pos := (Player.X, 6.0 + Player.Ground, Player.Z) - 10.0 * Car.Forward (Player);
+      Cam_Look := (Player.X, 1.2 + Player.Ground, Player.Z);
+      Pending_Load := True;
+      Round_Goal := Natural'Last;
+      Panel_Shown := Ada.Strings.Unbounded.Null_Unbounded_String;
+      if not Show_Compass then
+         Set_Key (16#67#, True);   --  the minimap, for the way
+      end if;
+      Race_Hud.Show;
+   end Begin_Round;
+
    procedure Menu_Choose is
    begin
+      if Level = Rounds_Menu then
+         if Menu_Sel > Rounds.Count then
+            Menu_Back;
+         else
+            Toggle_Menu;
+            Begin_Round (Menu_Sel);
+         end if;
+         return;
+      end if;
       if Level = Trials_Menu then
          if Menu_Sel > Trials.Count then
             Menu_Back;
@@ -2921,6 +2997,10 @@ package body Game is
             Refresh_Menu;
          when Go_Trials =>
             Level := Trials_Menu;
+            Menu_Sel := 1;
+            Refresh_Menu;
+         when Go_Rounds =>
+            Level := Rounds_Menu;
             Menu_Sel := 1;
             Refresh_Menu;
          when Start_Shift =>
@@ -3181,6 +3261,64 @@ package body Game is
       end;
    end Trial_Overlays;
 
+   --  The morning round: the same, its line, the account, the GPS
+   procedure Round_Overlays is
+      use Ada.Strings.Unbounded;
+         begin
+      if not Rounds.Active then
+         return;
+      end if;
+      declare
+         T : constant String := Rounds.Hud_Text;
+         B : constant String := Rounds.Banner;
+         P : constant String := Rounds.Panel_Text;
+      begin
+         if To_String (Race_Shown) /= T then
+            Race_Shown := To_Unbounded_String (T);
+            if T = "" then
+               Race_Hud.Hide;
+            else
+               Race_Hud.Set_Markup (T);
+               Race_Hud.Show;
+            end if;
+         end if;
+         if To_String (Banner_Shown) /= B then
+            Banner_Shown := To_Unbounded_String (B);
+            if B = "" then
+               Race_Banner.Hide;
+            else
+               Race_Banner.Set_Markup ("<span font_family='sans' weight='heavy' size='60000' foreground='#ffd27a'>"
+                                       & B & "</span>");
+               Race_Banner.Show;
+            end if;
+         end if;
+         if not Menu_Open and then To_String (Panel_Shown) /= P then
+            Panel_Shown := To_Unbounded_String (P);
+            if P = "" then
+               Game_Menu.Hide;
+            else
+               Game_Menu.Set_Markup (P);
+               Game_Menu.Show;
+            end if;
+         end if;
+      end;
+      declare
+         Serial : Natural;
+         X, Z   : Float;
+         Name   : Unbounded_String;
+      begin
+         Rounds.Goal (Serial, X, Z, Name);
+         if Serial /= Round_Goal then
+            Round_Goal := Serial;
+            if Length (Name) = 0 then
+               Navigation.Clear;
+            else
+               Navigation.Set_Destination (To_String (Name), X, Z);
+            end if;
+         end if;
+      end;
+   end Round_Overlays;
+
    procedure Taxi_Overlays is
       use Ada.Strings.Unbounded;
    begin
@@ -3251,7 +3389,7 @@ package body Game is
    procedure Scene_Overlays is
       use Ada.Strings.Unbounded;
    begin
-      if Race.Active or else Taxi.Active then
+      if Race.Active or else Taxi.Active or else Trials.Active or else Rounds.Active then
          return;
       end if;
       declare
@@ -3488,6 +3626,7 @@ package body Game is
           Traffic  => Float'Max (0.0, 1.0 - Traffic.Nearest (Where.X, Where.Z) / 60.0),
           Horn     => Keys.B or else Wheel.Held (Wheel.Enter),
           Engine_Off => Mode = Driving and then not Visiting and then Race.Wrecked,
+          Two_Stroke => Car."=" (Car.Player_Model, Car.Scooter),
           Church   => Church_Near,
           Jingle   => Sleigh.Jingle,
           Jets     => Surprises.Jets,
@@ -3784,6 +3923,33 @@ package body Game is
             Player.Ground := Terrain.Height (X, Z);
          end;
       end if;
+      --  PARIS_ROUND=n: the morning round from that bakery; PARIS_ROUND_AUTO=1:
+      --  to each door in turn, 30 m short of it first (testing)
+      if Ready and then Frame_Number = 30 and then Env ("PARIS_ROUND") /= "" then
+         Begin_Round (Natural'Value (Env ("PARIS_ROUND")));
+      end if;
+      if Ready and then Env ("PARIS_ROUND_AUTO") /= "" and then Frame_Number mod 100 = 0
+        and then Rounds."=" (Rounds.Phase, Rounds.Riding)
+      then
+         declare
+            Serial : Natural;
+            X, Z   : Float;
+            Name   : Ada.Strings.Unbounded.Unbounded_String;
+            Found  : Boolean;
+            RX, RZ, RH : Float;
+            Short  : constant Float := (if Frame_Number mod 200 = 0 then 30.0 else 0.0);
+         begin
+            Rounds.Goal (Serial, X, Z, Name);
+            Road_Network.Nearest_Road (X, Z, Found, RX, RZ, RH);
+            if not Found then
+               RH := Player.Heading;
+            end if;
+            X := X - Short * Sin (RH);
+            Z := Z + Short * Cos (RH);
+            Player := Car.On_Ground (X, Z, RH);
+            Player.Ground := Terrain.Height (X, Z);
+         end;
+      end if;
       --  PARIS_TAXI_AUTO=1: jump to each fare and destination in turn (testing)
       if Ready and then Env ("PARIS_TAXI_AUTO") /= "" and then Frame_Number mod 150 = 0 then
          declare
@@ -3893,7 +4059,8 @@ package body Game is
       else
          Wetness := Float'Max (Rain_Amount, Wetness - Dt / 60.0);
       end if;
-      Hour := Hour + Dt * Clock_Rate;
+      --  (the morning round: the dawn comes up slowly)
+      Hour := Hour + Dt * (if Rounds.Clock_Pace > 0.0 then Rounds.Clock_Pace else Clock_Rate);
       if Hour >= 24.0 then
          Hour := Hour - 24.0;
          Almanac.Next_Day;
@@ -3963,6 +4130,7 @@ package body Game is
                         if Player.Bumped and then Loss > 0.0 then
                            Race.Impact (Loss);   --  damage, in a race
                            Taxi.Impact (Loss);   --  an upset passenger
+                           Rounds.Impact (Loss); --  a baguette broken
                         end if;
                         if Player.Kerb_Jolt /= 0.0 then
                            Jolt := Player.Kerb_Jolt;
@@ -4030,7 +4198,8 @@ package body Game is
             Race.Update (Dt, Player);
             Taxi.Update (Dt, Player, Hour, Almanac.Sunday, Rain_Amount);
             Trials.Update (Dt, Player);
-            if Trials.Holding then
+            Rounds.Update (Dt, Player, Hour);
+            if Trials.Holding or else Rounds.Holding then
                Player.Speed := 0.0;   --  the countdown: wait for it
             end if;
             --  the traffic: rush hour on weekdays, quiet late at night
@@ -4090,6 +4259,7 @@ package body Game is
          Race_Overlays;
          Taxi_Overlays;
          Trial_Overlays;
+         Round_Overlays;
          --  the altimeter: height above the ground, or the water of the Seine
          declare
             Wet : constant Boolean := River.In_Channel (Aircraft.Pos.X, Aircraft.Pos.Z);
@@ -4328,13 +4498,11 @@ package body Game is
 
    --  Paris in 1973 or today: the cars and the street are made again
    procedure Set_Year (In_1973 : Boolean) is
-      M : constant String := Config.Get ("car", "modern");
    begin
       Era.Set (In_1973);
-      Car.Set_Player_Model
-        ((if In_1973 then Car.DS
-          elsif M = "2cv" then Car.Deux_Chevaux elsif M = "ds" then Car.DS elsif M = "r4" then Car.R4
-          else Car.Modern));
+      if not Rounds.Active then
+         Car.Set_Player_Model (Usual_Model);
+      end if;
       Traffic.Reset;
       Street_Life.Clear;
       Say ((if In_1973 then "Paris, 1973" else "Paris, today"), 3.0);
@@ -4364,6 +4532,17 @@ package body Game is
          return;   --  (the metro: choosing a station)
       end if;
       if Menu_Open and then Down and then Menu_Key (K) then
+         return;
+      end if;
+      --  after the morning round: another morning, or back to the city
+      if Down and then not Menu_Open and then Rounds."=" (Rounds.Phase, Rounds.Done)
+        and then (K = 16#FF0D# or else K = 16#FF8D# or else K = 16#FF1B#)
+      then
+         if K = 16#FF1B# then
+            End_Race;
+         else
+            Begin_Round (0);
+         end if;
          return;
       end if;
       --  after a time trial: again, or back to the city

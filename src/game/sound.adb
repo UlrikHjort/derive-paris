@@ -638,7 +638,7 @@ package body Sound is
    end Reverb;
 
    --  Continuous sounds
-   Engine_Phase, Prop_Phase : Float := 0.0;
+   Engine_Phase, Prop_Phase, Scooter_Phase : Float := 0.0;
    type Hum_Phases is array (1 .. 4) of Float;
    Hum_Freq  : constant Hum_Phases := (47.0, 61.3, 83.1, 104.7);
    Hum_Gain  : constant Hum_Phases := (1.0, 1.0, 0.7, 0.5);
@@ -1162,6 +1162,19 @@ package body Sound is
                      E := E + Step (Engine_Grit, Noise, 120.0 + F0 * 1.2) * (0.5 + 0.8 * P.Load);
                      E := Step (Engine_Tone, E, 160.0 + 260.0 * P.Load + F0 * 1.2);
                      E := Step (Engine_Tone2, E, 220.0 + 300.0 * P.Load + F0 * 1.2);
+                     if P.Two_Stroke then
+                        --  the scooter: one firing a turn, a thin buzz
+                        --  heard in the open, revs rising with the speed
+                        declare
+                           F1 : constant Float := Traffic_Rpm (1, P.Speed) / 60.0 * (0.85 + 0.15 * P.Load);
+                        begin
+                           Scooter_Phase := Scooter_Phase + F1 / Float (Rate);
+                           Scooter_Phase := Scooter_Phase - Float'Floor (Scooter_Phase);
+                           E := (if Scooter_Phase < 0.3 then 1.0 else -0.43);
+                           E := Step (Engine_Tone, E, 700.0 + 500.0 * P.Load);
+                           E := E + 0.3 * Step (Engine_Grit, Noise, 1500.0);
+                        end;
+                     end if;
                      S := (if P.Engine_Off then 0.0 else E * (0.06 + 0.06 * P.Load));
                      L := L + S;
                      R := R + S;

@@ -24,4 +24,8 @@ package Addresses is
                      Found : out Result_Array; Count : out Natural);
    --  The best matches, nearest first among equals
 
+   procedure Pick_Near (X, Z, Near, Far, R : Float; Found : out Boolean; Where : out Result);
+   --  A house number between Near and Far metres from (X, Z), the one
+   --  that R (uniform in [0, 1)) falls on
+
 end Addresses;

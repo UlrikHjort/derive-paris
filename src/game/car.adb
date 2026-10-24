@@ -66,6 +66,15 @@ package body Car is
 
    Kerb_Height : constant := 0.14;
 
+   Current_Model : Model_Kind := Modern;   --  the player's
+
+   function Lean (S : State) return Float is
+      --  the sideways pull of the turn against gravity
+      Side_G : constant Float := S.Speed * S.Speed * Tan (S.Steer) / (Wheel_Base * 9.81);
+   begin
+      return Float'Max (-0.6, Float'Min (0.6, Arctan (Side_G)));
+   end Lean;
+
    procedure Approach (V : in out Float; Target, Rate : Float) is
    begin
       if V < Target then
@@ -308,6 +317,10 @@ package body Car is
          end if;
       end if;
       S.Speed := S.Speed - S.Speed * abs S.Speed * 0.0006 * Dt;  --  air drag
+      if Current_Model = Scooter then
+         --  a 50 cc scooter: 55 km/h at most, flat out
+         S.Speed := Float'Max (-3.0, Float'Min (15.5, S.Speed));
+      end if;
 
       --  Steering: less lock at speed, returns to centre when released;
       --  a wheel turns the front wheels directly (900 degrees lock to
@@ -347,14 +360,17 @@ package body Car is
       S.Bumped := False;
       for Offset of Float_Array'(Circle_Offset, -Circle_Offset) loop
          declare
-            FX : constant Float := Sin (S.Heading) * Offset;
-            FZ : constant Float := -Cos (S.Heading) * Offset;
+            Two_Wheels : constant Boolean := Current_Model = Scooter;
+            Along : constant Float := (if Two_Wheels then 0.45 * Offset else Offset);
+            Radius : constant Float := (if Two_Wheels then 0.45 else Body_Radius);
+            FX : constant Float := Sin (S.Heading) * Along;
+            FZ : constant Float := -Cos (S.Heading) * Along;
             CX : Float := S.X + FX;
             CZ : Float := S.Z + FZ;
             Hit : Boolean;
             NX, NZ : Float;
          begin
-            World.Collide (CX, CZ, Body_Radius, Hit, NX, NZ);
+            World.Collide (CX, CZ, Radius, Hit, NX, NZ);
             if Hit then
                S.X := CX - FX;
                S.Z := CZ - FZ;
@@ -404,7 +420,6 @@ package body Car is
    ---------------------------------------------------------------------------
 
    Models : array (Model_Kind) of Meshes.Mesh;
-   Player_Model : Model_Kind := Modern;
 
    procedure Create_Mesh is
       use Meshes;
@@ -499,16 +514,58 @@ package body Car is
          end loop;
       end loop;
       Finish (Models (R4));
+
+      --  The baker's scooter: a step-through with its leg shield, the
+      --  rider in a dark jacket and a helmet in the paint, and on the rack
+      --  behind a wooden crate full of baguettes standing up
+      Start;
+      Box (-0.06, 0.06, 0.0, 0.48, -0.9, -0.42, Mat_Tyre);              --  wheels
+      Box (-0.07, 0.07, 0.0, 0.48, 0.42, 0.9, Mat_Tyre);
+      Box (-0.19, 0.19, 0.22, 0.34, -0.58, 0.32, Mat_Paint);             --  floorboard
+      Box (-0.23, 0.23, 0.3, 0.8, 0.1, 0.88, Mat_Paint,
+           Top_Inset_X => 0.04, Top_Inset_Back => 0.15);                  --  rear body
+      Box (-0.22, 0.22, 0.3, 1.02, -0.7, -0.55, Mat_Paint, Top_Inset_X => 0.05);   --  leg shield
+      Box (-0.04, 0.04, 0.95, 1.14, -0.66, -0.58, Mat_Tyre);             --  steering
+      Box (-0.36, 0.36, 1.1, 1.16, -0.64, -0.57, Mat_Tyre);              --  handlebar
+      Box (-0.08, 0.08, 1.0, 1.12, -0.72, -0.66, Mat_Headlight);
+      Box (-0.07, 0.07, 0.62, 0.7, 0.88, 0.91, Mat_Taillight);
+      Box (-0.18, 0.18, 0.8, 0.88, 0.0, 0.6, Mat_Tyre);                  --  seat
+      Box (-0.15, 0.15, 0.34, 0.88, -0.32, -0.12, Mat_Tyre);             --  lower legs
+      Box (-0.18, 0.18, 0.88, 1.05, -0.45, 0.1, Mat_Tyre);               --  thighs
+      Box (-0.21, 0.21, 1.03, 1.62, -0.15, 0.25, Mat_Tyre,
+           Top_Inset_X => 0.03);                                          --  jacket
+      Box (-0.15, 0.15, 1.62, 1.94, -0.12, 0.2, Mat_Paint, Top_Inset_X => 0.03,
+           Top_Inset_Front => 0.04, Top_Inset_Back => 0.04);              --  helmet
+      Box (-0.12, 0.12, 1.7, 1.83, -0.14, -0.11, Mat_Glass);             --  visor
+      for Side of Float_Array'(-1.0, 1.0) loop
+         Box (Side * 0.28 - 0.05, Side * 0.28 + 0.05, 1.1, 1.52, -0.6, 0.0, Mat_Tyre);   --  arms
+      end loop;
+      Box (-0.3, 0.3, 0.86, 0.9, 0.55, 1.15, Mat_Tyre);                  --  the rack
+      Box (-0.3, 0.3, 0.9, 1.3, 0.55, 1.15, 60.0);                       --  the crate
+      for I in 0 .. 3 loop
+         for J in 0 .. 2 loop
+            declare
+               X : constant Float := -0.21 + 0.14 * Float (I);
+               Z : constant Float := 0.66 + 0.19 * Float (J);
+               H : constant Float := 1.62 + 0.06 * Float ((I * 2 + J) mod 3);
+            begin
+               Box (X - 0.035, X + 0.035, 1.25, H, Z - 0.035, Z + 0.035, 89.0);   --  baguettes
+            end;
+         end loop;
+      end loop;
+      Finish (Models (Scooter));
    end Create_Mesh;
 
    procedure Set_Player_Model (M : Model_Kind) is
    begin
-      Player_Model := M;
+      Current_Model := M;
    end Set_Player_Model;
+
+   function Player_Model return Model_Kind is (Current_Model);
 
    procedure Draw is
    begin
-      Meshes.Draw (Models (Player_Model));
+      Meshes.Draw (Models (Current_Model));
    end Draw;
 
    procedure Draw_Model (M : Model_Kind) is
