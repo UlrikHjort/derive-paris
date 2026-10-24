@@ -32,6 +32,7 @@ uniform float uGallery;      // 1 while drawing the inside of the Louvre
 uniform float uAutumn;       // 0 .. 1: the leaves turning yellow, orange and brown
 uniform float uBare;         // 0 .. 1: the trees losing their leaves (winter)
 uniform float uLitter;       // 0 .. 1: fallen leaves on the ground
+uniform float uTrash;        // 0 .. 1: paper, cans and bottles the morning after a fête
 uniform vec4 uLights[64];    // street lamps: xyz position, w intensity
 uniform int uLightCount;
 uniform vec3 uHeadPos;       // player's headlights
@@ -1116,6 +1117,8 @@ void main()
                     vec3(0.25, 0.08, 0.0) * uNight, 0.0);
     } else if (m == 86) {          // signal red paint (barriers, signs)
         s = Surface(toLinear(vec3(0.75, 0.06, 0.05)), 0.3, 24.0, vec3(0), 0.0);
+    } else if (m == 87) {          // a Vélib' bike's mint-green frame
+        s = Surface(toLinear(vec3(0.45, 0.78, 0.62)), 0.45, 36.0, vec3(0), 0.0);
     } else if (m == 80) {          // a delivery van's white paint
         s = Surface(toLinear(vec3(0.9, 0.9, 0.88)), 0.5, 40.0, vec3(0), 0.0);
     } else if (m == 50) {          // a lamp in uExtraColor: the taxi sign, a police light bar
@@ -1235,6 +1238,29 @@ void main()
     } else {
         s = ground(m, vWorld.xz, vSeed);
         // fallen leaves on the pavements, squares and lawns
+        if (uTrash > 0.0 && (m == 0 || m == 3 || m == 8)) {
+            // the morning after: flyers, cups, cans and bottles on the pavements
+            vec2 cell = floor(vWorld.xz / 0.5);
+            float h = hash(cell + 7.7);
+            vec2 f = fract(vWorld.xz / 0.5) - 0.5;
+            float patch = noise(vWorld.xz * 0.12);
+            if (h < uTrash * (0.08 + 0.3 * patch)) {
+                float k = fract(h * 53.0);
+                float a = h * 40.0;
+                vec2 r = vec2(cos(a) * f.x - sin(a) * f.y, sin(a) * f.x + cos(a) * f.y);
+                bool paper = k < 0.6 && abs(r.x) < 0.2 && abs(r.y) < 0.14;
+                bool can = k >= 0.6 && abs(r.x) < 0.18 && abs(r.y) < 0.05;
+                if (paper) {
+                    vec3 pc = k < 0.25 ? vec3(0.92, 0.91, 0.88) : k < 0.45 ? vec3(0.95, 0.85, 0.3) : vec3(0.85, 0.3, 0.3);
+                    s.albedo = toLinear(pc);
+                } else if (can) {
+                    vec3 cc = k < 0.75 ? vec3(0.75, 0.1, 0.1) : k < 0.88 ? vec3(0.2, 0.45, 0.2) : vec3(0.7, 0.72, 0.75);
+                    s.albedo = toLinear(cc);
+                    s.spec = 0.8;
+                    s.gloss = 60.0;
+                }
+            }
+        }
         if (uLitter > 0.0 && (m == 0 || m == 3 || m == 4 || m == 8)) {
             vec2 cell = floor(vWorld.xz / 0.22);
             float h = hash(cell + 3.1);

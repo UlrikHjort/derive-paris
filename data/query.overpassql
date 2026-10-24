@@ -16,6 +16,7 @@
   wr["place"="square"]({{bbox}});
   wr["man_made"="bridge"]({{bbox}});
   node["natural"="tree"]({{bbox}});
+  node["amenity"="bicycle_rental"]({{bbox}});
   node["highway"~"^(crossing|street_lamp|traffic_signals)$"]({{bbox}});
 );
 (._;>;);

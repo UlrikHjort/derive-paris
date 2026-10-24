@@ -24,6 +24,9 @@ package Pedestrians is
 
    function Count return Natural;
 
+   procedure Set_Sweepers (Share : Float);
+   --  How many of those who appear are street sweepers (green, a broom)
+
    procedure Set_Santas (On : Boolean; Share : Float := 0.035);
    --  At Christmas a few of the walkers are Father Christmas
 

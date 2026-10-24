@@ -35,6 +35,8 @@ package Figures is
 
    procedure Cat (M : Math3D.Mat4; Walk : Float; Sitting : Boolean);
    procedure Pigeon (M : Math3D.Mat4; Flap : Float);
+   procedure Pigeon_On_Ground (M : Math3D.Mat4; Peck : Float);
+   --  Wings folded, slate grey in the paint (Cloth); Peck tips it forward
    --  Flap: wing angle (0: folded)
 
    procedure Ball (Where : Math3D.Vec3; Radius : Float);

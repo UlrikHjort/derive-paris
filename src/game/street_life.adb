@@ -12,6 +12,8 @@ with Ada.Numerics;
 with Ada.Numerics.Elementary_Functions;
 with Ada.Numerics.Float_Random;
 
+with Figures;
+with Geo;
 with Meshes;
 with Road_Network;
 with Shaders;
@@ -47,6 +49,7 @@ package body Street_Life is
    Mat_M       : constant := 75.0;
    Mat_Amber   : constant := 76.0;
    Mat_Van     : constant := 80.0;   --  white van paint
+   Mat_Velib   : constant := 87.0;   --  a Vélib' bike's mint green
    Mat_Carton  : constant := 81.0;
    Mat_Livery  : constant := 82.0;   --  a firm's blue
    Mat_Glass   : constant := 16.0;
@@ -55,6 +58,7 @@ package body Street_Life is
    Gen : Ada.Numerics.Float_Random.Generator;
    Session : Float := 0.0;
    All_Vans : constant Boolean := Ada.Environment_Variables.Exists ("PARIS_VANS");
+   All_Pigeons : constant Boolean := Ada.Environment_Variables.Exists ("PARIS_PIGEONS");
    Started : Boolean := False;
 
    procedure Begin_Session is
@@ -398,10 +402,19 @@ package body Street_Life is
 
    package Vec_Vectors is new Ada.Containers.Vectors (Positive, Vec3);
 
+   --  a pigeon pecking on the ground; Fled: when it flew off (-1: not yet)
+   type Pigeon is record
+      P   : Vec3;
+      Yaw : Float;
+      Fled : Float := -1.0;
+   end record;
+   package Pigeon_Vectors is new Ada.Containers.Vectors (Positive, Pigeon);
+
    type Cell is record
       Mesh   : Meshes.Mesh;
       Solids : Solid_Vectors.Vector;
       Floats : Vec_Vectors.Vector;   --  things bobbing in the air (drawn apart)
+      Pigeons : Pigeon_Vectors.Vector;
    end record;
 
    package Cell_Maps is new Ada.Containers.Ordered_Maps (Cell_Key, Cell);
@@ -537,6 +550,104 @@ package body Street_Life is
          L.Append ((E.X, E.Z, 1.0));
       end;
    end Entrance;
+
+   ---------------------------------------------------------------------------
+   --  Vélib' stations (data/velib.txt, from OpenStreetMap): a pay terminal
+   --  and a row of docks with the mint-green bikes, along the street
+   ---------------------------------------------------------------------------
+
+   Velibs : Vec_Vectors.Vector;
+   Velibs_Read : Boolean := False;
+
+   procedure Read_Velibs is
+      F : Ada.Text_IO.File_Type;
+   begin
+      Velibs_Read := True;
+      Ada.Text_IO.Open (F, Ada.Text_IO.In_File, "data/velib.txt");
+      while not Ada.Text_IO.End_Of_File (F) loop
+         declare
+            L  : constant String := Ada.Text_IO.Get_Line (F);
+            Sp : constant Natural := Ada.Strings.Fixed.Index (L, " ");
+            X, Z : Long_Float;
+         begin
+            if L'Length > 0 and then L (L'First) /= '#' and then Sp > 0 then
+               Geo.To_Local (Long_Float'Value (L (L'First .. Sp - 1)), Long_Float'Value (L (Sp + 1 .. L'Last)), X, Z);
+               Velibs.Append ((Float (X), 0.0, Float (Z)));
+            end if;
+         exception
+            when Constraint_Error => null;
+         end;
+      end loop;
+      Ada.Text_IO.Close (F);
+   exception
+      when others =>
+         if Ada.Text_IO.Is_Open (F) then
+            Ada.Text_IO.Close (F);
+         end if;
+   end Read_Velibs;
+
+   --  F: the middle of the station, U along the street, V towards it
+   procedure Velib_Station (F : Frame; Seed : Float; L : in out Solid_Vectors.Vector) is
+      Docks : constant Positive := 8 + Natural (Float'Floor (Seed * 7.0));
+      Half  : constant Float := 0.75 * Float (Docks) / 2.0;
+      procedure Wheel (C : Vec3; Along : Vec3) is
+         R : constant Float := 0.33;
+         N : constant := 10;
+      begin
+         for I in 0 .. N - 1 loop
+            declare
+               A0 : constant Float := 2.0 * Pi * Float (I) / Float (N);
+               A1 : constant Float := 2.0 * Pi * Float (I + 1) / Float (N);
+               P0 : constant Vec3 := C + (R * Cos (A0)) * Along + Vec3'(0.0, R * Sin (A0), 0.0);
+               P1 : constant Vec3 := C + (R * Cos (A1)) * Along + Vec3'(0.0, R * Sin (A1), 0.0);
+            begin
+               Bar (P0, P1, 0.025, Mat_Tyre, 4);
+            end;
+         end loop;
+      end Wheel;
+   begin
+      --  the terminal at one end: a grey post with a screen and a map
+      Box (F, -Half - 0.7, -Half - 0.4, 0.0, 1.65, -0.2, 0.2, Mat_Iron);
+      Box (F, -Half - 0.72, -Half - 0.38, 1.05, 1.45, 0.2, 0.22, Mat_Mouth);
+      Box (F, -Half - 0.72, -Half - 0.38, 1.5, 1.62, -0.22, 0.22, Mat_Velib);
+      for K in 0 .. Docks - 1 loop
+         declare
+            X : constant Float := -Half + 0.375 + 0.75 * Float (K);
+            Empty : constant Boolean := Hash (X, Seed, 3.0, Float (K)) < 0.25;
+         begin
+            --  the dock: a short grey post, the bike's nose in it
+            Box (F, X - 0.06, X + 0.06, 0.0, 0.85, -0.55, -0.43, Mat_Iron);
+            Box (F, X - 0.08, X + 0.08, 0.75, 0.9, -0.6, -0.4, Mat_Velib);
+            if not Empty then
+               declare
+                  Front : constant Vec3 := At_F (F, X, 0.33, -0.25);
+                  Back  : constant Vec3 := At_F (F, X, 0.33, 0.75);
+                  Seat  : constant Vec3 := At_F (F, X, 0.95, 0.55);
+                  Bars  : constant Vec3 := At_F (F, X, 1.0, -0.15);
+                  Crank : constant Vec3 := At_F (F, X, 0.33, 0.28);
+               begin
+                  Wheel (Front, F.V);
+                  Wheel (Back, F.V);
+                  Bar (Front, Bars, 0.03, Mat_Velib, 4);
+                  Bar (Bars, Crank, 0.035, Mat_Velib, 4);   --  the low frame of the Vélib'
+                  Bar (Crank, Back, 0.03, Mat_Velib, 4);
+                  Bar (Crank, Seat, 0.03, Mat_Velib, 4);
+                  Box (F, X - 0.09, X + 0.09, 0.95, 1.0, 0.45, 0.68, Mat_Tyre);       --  the saddle
+                  Box (F, X - 0.25, X + 0.25, 0.98, 1.03, -0.18, -0.12, Mat_Tyre);    --  the handlebar
+                  Box (F, X - 0.13, X + 0.13, 0.72, 0.9, -0.42, -0.2, Mat_Velib);     --  the basket
+               end;
+            end if;
+         end;
+      end loop;
+      declare
+         S : Float := -Half;
+      begin
+         while S <= Half loop
+            Solid_At (L, F, S, 0.2, 0.7);
+            S := S + 1.2;
+         end loop;
+      end;
+   end Velib_Station;
 
    procedure Build_Cell (K : Cell_Key; C : out Cell) is
       X0 : constant Float := Float (K.CX) * Cell_Size;
@@ -734,6 +845,16 @@ package body Street_Life is
                         Bin (F, C.Solids);
                      elsif H < 0.16 and then Width >= 9.0 then
                         Bench (F, C.Solids);
+                        --  now and then pigeons pecking before it
+                        if HS < 0.45 or else All_Pigeons then
+                           for K in 0 .. 1 + Natural (Float'Floor (HS * 3.0)) loop
+                              C.Pigeons.Append
+                                ((P   => At_F (F, -1.2 + 0.8 * Float (K) + 0.3 * Hash (PX, PZ, Float (K), 1.0),
+                                             0.0, 0.7 + 0.6 * Hash (PZ, PX, Float (K), 2.0)),
+                                  Yaw => 6.3 * Hash (PX, Float (K), PZ, 3.0),
+                                  Fled => -1.0));
+                           end loop;
+                        end if;
                      elsif H < 0.18 then
                         Bollards (F, C.Solids);
                      elsif H < 0.202 and then Width >= 9.0 then
@@ -871,6 +992,32 @@ package body Street_Life is
             end;
          end if;
       end loop;
+      --  Vélib' stations, along the street, by the kerb
+      if not Velibs_Read then
+         Read_Velibs;
+      end if;
+      for P of Velibs loop
+         if Mine (P.X, P.Z) then
+            declare
+               Found : Boolean;
+               RX, RZ, RH : Float;
+            begin
+               Road_Network.Nearest_Road (P.X, P.Z, Found, RX, RZ, RH);
+               if Found then
+                  declare
+                     U : constant Vec3 := (Sin (RH), 0.0, -Cos (RH));
+                     --  V towards the street; the station on its side of it
+                     To_Road : constant Vec3 := (RX - P.X, 0.0, RZ - P.Z);
+                     V0 : constant Vec3 := (-U.Z, 0.0, U.X);
+                     V  : constant Vec3 := (if Dot (V0, To_Road) >= 0.0 then V0 else (-1.0) * V0);
+                     F  : constant Frame := (P => (P.X, Terrain.Height (P.X, P.Z), P.Z), U => U, V => V);
+                  begin
+                     Velib_Station (F, Hash (P.X, P.Z, 9.0, 2.0), C.Solids);
+                  end;
+               end if;
+            end;
+         end if;
+      end loop;
       Meshes.Finish (C.Mesh);
    end Build_Cell;
 
@@ -955,7 +1102,7 @@ package body Street_Life is
 
    ---------------------------------------------------------------------------
 
-   procedure Draw (Model : GL.GLint; Cam : Vec3) is
+   procedure Draw (Model, Paint : GL.GLint; Cam : Vec3) is
       use Cell_Maps;
       CX0 : constant Integer := Integer (Float'Floor ((Cam.X - Reach) / Cell_Size));
       CX1 : constant Integer := Integer (Float'Floor ((Cam.X + Reach) / Cell_Size));
@@ -1054,6 +1201,39 @@ package body Street_Life is
          Meshes.Finish (Float_Mesh);
          Float_Built := True;
       end if;
+      --  the pigeons: pecking, and off when you come close
+      Shaders.Set (Paint, Vec3'(0.42, 0.45, 0.52));   --  slate grey
+      Figures.Set_Locations ((Model => Model, Cloth => Paint, others => <>));
+      for C in Cells.Iterate loop
+         for P of Cells.Reference (C).Element.Pigeons loop
+            if (P.P.X - Cam.X) ** 2 + (P.P.Z - Cam.Z) ** 2 < 60.0 ** 2 then
+               if P.Fled < 0.0 and then (P.P.X - Cam.X) ** 2 + (P.P.Z - Cam.Z) ** 2 < 7.0 ** 2 then
+                  P.Fled := Wind_Time;
+               end if;
+               declare
+                  T : constant Float := (if P.Fled < 0.0 then 0.0 else Wind_Time - P.Fled);
+               begin
+                  if T < 5.0 then
+                     declare
+                        Away : constant Vec3 := (Sin (P.Yaw), 0.0, -Cos (P.Yaw));
+                        Where : constant Vec3 :=
+                          (P.P.X, Terrain.Height (P.P.X, P.P.Z), P.P.Z)
+                          + (5.0 * T) * Away + Vec3'(0.0, 2.5 * T + 0.4 * T * T, 0.0);
+                        Peck : constant Float :=
+                          (if T = 0.0 then 0.6 * Float'Max (0.0, Sin (Wind_Time * 5.0 + P.P.X * 3.0)) ** 3 else 0.0);
+                     begin
+                        if T = 0.0 then
+                           Figures.Pigeon_On_Ground (Translation (Where) * Rotation_Y (-P.Yaw), Peck);
+                        else
+                           Figures.Pigeon (Translation (Where) * Rotation_Y (-P.Yaw), 0.9 * Sin (Wind_Time * 30.0));
+                        end if;
+                     end;
+                  end if;
+               end;
+            end if;
+         end loop;
+      end loop;
+      Shaders.Set (Model, Identity);
       for C in Cells.Iterate loop
          for F of Element (C).Floats loop
             if (F.X - Cam.X) ** 2 + (F.Z - Cam.Z) ** 2 < 140.0 ** 2 then

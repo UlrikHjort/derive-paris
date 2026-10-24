@@ -20,7 +20,8 @@ package Street_Life is
    procedure Update (Dt : Float; Focus_X, Focus_Z : Float);
    --  The newspapers in the wind, around Focus
 
-   procedure Draw (Model : GL.GLint; Cam : Math3D.Vec3);
+   procedure Draw (Model, Paint : GL.GLint; Cam : Math3D.Vec3);
+   --  (Paint: the shader's uCarColor, for the pigeons)
    --  In the solid pass, with alpha to coverage on (posters and tags have
    --  holes); builds the cells it needs (GL context current)
 

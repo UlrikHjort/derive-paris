@@ -354,7 +354,7 @@ package body Game is
       Sky_Zenith, Sky_Horizon, Fog_Density, Time, Car_Color,
       Shadow_Map, Shadows, Amb_Sky, Amb_Ground, Night, Lights, Light_Count,
       Head_Pos, Head_Dir, Head_On, Extra_Color, Extra_Color2, Wet,
-      Tower_Lights, Sparkle, Snow_Cover, Xmas_On, Autumn, Bare, Litter, Gallery : GLint;
+      Tower_Lights, Sparkle, Snow_Cover, Xmas_On, Autumn, Bare, Litter, Trash, Gallery : GLint;
    end record;
    WU : World_Uniforms;
 
@@ -741,6 +741,7 @@ package body Game is
              Autumn        => Location (World_Prog, "uAutumn"),
              Bare          => Location (World_Prog, "uBare"),
              Litter        => Location (World_Prog, "uLitter"),
+             Trash         => Location (World_Prog, "uTrash"),
              Gallery       => Location (World_Prog, "uGallery"),
              Lights        => Location (World_Prog, "uLights"),
              Light_Count   => Location (World_Prog, "uLightCount"),
@@ -865,6 +866,19 @@ package body Game is
    ---------------------------------------------------------------------------
    --  Rendering
    ---------------------------------------------------------------------------
+
+   --  The morning after a fête (the 14th of July, the Fête de la Musique,
+   --  the New Year): paper and cans everywhere, swept away by noon
+   function Party_Morning return Boolean is
+     ((Almanac.Month = 7 and then Almanac.Day = 15) or else (Almanac.Month = 6 and then Almanac.Day = 22)
+      or else (Almanac.Month = 1 and then Almanac.Day = 1));
+   function Trash_Now return Float is
+     (if Party_Morning then Float'Max (0.0, Float'Min (1.0, (12.0 - Hour) / 6.0)) else 0.0);
+
+   --  How many of the people about are sweeping the streets
+   function Sweeper_Share return Float is
+     (if Party_Morning and then Hour >= 5.5 and then Hour < 13.0 then 0.14
+      elsif Hour >= 6.0 and then Hour < 11.0 then 0.025 else 0.0);
 
    function Eye_Position return Vec3 is
      (Home.Origin + Eye_S * Home.Along + Eye_D * Home.Inward
@@ -1193,6 +1207,7 @@ package body Game is
          Set (WU.Autumn, Almanac.Autumn_Colour);
          Set (WU.Bare, Almanac.Bare);
          Set (WU.Litter, Almanac.Leaf_Litter * (1.0 - Snow_Cover));
+         Set (WU.Trash, Trash_Now);
          Set (WU.Time, Time);
          Set (WU.Car_Color, Car_Color);
          Set (WU.Shadow_Map, 0);
@@ -1239,7 +1254,7 @@ package body Game is
          World.Cull_To (VP);
          glEnable (GL_SAMPLE_ALPHA_TO_COVERAGE);
          World.Draw_Solid;
-         Street_Life.Draw (WU.Model, Cam_Pos);   --  benches, bins, posters, tags, papers
+         Street_Life.Draw (WU.Model, WU.Car_Color, Cam_Pos);   --  benches, bins, posters, tags, papers
          Scenes.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos.X, Cam_Pos.Z);
          Stravinsky.Draw (WU.Model, WU.Car_Color, Cam_Pos);
          Moulin.Draw (WU.Model, WU.Car_Color, Cam_Pos);
@@ -3476,6 +3491,7 @@ package body Game is
 
    Density_Wait : Float := 0.0;
 
+
    --  How busy the streets are at this hour, against normal
    function Traffic_Factor (H : Float) return Float is
       Weekday : constant Boolean := not Almanac.Saturday and then not Almanac.Sunday;
@@ -3964,6 +3980,7 @@ package body Game is
             Moulin.Update (Dt);
             Extras.Update (Dt, Hour, Night,
                            (if Walking then Vec3'(Walk_X, 0.0, Walk_Z) else Vec3'(Player.X, 0.0, Player.Z)));
+            Pedestrians.Set_Sweepers ((if Env ("PARIS_SWEEPERS") /= "" then 0.5 else Sweeper_Share));
             Pedestrians.Update (Dt, Focus.X, Focus.Z, Focus_Heading, Player);
             Add (C_Traffic, T0);
          end;

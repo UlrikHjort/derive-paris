@@ -171,6 +171,17 @@ forgets it.  They are kept in `~/.derive_places`, one per line as
 `latitude longitude name`, so the names can be changed there.  Saved
 places show as green diamonds on the minimap.
 
+### The street
+
+Besides the traffic and the people walking (some with a dog, a baguette
+or a bag), the streets have the Vélib' stations where OpenStreetMap has
+them (`data/velib.txt`, `scripts/download_velib.sh`), pigeons pecking
+before the benches that fly off when you come close, delivery vans
+unloading, and in the mornings the green street sweepers with their
+brooms.  The morning after the 14th of July, the Fête de la Musique and
+New Year's Eve, the pavements are strewn with flyers, cups and cans, and
+the sweepers are out in force; by noon it is clean again.
+
 ### Time trials
 
 F2, **Time trials**: runs through Paris against the clock, in the

@@ -18,7 +18,7 @@ package body Figures is
    Torso, Leg_L, Leg_R, Arm_R, Kepi_M, Helmet_M, Cap_M,
    Guitar_M, Accordion_M, Drum_M, Violin_M,
    Bike_M, Rider_M, Crank_M, Cat_Body, Cat_Tail, Bird_Body, Wing_L, Wing_R,
-   Ball_M : Meshes.Mesh;
+   Ball_M, Sitting_M : Meshes.Mesh;
 
    Hip : constant := 0.9;
 
@@ -127,6 +127,17 @@ package body Figures is
       Start;
       Box (-1.0, 1.0, -1.0, 1.0, -1.0, 1.0, Mat_Fur);
       Finish (Ball_M);
+      --  a pigeon on the ground, wings folded: slate grey (the paint), a
+      --  darker tail, the neck a little green
+      Start;
+      Box (-0.055, 0.055, 0.05, 0.15, -0.1, 0.12, Mat_Paint, Top_Inset_X => 0.01);
+      Box (-0.065, 0.065, 0.08, 0.15, -0.04, 0.15, Mat_Paint);                   --  the folded wings
+      Box (-0.035, 0.035, 0.08, 0.11, 0.12, 0.22, Mat_Tyre);                     --  tail
+      Box (-0.035, 0.035, 0.13, 0.21, -0.15, -0.08, Mat_Paint);                  --  neck
+      Box (-0.03, 0.03, 0.19, 0.25, -0.2, -0.12, Mat_Paint);                     --  head
+      Box (-0.008, 0.008, 0.21, 0.225, -0.235, -0.2, Mat_Gold);                  --  beak
+      Box (-0.025, 0.025, 0.0, 0.05, -0.02, 0.02, Mat_Taillight);                --  red feet
+      Finish (Sitting_M);
    end Create;
 
    procedure Set_Locations (Loc : Locations) is
@@ -203,6 +214,14 @@ package body Figures is
                    * Translation ((0.0, -0.25, -0.2)));
       Meshes.Draw (Cat_Tail);
    end Cat;
+
+   procedure Pigeon_On_Ground (M : Mat4; Peck : Float) is
+   begin
+      --  the head goes down to peck: the whole bird tips forward a little
+      Shaders.Set (L.Model, M * Translation ((0.0, 0.05, 0.0)) * Rotation_X (-Peck)
+                   * Translation ((0.0, -0.05, 0.0)));
+      Meshes.Draw (Sitting_M);
+   end Pigeon_On_Ground;
 
    procedure Pigeon (M : Mat4; Flap : Float) is
    begin

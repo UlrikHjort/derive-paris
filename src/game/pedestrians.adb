@@ -29,7 +29,7 @@ package body Pedestrians is
    Hip         : constant := 0.92;
 
    --  What some of them have with them
-   type Extra_Kind is (None, Small_Dog, Big_Dog, Baguette, Bag);
+   type Extra_Kind is (None, Small_Dog, Big_Dog, Baguette, Bag, Broom);
 
    type Walker is record
       Active  : Boolean := False;
@@ -59,7 +59,13 @@ package body Pedestrians is
    Primed  : Boolean := False;
 
    Body_Mesh, Left_Leg, Right_Leg, Santa_Mesh : Meshes.Mesh;
-   Dog_Body, Dog_Leg, Baguette_Mesh, Bag_Mesh : Meshes.Mesh;
+   Dog_Body, Dog_Leg, Baguette_Mesh, Bag_Mesh, Broom_Mesh : Meshes.Mesh;
+   Sweepers : Float := 0.0;
+
+   procedure Set_Sweepers (Share : Float) is
+   begin
+      Sweepers := Share;
+   end Set_Sweepers;
    Leads : array (Small_Dog .. Big_Dog, Boolean) of Meshes.Mesh;   --  (True: on the right)
 
    Coats : constant array (0 .. 5) of Vec3 :=
@@ -199,6 +205,27 @@ package body Pedestrians is
       Box (0.24, 0.36, 0.5, 0.82, -0.12, 0.12, 39.0);
       Box (0.29, 0.31, 0.82, 0.9, -0.06, 0.06, 39.0);
       Finish (Bag_Mesh);
+      --  the long broom of the Paris street sweepers: a handle from the
+      --  hands down to the ground before them, green twigs at its end
+      Start;
+      declare
+         A : constant Vec3 := (0.22, 1.0, -0.15);
+         B : constant Vec3 := (0.05, 0.12, -0.75);
+         N : constant Natural := 8;
+      begin
+         for I in 0 .. N - 1 loop
+            declare
+               P : constant Vec3 := A + (Float (I) / Float (N)) * (B - A);
+               Q : constant Vec3 := A + (Float (I + 1) / Float (N)) * (B - A);
+            begin
+               Box (Float'Min (P.X, Q.X) - 0.018, Float'Max (P.X, Q.X) + 0.018,
+                    Float'Min (P.Y, Q.Y) - 0.018, Float'Max (P.Y, Q.Y) + 0.018,
+                    Float'Min (P.Z, Q.Z) - 0.018, Float'Max (P.Z, Q.Z) + 0.018, 13.0);
+            end;
+         end loop;
+         Box (B.X - 0.2, B.X + 0.2, 0.0, 0.16, B.Z - 0.12, B.Z + 0.08, 56.0);
+      end;
+      Finish (Broom_Mesh);
       for Side in 0 .. 1 loop
          declare
             X0 : constant Float := (if Side = 0 then -0.18 else 0.02);
@@ -301,6 +328,13 @@ package body Pedestrians is
                               W.Speed := 1.0 + 0.3 * Rnd;   --  a dog's pace
                            end if;
                         end;
+                        if Rnd < Sweepers then
+                           --  the green of the Paris street sweepers
+                           W.Extra := Broom;
+                           W.Shirt := (0.36, 0.62, 0.26);
+                           W.Legs := (0.2, 0.42, 0.18);
+                           W.Speed := 0.45 + 0.2 * Rnd;   --  sweeping as they go
+                        end if;
                         if Santas_On and then Rnd < Santa_Share then
                            W.Santa := True;
                            W.Shirt := (0.72, 0.06, 0.06);
@@ -462,6 +496,12 @@ package body Pedestrians is
                   when Baguette =>
                      Shaders.Set (Model_Loc, M);
                      Meshes.Draw (Baguette_Mesh);
+                  when Broom =>
+                     --  swept from side to side
+                     Shaders.Set (Model_Loc, M * Translation ((0.22, 1.0, -0.15))
+                                  * Rotation_Y (0.45 * Sin (W.Phase * 0.8))
+                                  * Translation ((-0.22, -1.0, 0.15)));
+                     Meshes.Draw (Broom_Mesh);
                   when Bag =>
                      Shaders.Set (Model_Loc, M * Translation ((0.3, 0.9, 0.0)) * Rotation_X (0.5 * Swing)
                                   * Translation ((-0.3, -0.9, 0.0)));
