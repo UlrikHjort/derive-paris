@@ -33,6 +33,10 @@ package Street_Life is
    --  stairs begin, and the way they go down (U)
 
    function At_Entrance (X, Z : Float) return Boolean;
+
+   procedure Nearest_Velib (X, Z, Max : Float; Found : out Boolean; BX, BZ, Heading : out Float);
+   --  The Vélib' station nearest (X, Z) within Max metres (not in 1973):
+   --  where a bike taken from it stands, ready to go along the street
    --  On foot at the top of a metro entrance's stairs
 
    procedure Collide (S : in out Car.State);

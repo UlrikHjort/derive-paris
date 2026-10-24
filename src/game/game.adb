@@ -222,6 +222,17 @@ package body Game is
    Taxi_Goal    : Natural := 0;       --  the taxi goal the GPS has
    Trial_Goal   : Natural := Natural'Last;   --  the time trial goal the GPS has
    Round_Goal   : Natural := Natural'Last;   --  the morning round's, likewise
+   Riding_Velib : Boolean := False;          --  on a Vélib', the car parked
+   Parked       : Car.State;                 --  where the car was left meanwhile
+
+   --  The player's own car: as chosen in ~/.deriverc, or a DS in 1973
+   function Usual_Model return Car.Model_Kind is
+      M : constant String := Config.Get ("car", "modern");
+   begin
+      return (if Era.In_1973 then Car.DS
+              elsif M = "2cv" then Car.Deux_Chevaux elsif M = "ds" then Car.DS elsif M = "r4" then Car.R4
+              else Car.Modern);
+   end Usual_Model;
    Panel_Shown  : Ada.Strings.Unbounded.Unbounded_String;   --  the taxi's ride panel
    Gate_X, Gate_Z : Float := 0.0;      --  where the GPS points
    Sign    : Gtk.Label.Gtk_Label;      --  street name, like a Paris plaque
@@ -1177,7 +1188,8 @@ package body Game is
          VP   : constant Mat4 := Proj * View;
          LVP  : constant Mat4 := Light_View_Proj;
          Car_M : constant Mat4 := Car.Model_Matrix (Player)
-           * (if Car."=" (Car.Player_Model, Car.Scooter) then Rotation_Z (-Car.Lean (Player)) else Identity);
+           * (if Car."=" (Car.Player_Model, Car.Scooter) or else Car."=" (Car.Player_Model, Car.Velib)
+              then Rotation_Z (-Car.Lean (Player)) else Identity);
       begin
          --  Shadow pass
          Begin_Pass (P_Shadow);
@@ -1196,6 +1208,10 @@ package body Game is
          Set (Sh_Erase_N, Integer'(0));
          Set (Sh_Model, Car_M);
          Car.Draw;
+         if Riding_Velib then
+            Set (Sh_Model, Car.Model_Matrix (Parked));
+            Car.Draw_Model (Usual_Model);
+         end if;
          Traffic.Draw (Sh_Model, GLint (-1));
          Pedestrians.Draw (Sh_Model, -1, -1, -1, Cam_Pos.X, Cam_Pos.Z, 50.0);
          if Mode = Flying then
@@ -1316,7 +1332,17 @@ package body Game is
          Landscape.Draw;   --  the hills beyond the loaded tiles
          Set (WU.Model, Car_M);
          Set (WU.Car_Color, (if Taxi.Active then Taxi_Black else Car_Color));
+         if Riding_Velib then
+            Set (WU.Extra_Color, Vec3'(0.8, 0.62, 0.5));     --  your face
+            Set (WU.Extra_Color2, Vec3'(0.15, 0.17, 0.25));  --  your jeans
+            Set (WU.Car_Color, Vec3'(0.55, 0.38, 0.22));     --  your jacket
+         end if;
          Car.Draw;
+         if Riding_Velib then
+            Set (WU.Model, Car.Model_Matrix (Parked));
+            Set (WU.Car_Color, Car_Color);
+            Car.Draw_Model (Usual_Model);
+         end if;
          Traffic.Draw (WU.Model, WU.Car_Color);
          if not In_Museum and then not In_Hall_B and then not In_Room then
             Birds.Draw (WU.Model, WU.Car_Color, Cam_Pos);
@@ -1928,7 +1954,41 @@ package body Game is
    procedure Toggle_Walk is
       Side_X : constant Float := -Cos (Player.Heading);   --  the driver's side (left)
       Side_Z : constant Float := -Sin (Player.Heading);
+      procedure Say (Text : String; Seconds : Float) is
+      begin
+         Announce := Ada.Strings.Unbounded.To_Unbounded_String (Text);
+         Announce_Timer := Seconds;
+         Street_Timer := 1.0;
+      end Say;
    begin
+      if not Walking and then Riding_Velib then
+         --  off the Vélib': only at a station, where it locks into a dock
+         declare
+            Found : Boolean;
+            BX, BZ, BH : Float;
+         begin
+            Street_Life.Nearest_Velib (Player.X, Player.Z, 14.0, Found, BX, BZ, BH);
+            if not Found then
+               Say ("Leave the Vélib' at a station (Q there)", 2.5);
+               return;
+            end if;
+            if abs Player.Speed > 1.5 then
+               Say ("Stop first", 1.5);
+               return;
+            end if;
+            Walking := True;
+            Walk_X := Player.X + 1.0 * Side_X;
+            Walk_Z := Player.Z + 1.0 * Side_Z;
+            Walk_Yaw := Player.Heading;
+            Walk_Pitch := 0.0;
+            Capture_Mouse (True);
+            Riding_Velib := False;
+            Player := Parked;
+            Car.Set_Player_Model (Usual_Model);
+            Say ("The Vélib' is back in its dock.  Q: back to the car", 3.0);
+            return;
+         end;
+      end if;
       if not Walking then
          if Mode /= Driving or else Visiting then
             return;
@@ -1967,6 +2027,30 @@ package body Game is
          Announce_Timer := 2.0;
          Street_Timer := 1.0;
       else
+         --  by a Vélib' station: take a bike (the car stays where it is)
+         declare
+            Found : Boolean;
+            BX, BZ, BH : Float;
+         begin
+            Street_Life.Nearest_Velib (Walk_X, Walk_Z, 10.0, Found, BX, BZ, BH);
+            if Found and then Mode = Driving then
+               if Cos (BH - Walk_Yaw) < 0.0 then
+                  BH := BH + Ada.Numerics.Pi;   --  the way you face
+               end if;
+               Parked := Player;
+               Player := Car.On_Ground (BX, BZ, BH);
+               Player.Ground := Terrain.Height (BX, BZ);
+               Car.Set_Player_Model (Car.Velib);
+               Riding_Velib := True;
+               Walking := False;
+               Capture_Mouse (False);
+               Traffic.Set_Walker (False, 0.0, 0.0);
+               Cam_Pos := (Player.X, 4.0 + Player.Ground, Player.Z) - 6.0 * Car.Forward (Player);
+               Cam_Look := (Player.X, 1.2 + Player.Ground, Player.Z);
+               Say ("On a Vélib'!  Ride to another station and Q there to leave it", 4.0);
+               return;
+            end if;
+         end;
          declare
             DX : constant Float := Player.X - Walk_X;
             DZ : constant Float := Player.Z - Walk_Z;
@@ -2577,14 +2661,6 @@ package body Game is
    --  one around you, and a track editor
    ---------------------------------------------------------------------------
 
-   --  The player's own car: as chosen in ~/.deriverc, or a DS in 1973
-   function Usual_Model return Car.Model_Kind is
-      M : constant String := Config.Get ("car", "modern");
-   begin
-      return (if Era.In_1973 then Car.DS
-              elsif M = "2cv" then Car.Deux_Chevaux elsif M = "ds" then Car.DS elsif M = "r4" then Car.R4
-              else Car.Modern);
-   end Usual_Model;
 
    --  The games menu: the games at the top, each with its own menu below
    type Menu_Level is (Games, Racing, Tracks, Taxi_Menu, Trials_Menu, Rounds_Menu);
@@ -2849,7 +2925,7 @@ package body Game is
 
    procedure Begin_Taxi is
    begin
-      if Visiting or else Walking or else Mode /= Driving then
+      if Visiting or else Walking or else Riding_Velib or else Mode /= Driving then
          Say ("Get back in the car first");
          return;
       end if;
@@ -2868,7 +2944,7 @@ package body Game is
    procedure Begin_Race (Track : Natural) is
       Ok : Boolean;
    begin
-      if Visiting or else Walking or else Mode /= Driving then
+      if Visiting or else Walking or else Riding_Velib or else Mode /= Driving then
          Say ("Get back in the car first");
          return;
       end if;
@@ -2903,7 +2979,7 @@ package body Game is
    procedure Begin_Again is
       Ok : Boolean;
    begin
-      if Visiting or else Walking or else Mode /= Driving then
+      if Visiting or else Walking or else Riding_Velib or else Mode /= Driving then
          Say ("Get back in the car first");
          return;
       end if;
@@ -2926,7 +3002,7 @@ package body Game is
 
    procedure Begin_Trial (I : Natural) is
    begin
-      if Visiting or else Walking or else Mode /= Driving then
+      if Visiting or else Walking or else Riding_Velib or else Mode /= Driving then
          Say ("Get back in the car first");
          return;
       end if;
@@ -2952,7 +3028,7 @@ package body Game is
    --  The morning round: on the baker's scooter at the bakery's door
    procedure Begin_Round (I : Natural) is
    begin
-      if Visiting or else Walking or else Mode /= Driving then
+      if Visiting or else Walking or else Riding_Velib or else Mode /= Driving then
          Say ("Get back in the car first");
          return;
       end if;
@@ -3647,7 +3723,7 @@ package body Game is
           Night    => Night,
           Traffic  => Float'Max (0.0, 1.0 - Traffic.Nearest (Where.X, Where.Z) / 60.0),
           Horn     => Keys.B or else Wheel.Held (Wheel.Enter),
-          Engine_Off => Mode = Driving and then not Visiting and then Race.Wrecked,
+          Engine_Off => Mode = Driving and then not Visiting and then (Race.Wrecked or else Riding_Velib),
           Two_Stroke => Car."=" (Car.Player_Model, Car.Scooter),
           Church   => Church_Near,
           Jingle   => Sleigh.Jingle,
@@ -3970,6 +4046,26 @@ package body Game is
             Trials.Goal (Serial, X, Z, Name);
             Player := (X => X, Z => Z, Heading => Player.Heading, others => <>);
             Player.Ground := Terrain.Height (X, Z);
+         end;
+      end if;
+      --  PARIS_VELIB=1: on foot to the nearest Vélib' station, and a bike
+      --  from it (testing)
+      if Ready and then Frame_Number = 40 and then Env ("PARIS_VELIB") /= "" then
+         declare
+            Found : Boolean;
+            BX, BZ, BH : Float;
+         begin
+            Street_Life.Nearest_Velib (Player.X, Player.Z, 3000.0, Found, BX, BZ, BH);
+            if Found then
+               Player.Speed := 0.0;
+               if not Walking then
+                  Toggle_Walk;
+               end if;
+               Walk_X := BX;
+               Walk_Z := BZ;
+               Walk_Yaw := BH;
+               Toggle_Walk;
+            end if;
          end;
       end if;
       --  PARIS_RADIO=1: the radio on (testing)

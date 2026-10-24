@@ -203,6 +203,14 @@ their lines, in `data/metro_stations.txt`) and Enter: you ride in the car
 while the tunnel lights rush by, and come up the stairs of the entrance
 nearest that station.  Q takes you back up where you came down.
 
+### On a Vélib'
+
+On foot by a Vélib' station, **Q** takes one of the mint-green bikes: ride
+it through the town at up to 23 km/h, slipping through where a car would
+not, while your car waits where you left it.  To get off, ride to another
+station and press **Q** there: the bike goes back in its dock and you are
+on foot again (Q once more takes you back to the car).
+
 ### On the Seine
 
 Bateaux-mouches go up and down the river with tourists on their open

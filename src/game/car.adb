@@ -320,6 +320,9 @@ package body Car is
       if Current_Model = Scooter then
          --  a 50 cc scooter: 55 km/h at most, flat out
          S.Speed := Float'Max (-3.0, Float'Min (15.5, S.Speed));
+      elsif Current_Model = Velib then
+         --  a heavy town bike: 23 km/h pedalling hard, and walking it back
+         S.Speed := Float'Max (-1.5, Float'Min (6.4, S.Speed));
       end if;
 
       --  Steering: less lock at speed, returns to centre when released;
@@ -360,7 +363,7 @@ package body Car is
       S.Bumped := False;
       for Offset of Float_Array'(Circle_Offset, -Circle_Offset) loop
          declare
-            Two_Wheels : constant Boolean := Current_Model = Scooter;
+            Two_Wheels : constant Boolean := Current_Model in Scooter | Velib;
             Along : constant Float := (if Two_Wheels then 0.45 * Offset else Offset);
             Radius : constant Float := (if Two_Wheels then 0.45 else Body_Radius);
             FX : constant Float := Sin (S.Heading) * Along;
@@ -554,6 +557,37 @@ package body Car is
          end loop;
       end loop;
       Finish (Models (Scooter));
+
+      --  The Vélib': the mint-green step-through frame, the basket in
+      --  front, and you on it in your jacket (paint, matt), trousers and
+      --  face in the walkers' colours (extra colours)
+      Start;
+      Box (-0.03, 0.03, 0.0, 0.66, -0.88, -0.22, Mat_Tyre);             --  wheels
+      Box (-0.03, 0.03, 0.0, 0.66, 0.22, 0.88, Mat_Tyre);
+      Box (-0.04, 0.04, 0.3, 0.42, -0.55, 0.55, 87.0);                  --  the low frame
+      Box (-0.04, 0.04, 0.36, 0.95, 0.1, 0.22, 87.0);                   --  the seat tube
+      Box (-0.04, 0.04, 0.35, 1.08, -0.62, -0.52, 87.0);                --  the head tube
+      Box (-0.04, 0.04, 0.3, 0.7, 0.45, 0.6, 87.0);                     --  the rear fork
+      Box (-0.3, 0.3, 1.04, 1.08, -0.5, -0.44, Mat_Tyre);              --  the handlebar
+      Box (-0.17, 0.17, 0.78, 1.02, -0.9, -0.6, 87.0);                  --  the basket
+      Box (-0.13, 0.13, 0.94, 1.0, 0.0, 0.3, Mat_Tyre);                 --  the saddle
+      Box (-0.1, 0.1, 0.3, 0.42, 0.62, 0.8, 87.0);                      --  the rear light
+      Box (-0.04, 0.04, 0.33, 0.39, 0.8, 0.82, Mat_Taillight);
+      Box (-0.04, 0.04, 0.85, 0.95, -0.92, -0.9, Mat_Headlight);
+      Box (-0.17, 0.17, 0.95, 1.13, -0.3, 0.2, Mat_Trousers);           --  thighs
+      for Side of Float_Array'(-1.0, 1.0) loop
+         Box (Side * 0.11 - 0.06, Side * 0.11 + 0.06, 0.25, 1.0, -0.38, -0.24, Mat_Trousers);   --  shins
+         Box (Side * 0.11 - 0.06, Side * 0.11 + 0.06, 0.2, 0.28, -0.46, -0.24, Mat_Tyre);       --  shoes
+      end loop;
+      Box (-0.21, 0.21, 1.1, 1.68, -0.12, 0.24, Mat_Cloth, Top_Inset_X => 0.03,
+           Top_Inset_Front => 0.06);                                    --  the jacket
+      for Side of Float_Array'(-1.0, 1.0) loop
+         Box (Side * 0.26 - 0.05, Side * 0.26 + 0.05, 1.08, 1.6, -0.48, 0.05, Mat_Cloth);   --  arms
+      end loop;
+      Box (-0.07, 0.07, 1.66, 1.76, -0.02, 0.1, Mat_Skin);              --  neck
+      Box (-0.12, 0.12, 1.74, 2.0, -0.1, 0.14, Mat_Skin, Top_Inset_X => 0.02);   --  head
+      Box (-0.13, 0.13, 1.92, 2.04, -0.08, 0.16, Mat_Tyre, Top_Inset_X => 0.03);  --  hair
+      Finish (Models (Velib));
    end Create_Mesh;
 
    procedure Set_Player_Model (M : Model_Kind) is

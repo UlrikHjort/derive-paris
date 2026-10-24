@@ -587,6 +587,44 @@ package body Street_Life is
          end if;
    end Read_Velibs;
 
+   procedure Nearest_Velib (X, Z, Max : Float; Found : out Boolean; BX, BZ, Heading : out Float) is
+      Best : Float := Max * Max;
+   begin
+      Found := False;
+      BX := X;
+      BZ := Z;
+      Heading := 0.0;
+      if Era.In_1973 then
+         return;
+      end if;
+      if not Velibs_Read then
+         Read_Velibs;
+      end if;
+      for P of Velibs loop
+         declare
+            D : constant Float := (P.X - X) ** 2 + (P.Z - Z) ** 2;
+            Ok : Boolean;
+            RX, RZ, RH : Float;
+         begin
+            if D < Best then
+               Road_Network.Nearest_Road (P.X, P.Z, Ok, RX, RZ, RH);
+               if Ok then
+                  declare
+                     L : constant Float := Float'Max (0.01, Sqrt ((RX - P.X) ** 2 + (RZ - P.Z) ** 2));
+                     Out_By : constant Float := Float'Min (2.0, L);
+                  begin
+                     Best := D;
+                     Found := True;
+                     BX := P.X + Out_By * (RX - P.X) / L;
+                     BZ := P.Z + Out_By * (RZ - P.Z) / L;
+                     Heading := RH;
+                  end;
+               end if;
+            end if;
+         end;
+      end loop;
+   end Nearest_Velib;
+
    --  F: the middle of the station, U along the street, V towards it
    procedure Velib_Station (F : Frame; Seed : Float; L : in out Solid_Vectors.Vector) is
       Docks : constant Positive := 8 + Natural (Float'Floor (Seed * 7.0));
