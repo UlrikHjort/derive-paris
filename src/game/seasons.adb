@@ -36,6 +36,8 @@ package body Seasons is
    function Heat return Float is (Heat_Now);
    function Flood return Float is (Flood_Now);
 
+   type Float_List is array (Positive range <>) of Float;
+
    function Smooth (A, B, X : Float) return Float is
       T : constant Float := Float'Max (0.0, Float'Min (1.0, (X - A) / (B - A)));
    begin
@@ -267,24 +269,56 @@ package body Seasons is
       ZZ := Float (Z);
       ZY := Terrain.Height (ZX, ZZ) - River.Depth + Feet_Above;
 
-      --  front is -Z; some 5 m tall, on a ledge of the pier
+      --  front is -Z; some 5 m tall, his feet at 0, on a ledge before
+      --  the bridge's pier
       Start;
-      Box (-1.3, 1.3, -Feet_Above - 2.0, 0.0, -1.1, 1.4, Stone);            --  the pier's ledge
-      Box (-0.62, -0.12, 0.0, 0.55, -0.45, 0.35, Stone);                    --  gaiters and feet
-      Box (0.12, 0.62, 0.0, 0.55, -0.45, 0.35, Stone);
-      Box (-0.8, 0.8, 0.5, 2.55, -0.55, 0.55, Stone,
-           Top_Inset_X => 0.12, Top_Inset_Front => 0.1, Top_Inset_Back => 0.1);   --  the baggy saroual
-      Box (-0.68, 0.68, 2.5, 2.85, -0.45, 0.45, Stone);                     --  the sash
-      Box (-0.7, 0.7, 2.85, 4.15, -0.42, 0.4, Stone,
-           Top_Inset_X => 0.08, Top_Inset_Front => 0.05);                   --  the short jacket
-      Box (-0.95, -0.7, 2.55, 4.05, -0.25, 0.25, Stone, Top_Inset_X => 0.03);  --  arms
-      Box (0.7, 0.95, 2.55, 4.05, -0.25, 0.25, Stone, Top_Inset_X => 0.03);
-      Box (-0.3, 0.3, 4.1, 4.3, -0.25, 0.25, Stone);                        --  neck
-      Box (-0.3, 0.3, 4.3, 4.85, -0.32, 0.28, Stone);                       --  head
-      Box (-0.26, 0.26, 4.05, 4.5, -0.42, -0.3, Stone, Top_Inset_X => 0.05);   --  the beard
-      Box (-0.32, 0.32, 4.8, 5.15, -0.3, 0.28, Stone, Top_Inset_X => 0.03,
-           Top_Inset_Front => 0.03, Top_Inset_Back => 0.03);                --  the chéchia
-      Box (0.18, 0.3, 4.6, 5.0, 0.2, 0.32, Stone);                          --  its tassel
+      Box (-1.3, 1.3, -Feet_Above - 2.0, 0.0, -1.1, 1.4, Stone);            --  the ledge
+      Box (-2.2, 2.2, -Feet_Above - 2.0, River.Depth - Feet_Above - 0.3, 1.4, 2.4, Stone);   --  the pier behind
+      --  the gauge painted on the pier beside him: white, a black mark
+      --  every 10 cm, longer at the half metres and metres, from the
+      --  usual level of the river up
+      Box (1.45, 1.75, -Feet_Above, River.Depth - Feet_Above - 0.5, 1.37, 1.4, 80.0);
+      for K in 0 .. Natural ((River.Depth - 0.5) * 10.0) loop
+         declare
+            Y : constant Float := -Feet_Above + 0.1 * Float (K);
+            W : constant Float := (if K mod 10 = 0 then 0.3 elsif K mod 5 = 0 then 0.2 else 0.1);
+         begin
+            Box (1.45, 1.45 + W, Y - 0.012, Y + 0.012, 1.355, 1.37, 17.0);
+         end;
+      end loop;
+      --  boots and gaiters
+      for Side of Float_List'(-1.0, 1.0) loop
+         Box (Side * 0.3 - 0.17, Side * 0.3 + 0.17, 0.0, 0.18, -0.6, 0.25, Stone, Top_Inset_Front => 0.15);
+         Box (Side * 0.3 - 0.15, Side * 0.3 + 0.15, 0.15, 0.95, -0.2, 0.18, Stone, Top_Inset_X => 0.02);
+      end loop;
+      --  the saroual: ballooning below the knee, gathered at the waist
+      Box (-0.78, 0.78, 0.85, 1.75, -0.5, 0.48, Stone, Top_Inset_X => 0.0);
+      Box (-0.8, 0.8, 1.75, 2.55, -0.5, 0.48, Stone, Top_Inset_X => 0.16,
+           Top_Inset_Front => 0.06, Top_Inset_Back => 0.06);
+      Box (-0.68, 0.68, 2.5, 2.85, -0.42, 0.42, Stone);                     --  the sash
+      Box (-0.6, 0.6, 2.85, 4.0, -0.34, 0.34, Stone, Top_Inset_X => 0.02);  --  the vest
+      for Side of Float_List'(-1.0, 1.0) loop
+         Box (Side * 0.66 - 0.16, Side * 0.66 + 0.16, 3.05, 4.1, -0.4, 0.36, Stone,
+              Top_Inset_X => 0.04);                                         --  the open jacket
+      end loop;
+      Box (-0.82, 0.82, 1.9, 4.05, 0.36, 0.56, Stone, Top_Inset_X => 0.18);   --  the cape behind
+      --  right arm down, the hand on his rifle, its butt on the ground
+      Box (0.82, 1.06, 2.65, 4.0, -0.18, 0.18, Stone, Top_Inset_X => 0.02);
+      Box (0.86, 1.04, 2.45, 2.7, -0.2, 0.08, Stone);
+      Box (1.03, 1.13, 0.0, 3.6, -0.24, -0.12, Stone);
+      Box (1.01, 1.15, 0.0, 0.45, -0.3, -0.08, Stone);
+      --  left arm bent, the fist on his hip
+      Box (-1.06, -0.82, 3.2, 4.0, -0.16, 0.16, Stone);
+      Box (-1.02, -0.62, 2.85, 3.2, -0.14, 0.14, Stone);
+      --  the head: a full beard, the turban round the chéchia, the tassel
+      Box (-0.17, 0.17, 4.0, 4.22, -0.17, 0.17, Stone);
+      Box (-0.27, 0.27, 4.2, 4.78, -0.3, 0.26, Stone, Top_Inset_X => 0.03);
+      Box (-0.27, 0.27, 3.85, 4.42, -0.42, -0.18, Stone, Top_Inset_X => 0.06,
+           Top_Inset_Front => 0.08);
+      Box (-0.33, 0.33, 4.68, 4.92, -0.34, 0.3, Stone);
+      Box (-0.24, 0.24, 4.9, 5.2, -0.24, 0.22, Stone, Top_Inset_X => 0.03,
+           Top_Inset_Front => 0.03, Top_Inset_Back => 0.03);
+      Box (-0.06, 0.06, 4.55, 5.1, 0.22, 0.34, Stone);
       Finish (Statue);
 
       --  the flood over the lower quays: a sheet of water across the
@@ -363,7 +397,7 @@ package body Seasons is
          Build;
       end if;
       if (Cam.X - ZX) ** 2 + (Cam.Z - ZZ) ** 2 < 900.0 ** 2 then
-         Shaders.Set (Model, Translation ((ZX, ZY, ZZ)) * Rotation_Y (-Ada.Numerics.Pi / 2.0));   --  facing upstream
+         Shaders.Set (Model, Translation ((ZX, ZY, ZZ)) * Rotation_Y (-Ada.Numerics.Pi / 2.0));   --  facing upstream (east)
          Meshes.Draw (Statue);
       end if;
       if Flood_Now > 0.3 then
