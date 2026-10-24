@@ -3729,17 +3729,36 @@ package body Game is
 
 
    --  How busy the streets are at this hour, against normal
+   --  How busy the streets are through the day: empty in the small hours,
+   --  slowly waking from five, the rush hours on weekdays; on Saturdays and
+   --  more so on Sundays the morning stays quiet till late
    function Traffic_Factor (H : Float) return Float is
       Weekday : constant Boolean := not Almanac.Saturday and then not Almanac.Sunday;
+      type Point is record
+         Hour, Level : Float;
+      end record;
+      type Curve is array (Positive range <>) of Point;
+      Week : constant Curve :=
+        ((0.0, 0.4), (2.0, 0.25), (4.5, 0.15), (5.5, 0.25), (6.5, 0.45), (7.5, 0.9), (8.0, 1.5),
+         (9.0, 1.6), (9.75, 1.0), (16.5, 1.05), (17.5, 1.6), (19.0, 1.5), (20.0, 1.0), (22.0, 0.75),
+         (24.0, 0.4));
+      Weekend : constant Curve :=
+        ((0.0, 0.6), (3.0, 0.4), (5.0, 0.2), (7.0, 0.2), (9.0, 0.45), (11.0, 0.85), (13.0, 1.0),
+         (19.0, 1.0), (22.0, 0.85), (24.0, 0.6));
+      function Along (C : Curve) return Float is
+      begin
+         for I in C'First .. C'Last - 1 loop
+            if H >= C (I).Hour and then H < C (I + 1).Hour then
+               return C (I).Level + (C (I + 1).Level - C (I).Level)
+                 * (H - C (I).Hour) / (C (I + 1).Hour - C (I).Hour);
+            end if;
+         end loop;
+         return C (C'Last).Level;
+      end Along;
    begin
-      if Weekday and then ((H >= 8.0 and then H < 9.5) or else (H >= 17.0 and then H < 19.5)) then
-         return 1.6;   --  rush hour
-      elsif H < 5.5 or else H >= 23.5 then
-         return 0.45;  --  the dead of night
-      elsif H < 7.0 then
-         return 0.7;
-      end if;
-      return 1.0;
+      return (if Weekday then Along (Week)
+              elsif Almanac.Sunday then 0.85 * Along (Weekend)
+              else Along (Weekend));
    end Traffic_Factor;
 
    Tick_Failed : Natural := 0;   --  errors in frames told about
