@@ -10,6 +10,9 @@ with Ada.Strings.Fixed;
 with Ada.Text_IO;
 
 with Geo;
+with Math3D;
+with Meshes;
+with Shaders;
 with Road_Network;
 with Sound;
 with Terrain;
@@ -23,6 +26,7 @@ package body Trials is
 
    type Point is record
       X, Z : Float := 0.0;
+      H    : Float := 0.0;   --  the road's heading there (once on the road)
    end record;
    package Point_Vectors is new Ada.Containers.Vectors (Positive, Point);
 
@@ -46,7 +50,11 @@ package body Trials is
    Old_Best : Float := 0.0;
    Serial   : Natural := 0;
 
-   Reach : constant := 25.0;     --  how near a point counts as passed
+   Reach : constant := 18.0;     --  how near a point counts as passed
+   Road_Points : Point_Vectors.Vector;   --  the run's points, put on the road
+   Me_X, Me_Z, Last_X, Last_Z : Float := 0.0;
+   Arrow_M, Arch_M : Meshes.Mesh;
+   Built : Boolean := False;
 
    function File return String is
      (Ada.Environment_Variables.Value ("HOME", ".") & "/.derive_trials");
@@ -113,7 +121,7 @@ package body Trials is
          X, Z : Long_Float;
       begin
          Geo.To_Local (Long_Float'Value (S (S'First .. Sp - 1)), Long_Float'Value (S (Sp + 1 .. S'Last)), X, Z);
-         return (Float (X), Float (Z));
+         return (Float (X), Float (Z), 0.0);
       end Local;
    begin
       All_Trials.Clear;
@@ -192,6 +200,21 @@ package body Trials is
       if T.Hour >= 0.0 then
          Hour := T.Hour;
       end if;
+      --  the points on the road itself, where the GPS takes you
+      Road_Points.Clear;
+      for P of T.Points loop
+         declare
+            Ok : Boolean;
+            PX, PZ, PH : Float;
+         begin
+            Road_Network.Nearest_Road (P.X, P.Z, Ok, PX, PZ, PH);
+            Road_Points.Append ((if Ok then (PX, PZ, PH) else P));
+         end;
+      end loop;
+      Me_X := RX;
+      Me_Z := RZ;
+      Last_X := RX;
+      Last_Z := RZ;
       Next_Pt := 1;
       Clock := 3.0;
       Time := 0.0;
@@ -239,11 +262,23 @@ package body Trials is
             end if;
          when Running =>
             Time := Time + Dt;
+            Last_X := Me_X;
+            Last_Z := Me_Z;
+            Me_X := Player.X;
+            Me_Z := Player.Z;
             declare
-               P : constant Point := All_Trials (Which).Points (Next_Pt);
+               P : constant Point := Road_Points (Next_Pt);
+               --  the nearest the car came to it on this step
+               DX : constant Float := Me_X - Last_X;
+               DZ : constant Float := Me_Z - Last_Z;
+               L2 : constant Float := DX * DX + DZ * DZ;
+               U  : constant Float :=
+                 (if L2 > 1.0E-6 then Float'Max (0.0, Float'Min (1.0, ((P.X - Last_X) * DX + (P.Z - Last_Z) * DZ) / L2))
+                  else 0.0);
+               Near2 : constant Float := (Last_X + U * DX - P.X) ** 2 + (Last_Z + U * DZ - P.Z) ** 2;
             begin
-               if (Player.X - P.X) ** 2 + (Player.Z - P.Z) ** 2 < Reach ** 2 then
-                  if Next_Pt = Natural (All_Trials (Which).Points.Length) then
+               if Near2 < Reach ** 2 then
+                  if Next_Pt = Natural (Road_Points.Length) then
                      --  the finish
                      Current := Done;
                      Sound.Effect (Sound.Go_Beep, 0.9, 0.0);
@@ -272,7 +307,7 @@ package body Trials is
       if Current in Countdown | Running then
          declare
             T : Trial renames All_Trials (Which);
-            P : constant Point := T.Points (Next_Pt);
+            P : constant Point := Road_Points (Next_Pt);
          begin
             X := P.X;
             Z := P.Z;
@@ -283,6 +318,62 @@ package body Trials is
       end if;
    end Goal;
 
+   procedure Draw (Model, Skin : GL.GLint; Time : Float) is
+      use Math3D;
+   begin
+      if Current not in Countdown | Running then
+         return;
+      end if;
+      if not Built then
+         --  an arrow pointing down
+         Meshes.Start;
+         Meshes.Box (-0.25, 0.25, 1.2, 2.8, -0.25, 0.25, 50.0);
+         declare
+            Tip : constant Vec3 := (0.0, 0.0, 0.0);
+            C   : constant array (0 .. 3) of Vec3 :=
+              ((-0.8, 1.2, -0.8), (0.8, 1.2, -0.8), (0.8, 1.2, 0.8), (-0.8, 1.2, 0.8));
+         begin
+            for K in 0 .. 3 loop
+               Meshes.Quad (C (K), C ((K + 1) mod 4), Tip, Tip, 50.0);
+               Meshes.Quad (C ((K + 1) mod 4), C (K), Tip, Tip, 50.0);
+            end loop;
+         end;
+         Meshes.Finish (Arrow_M);
+         --  the finish: two posts and a chequered banner across the road,
+         --  24 m wide, along X (turned to the road where it is drawn)
+         Meshes.Start;
+         for S in -1 .. 1 loop
+            if S /= 0 then
+               Meshes.Box (Float (S) * 12.0 - 0.15, Float (S) * 12.0 + 0.15, 0.0, 5.6, -0.15, 0.15, 26.0);
+            end if;
+         end loop;
+         for Col in 0 .. 47 loop
+            for Row in 0 .. 1 loop
+               Meshes.Box (-12.0 + 0.5 * Float (Col), -11.5 + 0.5 * Float (Col),
+                           4.6 + 0.5 * Float (Row), 5.1 + 0.5 * Float (Row), -0.06, 0.06,
+                           (if (Col + Row) mod 2 = 0 then 39.0 else 17.0));
+            end loop;
+         end loop;
+         Meshes.Finish (Arch_M);
+         Built := True;
+      end if;
+      declare
+         N : constant Natural := Natural (Road_Points.Length);
+         F : constant Point := Road_Points (N);
+         P : constant Point := Road_Points (Next_Pt);
+         D : constant Float := Sqrt ((P.X - Me_X) ** 2 + (P.Z - Me_Z) ** 2);
+         S : constant Float := 1.0 + Float'Min (3.0, D / 120.0);
+      begin
+         Shaders.Set (Model, Translation ((F.X, Terrain.Height (F.X, F.Z), F.Z)) * Rotation_Y (-F.H));
+         Meshes.Draw (Arch_M);
+         Shaders.Set (Skin, (if Next_Pt = N then Vec3'(1.0, 0.85, 0.2) else Vec3'(0.2, 1.0, 0.35)));
+         Shaders.Set (Model, Translation ((P.X, Terrain.Height (P.X, P.Z) + 4.0 + 0.3 * Sin (Time * 2.5)
+                                           + 7.0 * (S - 1.0), P.Z))
+                      * Rotation_Y (Time * 1.5) * Scale (S));
+         Meshes.Draw (Arrow_M);
+      end;
+   end Draw;
+
    function Hud_Text return String is
    begin
       if Current not in Countdown | Running then
@@ -291,13 +382,16 @@ package body Trials is
       declare
          T : Trial renames All_Trials (Which);
          N : constant Natural := Natural (T.Points.Length);
+         P : constant Point := Road_Points (Next_Pt);
+         D : constant Natural := Natural (Sqrt ((P.X - Me_X) ** 2 + (P.Z - Me_Z) ** 2));
       begin
          return "<span font_family='monospace' background='#000000a0' foreground='white'>  "
            & "<b>" & To_String (T.Name) & "</b>   "
            & (if Current = Countdown then "get ready"
-              else Time_Image (Time) & "   " & (if Next_Pt = N then "to the finish"
+              else Time_Image (Time) & "   " & (if Next_Pt = N then "finish"
                                                 else "checkpoint" & Natural'Image (Next_Pt) & " of"
-                                                     & Natural'Image (N - 1)))
+                                                     & Natural'Image (N - 1))
+                   & Natural'Image (D) & " m")
            & (if T.Best > 0.0 then "   best " & Time_Image (T.Best) else "")
            & "  </span>";
       end;

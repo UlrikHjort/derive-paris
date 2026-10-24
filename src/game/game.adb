@@ -1265,6 +1265,7 @@ package body Game is
          Race.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos);
          if Mode = Driving and then not Visiting then
             Taxi.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Player, Time);
+         Trials.Draw (WU.Model, WU.Extra_Color, Time);
          end if;
          Set (WU.Car_Color, Car_Color);
          if Christmas then

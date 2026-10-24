@@ -10,6 +10,7 @@
 with Ada.Strings.Unbounded;
 
 with Car;
+with GL;
 
 package Trials is
 
@@ -35,6 +36,9 @@ package Trials is
    procedure Goal (Serial : out Natural; X, Z : out Float;
                    Name : out Ada.Strings.Unbounded.Unbounded_String);
    --  Where the GPS should take you; Serial changes with the goal
+
+   procedure Draw (Model, Skin : GL.GLint; Time : Float);
+   --  The next checkpoint's arrow, and the finish arch across the road
 
    function Hud_Text return String;      --  the run and the time (markup)
    function Banner return String;        --  the countdown's big number, or ""
