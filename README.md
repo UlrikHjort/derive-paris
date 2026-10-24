@@ -398,6 +398,9 @@ The weather follows the seasons too:
   chestnuts flower pink and white, and their petals end up on the paths.
 - **Heat:** on hot July and August afternoons, the haze thickens and the
   far end of a long avenue turns into a shimmering mirage of sky.
+- **Snow:** when snow lies on the streets, orange snowploughs with their
+  blades and salt hoppers come out on the big roads, their amber beacons
+  turning.
 - **Flood:** late in winter the Seine floods. It rises over the lower
   quays, the bateaux-mouches stay moored because they can't pass under
   the bridges, and the water climbs the Zouave of the Pont de l'Alma.

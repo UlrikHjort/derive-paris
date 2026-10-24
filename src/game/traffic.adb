@@ -2,6 +2,7 @@
 --  Copyright (c) 2026 Ulrik Hørlyk Hjort
 --  SPDX-License-Identifier: MIT
 --
+with Ada.Environment_Variables;
 with Ada.Numerics;
 with Ada.Numerics.Elementary_Functions;
 with Ada.Numerics.Float_Random;
@@ -24,7 +25,7 @@ package body Traffic is
    Retire_Far   : constant := 320.0;
    Car_Length   : constant := 4.6;
 
-   type Vehicle_Kind is (Car_Kind, Scooter, Motorbike, Deux_Chevaux, DS, R4);
+   type Vehicle_Kind is (Car_Kind, Scooter, Motorbike, Deux_Chevaux, DS, R4, Plough);
 
    type Agent is record
       Kind     : Vehicle_Kind := Car_Kind;
@@ -49,7 +50,9 @@ package body Traffic is
    Agents : array (1 .. Max_Cars) of Agent;
 
    function Four_Wheels (K : Vehicle_Kind) return Boolean is
-     (K in Car_Kind | Deux_Chevaux | DS | R4);
+     (K in Car_Kind | Deux_Chevaux | DS | R4 | Plough);
+
+   Snow : Float := 0.0;   --  lying on the streets: the snowploughs come out
 
    --  the colours the 2CV and the DS came in
    Vintage : constant array (0 .. 5) of Vec3 :=
@@ -151,6 +154,11 @@ package body Traffic is
          end if;
       end loop;
    end Clear_Corridor;
+
+   procedure Set_Snow (Cover : Float) is
+   begin
+      Snow := Cover;
+   end Set_Snow;
 
    procedure Set_Density (Factor : Float) is
    begin
@@ -337,6 +345,9 @@ package body Traffic is
                        (if Era.In_1973 then
                           (if R < 0.1 then Scooter elsif R < 0.15 then Motorbike
                            elsif R < 0.45 then Deux_Chevaux elsif R < 0.65 then DS else R4)
+                        elsif Snow > 0.3 and then (Ways (W).Width >= 9.0 or else Ways (W).Lanes >= 2)
+                          and then (Rnd < 0.15 or else Ada.Environment_Variables.Exists ("PARIS_PLOUGHS"))
+                        then Plough
                         elsif R < 0.12 then Scooter elsif R < 0.2 then Motorbike
                         elsif R < 0.23 then Deux_Chevaux elsif R < 0.245 then DS
                         else Car_Kind);
@@ -344,7 +355,8 @@ package body Traffic is
                      A := (Active => True, Kind => K, Cur => L, T => Len / 2.0,
                            Speed => 6.0,
                            Lane_Pick => Pick_Lane,
-                           Color => (if K = R4 then Seventies (Natural (Float'Floor (Rnd * 5.99)))
+                           Color => (if K = Plough then Vec3'(0.95, 0.45, 0.06)
+                                     elsif K = R4 then Seventies (Natural (Float'Floor (Rnd * 5.99)))
                                      elsif K in Deux_Chevaux | DS
                                      then Vintage (Natural (Float'Floor (Rnd * 5.99)))
                                      else Palette (Natural (Float'Floor (Rnd * 11.99)))),
@@ -387,11 +399,13 @@ package body Traffic is
       Base   : constant Float := (if W.Width >= 9.0 then 13.0 else 8.5);
       Cruise : constant Float := (case A.Kind is
                                     when Car_Kind | DS | R4 => Base,
+                                    when Plough => 6.5,
                                     when Deux_Chevaux => Base * 0.85,
                                     when Scooter   => Float'Min (Base, 11.0),
                                     when Motorbike => Base * 1.15);
       Accel  : constant Float := (case A.Kind is
                                     when Car_Kind | DS | R4 => 2.8,
+                                    when Plough => 1.2,
                                     when Deux_Chevaux => 1.8,
                                     when Scooter   => 3.2,
                                     when Motorbike => 4.8);
@@ -648,7 +662,7 @@ package body Traffic is
    --  Two-wheelers with their riders (front is -Z, like the car)
    ---------------------------------------------------------------------------
 
-   Scooter_Mesh, Motorbike_Mesh : Meshes.Mesh;
+   Scooter_Mesh, Motorbike_Mesh, Plough_Mesh : Meshes.Mesh;
 
    procedure Create_Meshes is
       use Meshes;
@@ -704,6 +718,26 @@ package body Traffic is
       Box (-0.24, 0.24, 0.3, 0.9, 0.05, 0.2, Mat_Tyre);              --  lower legs
       Rider (0.93, 0.4, 0.25, 1.0, -0.57);
       Finish (Motorbike_Mesh);
+
+      --  The snowplough: a truck in the paint (orange), the blade slanted
+      --  across the front, the salt hopper behind, an amber beacon on the cab
+      Start;
+      Box (-1.2, 1.2, 0.5, 2.7, -3.2, -1.3, Mat_Paint, Top_Inset_Front => 0.2,
+           Side_Mat => Mat_Paint);                                          --  cab
+      Box (-1.1, 1.1, 1.5, 2.3, -3.22, -3.18, Mat_Glass);                  --  windscreen
+      Box (-1.2, 1.2, 0.5, 1.2, -1.3, 3.3, Mat_Tyre);                      --  chassis
+      Box (-1.15, 1.15, 1.2, 2.9, -0.9, 3.1, Mat_Paint, Top_Inset_X => 0.0,
+           Top_Inset_Front => 0.0, Top_Inset_Back => 0.0);                  --  the salt hopper
+      Box (-0.3, 0.3, 0.6, 1.0, 3.1, 3.5, Mat_Tyre);                       --  the spinner
+      Box (-0.25, 0.25, 2.7, 2.95, -2.4, -2.1, 76.0);                      --  the beacon
+      Box (-1.9, 0.3, 0.1, 1.1, -4.3, -4.0, 85.0);                         --  the blade, two slants
+      Box (0.3, 1.9, 0.1, 1.1, -4.05, -3.75, 85.0);
+      for WX of Float_Pair'(-1.05, 1.05) loop
+         for WZ of Float_Pair'(-2.4, 2.2) loop
+            Box (WX - 0.2, WX + 0.2, 0.0, 1.0, WZ - 0.5, WZ + 0.5, Mat_Tyre);
+         end loop;
+      end loop;
+      Finish (Plough_Mesh);
    end Create_Meshes;
 
    procedure Draw (Model_Loc, Color_Loc : GL.GLint) is
@@ -723,6 +757,7 @@ package body Traffic is
                when R4        => Car.Draw_Model (Car.R4);
                when Scooter   => Meshes.Draw (Scooter_Mesh);
                when Motorbike => Meshes.Draw (Motorbike_Mesh);
+               when Plough    => Meshes.Draw (Plough_Mesh);
             end case;
          end if;
       end loop;

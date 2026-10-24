@@ -34,6 +34,9 @@ package Traffic is
    function Count return Natural;
 
    procedure Set_Density (Factor : Float);
+
+   procedure Set_Snow (Cover : Float);
+   --  Snow lying on the streets (0 .. 1): snowploughs on the big roads
    --  1.0 = normal (180 vehicles), 0 = none, up to 2.2
 
    procedure Reset;

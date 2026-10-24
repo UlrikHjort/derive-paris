@@ -4583,6 +4583,7 @@ package body Game is
             Add (C_Physics, T0);
             T0 := Clock_Now;
             Closures.Update (Dt, Hour, Almanac.Saturday, Focus.X, Focus.Z, Focus_Heading);
+            Traffic.Set_Snow (Snow_Cover);
             Traffic.Update (Dt, Time, Focus.X, Focus.Z, Focus_Heading, Player);
             Street_Life.Update (Dt, Focus.X, Focus.Z);
             Birds.Update (Dt, Focus, Hour,
