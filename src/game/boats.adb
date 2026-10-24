@@ -13,6 +13,7 @@ with River;
 with Road_Network;
 with Shaders;
 with Seasons;
+with Sound;
 with Terrain;
 
 package body Boats is
@@ -107,7 +108,10 @@ package body Boats is
         * Rotation_Z (0.012 * Sin (Clock * 0.7 + B.Seed * 7.0));
    end Model_Of;
 
-   procedure Update (Dt : Float) is
+   Horn_Wait : Float := 5.0;
+
+   procedure Update (Dt : Float; Listener : Vec3) is
+      Slow : constant Float := 1.0 - 0.6 * Seasons.Mist;   --  feeling their way in the mist
    begin
       Clock := Clock + Dt;
       if not Placed then
@@ -136,7 +140,7 @@ package body Boats is
          if B.Wait > 0.0 then
             B.Wait := B.Wait - Dt;
          else
-            B.S := B.S + B.Dir * B.Speed * Dt;
+            B.S := B.S + B.Dir * B.Speed * Slow * Dt;
             if B.S > Len - 40.0 then
                B.Dir := -1.0;
                B.Wait := 20.0;
@@ -146,6 +150,28 @@ package body Boats is
             end if;
          end if;
       end loop;
+      --  the mist: now and then the nearest boat sounds its horn
+      if Seasons.Mist > 0.3 then
+         Horn_Wait := Horn_Wait - Dt;
+         if Horn_Wait <= 0.0 then
+            Horn_Wait := 18.0 + 15.0 * Float (Natural (Clock * 7.0) mod 10) / 10.0;
+            declare
+               Best : Float := 700.0;
+            begin
+               for B of Fleet loop
+                  declare
+                     P, D : Vec3;
+                  begin
+                     Place (B, P, D);
+                     Best := Float'Min (Best, Length (P - Listener));
+                  end;
+               end loop;
+               if Best < 700.0 then
+                  Sound.Effect (Sound.Foghorn, Float'Min (1.0, 250.0 / (Best + 50.0)), 0.0);
+               end if;
+            end;
+         end if;
+      end if;
    end Update;
 
    ---------------------------------------------------------------------------

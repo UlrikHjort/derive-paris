@@ -4601,7 +4601,7 @@ package body Game is
                end if;
             end;
             Stravinsky.Update (Dt);
-            Boats.Update (Dt);
+            Boats.Update (Dt, Cam_Pos);
             Moulin.Update (Dt);
             Extras.Update (Dt, Hour, Night,
                            (if Walking then Vec3'(Walk_X, 0.0, Walk_Z) else Vec3'(Player.X, 0.0, Player.Z)));

@@ -984,6 +984,12 @@ package body Sound is
                when Go_Beep =>
                   Add ((Kind => Tone, Dur => 0.7, Volume => 0.2 * Loud, Freq => 1320.0,
                         Pan => 0.5 * Where, others => <>));
+               when Foghorn =>
+                  --  a boat's horn in the mist: low, long, two notes together
+                  Add ((Kind => Tone, Dur => 2.2, Volume => 0.16 * Loud, Freq => 98.0,
+                        Pan => 0.8 * Where, others => <>));
+                  Add ((Kind => Tone, Dur => 2.2, Volume => 0.1 * Loud, Freq => 147.0,
+                        Pan => 0.8 * Where, others => <>));
                when Chime =>
                   --  the radio's little tune before the news: four notes up
                   declare

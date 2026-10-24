@@ -13,7 +13,8 @@ with Math3D;
 
 package Boats is
 
-   procedure Update (Dt : Float);
+   procedure Update (Dt : Float; Listener : Math3D.Vec3);
+   --  (in the mist they go slowly and sound their horns)
 
    procedure Draw (Model, Paint, Skin, Legs : GL.GLint; Cam : Math3D.Vec3; Night : Float);
    procedure Draw_Lights (VP : Math3D.Mat4; Cam : Math3D.Vec3; Night : Float);

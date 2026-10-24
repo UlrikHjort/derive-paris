@@ -216,7 +216,8 @@ on foot again (Q once more takes you back to the car).
 
 Bateaux-mouches go up and down the river with tourists on their open
 upper decks, their floodlights sweeping the quays after dark, and long
-péniches carry sand and gravel, each keeping to its side.  On foot, stand
+péniches carry sand and gravel, each keeping to its side.  On a misty morning they go slowly,
+sounding their horns now and then.  On foot, stand
 on the blue mark at the bateaux-mouches' landing by the Pont de l'Alma
 (Port de la Conférence) to go aboard: you ride at the front of the deck
 down to the Eiffel Tower and back up the river.  Q takes you ashore on
