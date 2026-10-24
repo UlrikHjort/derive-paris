@@ -180,6 +180,12 @@ bridges.  The game counts the bridges: how many in one flight, and which
 ones you have ever flown under; they are kept in `~/.derive_stunts`.
 Mind the quay walls in the bends.
 
+While you fly, the altimeter on the left shows your height above what is
+below you, the ground or the water, and how fast you climb or sink; its
+lower 10 m are stretched.  Over the Seine it marks the band to fly in to
+pass under the bridges, 0.5 to 4 m above the water: the pointer is green
+inside it, red just above it, where the bridges are.
+
 ### Streets closed
 
 Here and there a street is closed for roadworks: barriers, the

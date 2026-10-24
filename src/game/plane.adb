@@ -96,10 +96,12 @@ package body Plane is
       --  Ground and buildings
       declare
          --  over the Seine: down to just above the water, under the bridges
-         G : constant Float := Terrain.Height (S.Pos.X, S.Pos.Z) + 1.0
-           - (if River.In_Channel (S.Pos.X, S.Pos.Z) then River.Depth else 0.0);
+         G : constant Float :=
+           (if River.In_Channel (S.Pos.X, S.Pos.Z)
+            then Terrain.Height (S.Pos.X, S.Pos.Z) - River.Depth + River.Lowest
+            else Terrain.Height (S.Pos.X, S.Pos.Z) + 1.0);
       begin
-         if S.Pos.Y < G or else World.Obstacle_At (S.Pos.X, S.Pos.Y, S.Pos.Z, 3.0, Up_Down => 0.8) then
+         if S.Pos.Y < G or else World.Obstacle_At (S.Pos.X, S.Pos.Y, S.Pos.Z, 3.0, Up_Down => River.Clear) then
             S.Crashed := 2.0;
             S.Speed := 0.0;
             if S.Pos.Y < G then

@@ -70,6 +70,8 @@ with Rooms;
 with Postcards;
 with Closures;
 with Stunts;
+with Altimeter;
+with River;
 with Gdk.Keyval;
 with Gtkada.Bindings;
 with Glib.Unicode;
@@ -3820,6 +3822,15 @@ package body Game is
          Update_Camera (Dt);
          Race_Overlays;
          Taxi_Overlays;
+         --  the altimeter: height above the ground, or the water of the Seine
+         declare
+            Wet : constant Boolean := River.In_Channel (Aircraft.Pos.X, Aircraft.Pos.Z);
+            Below : constant Float := Terrain.Height (Aircraft.Pos.X, Aircraft.Pos.Z)
+              - (if Wet then River.Depth else 0.0);
+         begin
+            Altimeter.Set (Mode = Flying and then not Visiting and then Aircraft.Crashed <= 0.0,
+                           Aircraft.Pos.Y - Below, Aircraft.Speed * Sin (Aircraft.Pitch), Wet);
+         end;
          Scene_Overlays;
       end if;
 
@@ -4790,6 +4801,15 @@ package body Game is
          Sign_W.Set_Margin_Start (272);
          Sign_W.Set_Margin_Bottom (40);
          Overlay.Add_Overlay (Sign_W);
+      end;
+
+      declare
+         Alt_W : constant Gtk.Widget.Gtk_Widget := Altimeter.Create;
+      begin
+         Alt_W.Set_Halign (Gtk.Widget.Align_Start);
+         Alt_W.Set_Valign (Gtk.Widget.Align_Center);
+         Alt_W.Set_Margin_Start (12);
+         Overlay.Add_Overlay (Alt_W);
       end;
 
       Panel := Instruments.Create;
