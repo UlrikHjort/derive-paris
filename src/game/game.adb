@@ -3868,9 +3868,11 @@ package body Game is
           Rain     => Rain_Amount,
           Night    => Night,
           Traffic  => Float'Max (0.0, 1.0 - Traffic.Nearest (Where.X, Where.Z) / 60.0),
-          Horn     => Keys.B or else Wheel.Held (Wheel.Enter),
+          Horn     => Keys.B or else Wheel.Held (Wheel.Enter)
+                      or else (Env ("PARIS_BELL") /= "" and then Frame_Number mod 150 < 5),   --  (testing)
           Engine_Off => Mode = Driving and then not Visiting and then (Race.Wrecked or else Riding_Velib),
           Two_Stroke => Car."=" (Car.Player_Model, Car.Scooter),
+          Bike     => Riding_Velib,
           Church   => Church_Near,
           Jingle   => Sleigh.Jingle,
           Jets     => Surprises.Jets,

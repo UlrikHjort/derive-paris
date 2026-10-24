@@ -207,7 +207,8 @@ nearest that station.  Q takes you back up where you came down.
 
 On foot by a Vélib' station, **Q** takes one of the mint-green bikes: ride
 it through the town at up to 23 km/h, slipping through where a car would
-not, while your car waits where you left it.  To get off, ride to another
+not, while your car waits where you left it.  You hear the freewheel
+ticking as you coast, and **B** rings the bell.  To get off, ride to another
 station and press **Q** there: the bike goes back in its dock and you are
 on foot again (Q once more takes you back to the car).
 

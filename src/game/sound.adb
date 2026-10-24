@@ -814,6 +814,11 @@ package body Sound is
 
    --  The player's horn: two tones like a French car
    Horn_Phase1, Horn_Phase2, Horn_Level : Float := 0.0;
+   Bell_T      : Float := 9.0;    --  since the bell was struck (seconds)
+   Bell_Again  : Float := 0.0;    --  held down: struck again after this
+   Bell_Was    : Boolean := False;
+   Tick_Phase, Tick_Env : Float := 0.0;
+   Tick_F, Chain_F : Lowpass;
    Horn_F1, Horn_F2 : Lowpass;
 
    --  Tyre squeal: a wavering high tone with a rough edge
@@ -1260,8 +1265,42 @@ package body Sound is
                end;
             end if;
 
+            --  the Vélib': its bell, struck when the horn is pressed (and
+            --  again and again while held), and the freewheel ticking
+            --  when coasting, a soft whirr of the chain when pedalling
+            if P.Bike and then P.Mode = Driving then
+               if P.Horn and then (not Bell_Was or else Bell_Again <= 0.0) then
+                  Bell_T := 0.0;
+                  Bell_Again := 0.4;
+               end if;
+               Bell_Was := P.Horn;
+               Bell_Again := Bell_Again - 1.0 / Float (Rate);
+               if Bell_T < 1.5 then
+                  S := (Sin (Two_Pi * 2350.0 * Bell_T) + 0.5 * Sin (Two_Pi * 3312.0 * Bell_T)
+                        + 0.3 * Sin (Two_Pi * 5120.0 * Bell_T))
+                    * Exp (-Bell_T * 4.0) * 0.07;
+                  L := L + S;
+                  R := R + S;
+               end if;
+               Bell_T := Bell_T + 1.0 / Float (Rate);
+               if P.Speed > 0.4 then
+                  if P.Load < 0.5 then
+                     Tick_Phase := Tick_Phase + 7.0 * P.Speed / Float (Rate);
+                     if Tick_Phase >= 1.0 then
+                        Tick_Phase := Tick_Phase - 1.0;
+                        Tick_Env := 1.0;
+                     end if;
+                     S := Step (Tick_F, Noise, 5000.0) * Tick_Env * 0.05;
+                     Tick_Env := Tick_Env * 0.992;
+                  else
+                     S := Step (Chain_F, Noise, 700.0) * 0.08 * Float'Min (1.0, P.Speed / 6.0);
+                  end if;
+                  L := L + S;
+                  R := R + S;
+               end if;
+            end if;
             Horn_Level := Horn_Level
-              + ((if P.Horn and then P.Mode = Driving then 1.0 else 0.0) - Horn_Level) * 0.004;
+              + ((if P.Horn and then P.Mode = Driving and then not P.Bike then 1.0 else 0.0) - Horn_Level) * 0.004;
             if Horn_Level > 0.001 then
                Horn_Phase1 := Horn_Phase1 + 415.0 / Float (Rate);
                Horn_Phase1 := Horn_Phase1 - Float'Floor (Horn_Phase1);
