@@ -37,6 +37,8 @@ package body Hall_B is
 
    --  Materials (world.frag)
    Mat_Canvas : constant := 51.0;  --  seed: pattern, colours, variant
+   Mat_Drawing : constant := 92.0; --  ink on paper, under a mount
+   Mat_Video  : constant := 93.0;  --  a screen, moving
    Mat_Floor : constant := 52.0;   --  polished concrete
    Mat_White : constant := 53.0;
    Mat_Steel : constant := 54.0;   --  painted, in the paint colour
@@ -168,14 +170,31 @@ package body Hall_B is
       ((0.02, 0.0, -6.0), (1.0, 0.0, 0.0), 4.0, 3.0),          --  either side of the door
       ((0.02, 0.0, 6.0), (1.0, 0.0, 0.0), 4.0, 3.0));
 
+   --  What hangs where: paintings mostly; drawings on the first partition
+   --  and by the door, a video on the second partition, and the shop on
+   --  the first stretch of wall, where you come in
+   type Slot_Kind is (Painting, Drawing, Video, Shop);
+   function Kind_Of (I : Positive) return Slot_Kind is
+     (case I is
+         when 1 => Shop,
+         when 13 | 14 | 18 | 19 => Drawing,
+         when 15 | 16 => Video,
+         when others => Painting);
+
+   --  The shop's counter (hall coordinates)
+   Shop_X0 : constant := 3.6;
+   Shop_X1 : constant := 8.4;
+   Shop_Z1 : constant := -8.4;
+
    --  Plinths for the sculptures (hall coordinates)
    Plinths : constant array (1 .. 3) of Vec3 := ((9.0, 0.0, 0.0), (28.0, 0.0, 0.0), (47.0, 0.0, 0.0));
 
-   type Sculpture_Kind is (Network, Twist, Ring, Cloud, Mobile, Endless);
+   type Sculpture_Kind is (Network, Twist, Ring, Cloud, Mobile, Endless, Stack, Arch);
 
    type Work is record
       C      : Vec3;               --  world: the middle of a canvas, or the foot of a sculpture
       N      : Vec3;               --  the way a canvas faces (zero for a sculpture)
+      Kind   : Slot_Kind := Painting;
       Name   : Unbounded_String;
       Medium : Unbounded_String;
    end record;
@@ -199,8 +218,8 @@ package body Hall_B is
 
    --  The words (titles, labels) come from data/gallery.dat, scrambled
    package Text_Vectors is new Ada.Containers.Vectors (Positive, Unbounded_String);
-   Artist_Name, Heading_Text, Exit_Text, Sculpture_Medium : Unbounded_String;
-   Exhibitions, Firsts, Seconds, Wholes, Media, Sculptures : Text_Vectors.Vector;
+   Artist_Name, Heading_Text, Exit_Text, Sculpture_Medium, Shop_Text : Unbounded_String;
+   Exhibitions, Firsts, Seconds, Wholes, Media, Sculptures, Drawing_Media, Video_Media : Text_Vectors.Vector;
    Loaded : Boolean := False;
 
    procedure Load_Texts is
@@ -242,6 +261,9 @@ package body Hall_B is
                   elsif P = "[whole]" then Wholes.Append (T);
                   elsif P = "[media]" then Media.Append (T);
                   elsif P = "[sculptures]" then Sculptures.Append (T);
+                  elsif P = "[drawing_media]" then Drawing_Media.Append (T);
+                  elsif P = "[video_media]" then Video_Media.Append (T);
+                  elsif P = "[shop]" then Shop_Text := T;
                   end if;
                end;
             end if;
@@ -304,13 +326,21 @@ package body Hall_B is
       for I in Slots'Range loop
          declare
             S      : Slot renames Slots (I);
-            Style  : constant Natural := Natural (Float'Floor (Rnd * 11.99));
+            K      : constant Slot_Kind := Kind_Of (I);
+            Style  : constant Natural := Natural (Float'Floor (Rnd * 15.99));
             Pal    : constant Natural := Natural (Float'Floor (Rnd * 7.99));
             Aspect : constant Float :=
               (case Pick (5) is when 1 => 1.0, when 2 => 1.33, when 3 => 0.75,
                                 when 4 => 1.5, when others => 0.66);
-            W : Float := S.Max_W * (0.55 + 0.35 * Rnd);
-            H : Float := W / Aspect;
+            W : Float := (case K is
+                             when Drawing => 1.1 + 0.5 * Rnd,
+                             when Video   => S.Max_W * 0.95,
+                             when Shop    => 4.4,
+                             when Painting => S.Max_W * (0.55 + 0.35 * Rnd));
+            H : Float := (case K is
+                             when Video => W * 0.5625,
+                             when Shop  => 1.1,
+                             when others => W / Aspect);
          begin
             if H > S.Max_H then
                W := W * S.Max_H / H;
@@ -318,27 +348,37 @@ package body Hall_B is
             end if;
             Sizes_W (I) := W;
             Sizes_H (I) := H;
-            Seeds (I) := Float (Style + 16 * Pal + 128 * Natural (Float'Floor (Rnd * 999.0)));
+            Seeds (I) := (case K is
+                             when Drawing => Float (Natural (Float'Floor (Rnd * 999.0))),
+                             when Video   => Float (Natural (Float'Floor (Rnd * 6.0))),
+                             when others  => Float (Style + 16 * Pal + 128 * Natural (Float'Floor (Rnd * 999.0))));
             Work_Count := Work_Count + 1;
             Works (Work_Count) :=
-              (C      => G (S.C.X, Float'Max (2.4, 1.0 + H / 2.0), S.C.Z),
+              (C      => G (S.C.X, (if K = Shop then 1.75 elsif K = Drawing then 1.6
+                                    else Float'Max (2.4, 1.0 + H / 2.0)), S.C.Z),
                N      => S.N,
-               Name   => +Painting_Title,
-               Medium => +Nth (Media, Style + 1, "mixed media"));
+               Kind   => K,
+               Name   => +(if K = Shop then "" elsif K = Drawing and then Rnd < 0.5
+                           then "Study for " & Painting_Title else Painting_Title),
+               Medium => +(case K is
+                              when Drawing => Any (Drawing_Media, "ink on paper"),
+                              when Video   => Any (Video_Media, "video, colour, silent"),
+                              when Shop    => "",
+                              when Painting => Nth (Media, Style + 1, "mixed media")));
          end;
       end loop;
       for I in Plinths'Range loop
-         Kinds (I) := Sculpture_Kind'Val (Pick (6) - 1);
+         Kinds (I) := Sculpture_Kind'Val (Pick (8) - 1);
          Colours (I) := Sculpture_Colours (Pick (Sculpture_Colours'Length));
          Work_Count := Work_Count + 1;
          Works (Work_Count) :=
-           (C => G (Plinths (I).X, 0.0, Plinths (I).Z), N => (0.0, 0.0, 0.0),
+           (C => G (Plinths (I).X, 0.0, Plinths (I).Z), N => (0.0, 0.0, 0.0), Kind => Painting,
             Name => +Sculpture_Title (Kinds (I)), Medium => Sculpture_Medium);
       end loop;
       --  people looking at the paintings
       for V of Visitors loop
          declare
-            S : Slot renames Slots (Pick (Slots'Length));
+            S : Slot renames Slots (1 + Pick (Slots'Length - 1));   --  (not at the shop)
             Along : constant Vec3 := Cross ((0.0, 1.0, 0.0), S.N);
             P : constant Vec3 := S.C + (1.8 + 1.2 * Rnd) * S.N + (1.6 * (Rnd - 0.5)) * Along;
          begin
@@ -543,6 +583,33 @@ package body Hall_B is
                end loop;
                Tube (Hang, Hang + Vec3'(0.02, 0.0, 0.0), 0.3, Mat_Steel, 16);
             end;
+         when Stack =>
+            --  cubes piled up, each turned and a little off the one below
+            declare
+               Y : Float := 0.0;
+               X, Z : Float := 0.0;
+            begin
+               for K2 in 0 .. 7 loop
+                  declare
+                     S : constant Float := 0.3 - 0.02 * Float (K2);
+                  begin
+                     Turned_Box (B + Vec3'(X, Y + S, Z), S, S, S, 0.5 * Rnd, Mat_Steel);
+                     Y := Y + 2.0 * S;
+                     X := X + 0.08 * (Rnd - 0.3);
+                     Z := Z + 0.06 * (Rnd - 0.5);
+                  end;
+               end loop;
+            end;
+         when Arch =>
+            --  an arch of blocks from one side of the plinth to the other
+            for K2 in 0 .. 12 loop
+               declare
+                  A : constant Float := Pi * (Float (K2) + 0.5) / 13.0;
+               begin
+                  Turned_Box (B + Vec3'(0.65 * Cos (A), 1.5 * Sin (A) + 0.05, 0.0), 0.09, 0.14, 0.2,
+                              0.0, Mat_Steel);
+               end;
+            end loop;
          when Endless =>
             for K2 in 0 .. 6 loop
                declare
@@ -608,11 +675,53 @@ package body Hall_B is
             W2 : constant Float := Sizes_W (I) / 2.0;
             H2 : constant Float := Sizes_H (I) / 2.0;
          begin
-            Meshes.Quad_UV (C - W2 * Al - H2 * Up, C + W2 * Al - H2 * Up,
-                            C + W2 * Al + H2 * Up, C - W2 * Al + H2 * Up,
-                            S.N, Mat_Canvas, Seeds (I));
+            case Kind_Of (I) is
+               when Painting =>
+                  Meshes.Quad_UV (C - W2 * Al - H2 * Up, C + W2 * Al - H2 * Up,
+                                  C + W2 * Al + H2 * Up, C - W2 * Al + H2 * Up,
+                                  S.N, Mat_Canvas, Seeds (I));
+               when Drawing =>
+                  Meshes.Quad_UV (C - W2 * Al - H2 * Up, C + W2 * Al - H2 * Up,
+                                  C + W2 * Al + H2 * Up, C - W2 * Al + H2 * Up,
+                                  S.N, Mat_Drawing, Seeds (I));
+               when Video =>
+                  --  a screen with a dark rim
+                  Meshes.Quad_UV (C - W2 * Al - H2 * Up, C + W2 * Al - H2 * Up,
+                                  C + W2 * Al + H2 * Up, C - W2 * Al + H2 * Up,
+                                  S.N, Mat_Video, Seeds (I));
+                  Meshes.Quad_UV (C - 0.01 * S.N - (W2 + 0.08) * Al - (H2 + 0.08) * Up,
+                                  C - 0.01 * S.N + (W2 + 0.08) * Al - (H2 + 0.08) * Up,
+                                  C - 0.01 * S.N + (W2 + 0.08) * Al + (H2 + 0.08) * Up,
+                                  C - 0.01 * S.N - (W2 + 0.08) * Al + (H2 + 0.08) * Up,
+                                  S.N, Mat_Door, 0.0);
+               when Shop =>
+                  --  postcards of the paintings, in rows on a board
+                  Face (C - 0.01 * S.N - W2 * Al - H2 * Up, C - 0.01 * S.N + W2 * Al - H2 * Up,
+                        C - 0.01 * S.N + W2 * Al + H2 * Up, C - 0.01 * S.N - W2 * Al + H2 * Up,
+                        S.N, 60.0);
+                  for Col in 0 .. 9 loop
+                     for Row in 0 .. 3 loop
+                        declare
+                           Src : constant Positive := 2 + (Col + 10 * Row) mod 11;   --  the paintings' seeds
+                           P : constant Vec3 := C - W2 * Al - H2 * Up
+                             + (0.25 + 0.43 * Float (Col)) * Al + (0.16 + 0.26 * Float (Row)) * Up;
+                        begin
+                           Meshes.Quad_UV (P - 0.15 * Al - 0.1 * Up, P + 0.15 * Al - 0.1 * Up,
+                                           P + 0.15 * Al + 0.1 * Up, P - 0.15 * Al + 0.1 * Up,
+                                           S.N, Mat_Canvas, Seeds (Src));
+                        end;
+                     end loop;
+                  end loop;
+            end case;
          end;
       end loop;
+      --  the shop's counter, and its sign
+      Meshes.Box (Origin.X + Shop_X0, Origin.X + Shop_X1, Origin.Y, Origin.Y + 1.0,
+                  Origin.Z + Shop_Z1 - 0.6, Origin.Z + Shop_Z1, Mat_White);
+      Meshes.Box (Origin.X + Shop_X0 - 0.02, Origin.X + Shop_X1 + 0.02, Origin.Y + 1.0, Origin.Y + 1.05,
+                  Origin.Z + Shop_Z1 - 0.62, Origin.Z + Shop_Z1 + 0.02, Mat_Door);
+      Meshes.Box (Origin.X + 4.6, Origin.X + 7.4, Origin.Y + 2.75, Origin.Y + 3.15,
+                  Origin.Z - Half_W + 0.02, Origin.Z - Half_W + 0.06, Mat_Door);
       Meshes.Finish (Hall);
 
       --  the ceiling, dark, and pipes under it in four colours
@@ -662,6 +771,12 @@ package body Hall_B is
             end if;
          end if;
       end loop;
+      --  the shop's counter
+      if LX > Shop_X0 - 0.4 and then LX < Shop_X1 + 0.4 and then LZ < Shop_Z1 + 0.4 then
+         if LZ > Shop_Z1 - 0.2 then
+            LZ := Shop_Z1 + 0.4;
+         end if;
+      end if;
       --  and the plinths
       for P of Plinths loop
          declare
@@ -708,6 +823,11 @@ package body Hall_B is
       if Best = 0 then
          return "";
       end if;
+      if Works (Best).Kind = Shop then
+         return "<span font_family='sans' size='large'><b>"
+           & (if Ada.Strings.Unbounded.Length (Shop_Text) > 0 then To_String (Shop_Text) else "The shop") & "</b></span>" & ASCII.LF
+           & "<span font_family='sans'>" & Title & "  ·  postcards, 1.50 €</span>";
+      end if;
       return "<span font_family='serif' size='large'><i>" & To_String (Works (Best).Name)
         & "</i>, 2026</span>" & ASCII.LF
         & "<span font_family='sans'>" & Artist & "  ·  " & To_String (Works (Best).Medium) & "</span>";
@@ -752,6 +872,8 @@ package body Hall_B is
          Meshes.Draw (Statues (I));
       end loop;
       Figures.Set_Locations ((Model, Paint, Skin, Legs));
+      Figures.Person (Translation (G (6.0, 0.0, Shop_Z1 - 1.1)) * Rotation_Y (Pi), (0.1, 0.1, 0.12),
+                      (0.76, 0.57, 0.44), (0.12, 0.12, 0.14));   --  at the till
       for K in Visitors'Range loop
          declare
             V : Visitor renames Visitors (K);

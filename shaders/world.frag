@@ -406,6 +406,40 @@ vec3 seeded(vec2 uv, float seed)
                     : mix(seedPalette(1.0, pk), seedPalette(3.0, pk), v * 2.0 - 1.0);
         vec2 f = fract(uv * n);
         c *= 0.85 + 0.15 * step(0.06, min(f.x, f.y));
+    } else if (style >= 12 && style <= 15) {
+        // the newer styles share one palette, looked up once
+        vec3 pal[5];
+        for (int i = 0; i < 5; i++) pal[i] = seedPalette(float(i), pk);
+        if (style == 12) {        // hard-edged stripes, side by side
+            float n = 3.0 + floor(r1 * 6.0);
+            int k = int(mod(floor(uv.x * n) + floor(r2 * 5.0), 5.0));
+            c = pal[k];
+            c = mix(c, pal[4], step(abs(fract(uv.x * n) - 0.5), 0.02 + 0.03 * r3) * step(0.5, r3));
+        } else if (style == 13) { // squares nested, each in another colour
+            vec2 q = abs(uv - vec2(0.5, 0.45 + 0.1 * r2));
+            float d = max(q.x, q.y * (1.0 + 0.3 * r1));
+            c = pal[int(min(4.0, floor(d * 8.0)))];
+        } else if (style == 14) { // drips and splashes on a ground
+            c = pal[0];
+            for (int i = 1; i < 5; i++) {
+                float fi = float(i);
+                float x = h1(s + fi * 3.1);
+                float w = 0.01 + 0.02 * h1(s + fi * 5.7);
+                float drip = step(abs(uv.x - x - 0.03 * sin(uv.y * 9.0 + fi)), w)
+                           * step(1.0 - uv.y, 0.5 + 0.5 * h1(s + fi * 9.3));
+                float blot = step(noise(uv * (6.0 + fi * 2.0) + s + fi * 11.0), 0.3 + 0.07 * r2);
+                c = mix(c, pal[i], max(drip, blot * step(0.4, h1(s + fi))));
+            }
+        } else {                  // a page of tokens: words as blocks, one lit
+            float rows = 9.0 + floor(r1 * 8.0);
+            float row = floor(uv.y * rows);
+            float x = uv.x * (5.0 + 4.0 * r2) + h1(row + s) * 3.0;
+            float word = floor(x);
+            float inWord = step(0.12, fract(x)) * step(0.25, fract(uv.y * rows)) * step(fract(uv.y * rows), 0.8);
+            float lit = step(0.93, hash(vec2(word, row) + s));
+            c = mix(pal[0], lit > 0.5 ? pal[1] : pal[4],
+                    inWord * step(0.08, uv.x) * step(uv.x, 0.92) * step(0.08, uv.y) * step(uv.y, 0.92));
+        }
     } else {                      // noise in big pixels
         float n = 10.0 + floor(r1 * 30.0);
         vec2 ctr = (floor(uv * n) + 0.5) / n;
@@ -545,6 +579,38 @@ vec4 lightShow(vec2 uv, float seed, float t)
     }
     float a = clamp(max(c.r, max(c.g, c.b)) * 1.3, 0.0, 1.0);
     return vec4(c, a);
+}
+
+// A drawing on paper under a white mount: ink contours, a quick figure,
+// or a sketch of a street in perspective, from a seed
+vec3 drawing(vec2 uv, float seed)
+{
+    float s = seed * 1.37;
+    int kind = int(mod(seed, 3.0));
+    vec2 p = (uv - 0.15) / 0.7;                       // inside the mount
+    float inPaper = step(0.0, p.x) * step(p.x, 1.0) * step(0.0, p.y) * step(p.y, 1.0);
+    vec3 paper = vec3(0.95, 0.93, 0.86);
+    float ink = 0.0;
+    if (kind == 0) {          // contours round a few hills of noise
+        float v = fbm(p * 2.5 + s);
+        ink = 1.0 - smoothstep(0.0, 0.08, abs(fract(v * 9.0) - 0.5) * 2.0 - 0.75);
+    } else if (kind == 1) {   // a figure in a few strokes
+        vec2 q = p - vec2(0.5, 0.0);
+        float head = abs(length(q - vec2(0.0, 0.78)) - 0.09);
+        float body = abs(q.x - 0.04 * sin(q.y * 12.0 + s)) + step(0.7, q.y) + step(q.y, 0.3);
+        float legs = min(abs(q.x - 0.25 * (0.3 - q.y)), abs(q.x + 0.25 * (0.3 - q.y))) + step(0.3, q.y);
+        float arms = abs(q.y - 0.58 - 0.4 * abs(q.x)) + step(0.28, abs(q.x));
+        ink = step(min(min(head, body), min(legs, arms)), 0.012);
+    } else {                  // a street in perspective, hatched
+        vec2 q = p - vec2(0.5, 0.45);
+        float rays = abs(fract(atan(q.y, q.x) * 4.0 / 3.14159 + h1(s)) - 0.5);
+        float hatch = step(0.85, fract((p.x + p.y) * 40.0)) * step(0.5, fbm(p * 4.0 + s));
+        ink = max(step(rays, 0.02) * step(0.15, length(q)), hatch * 0.7);
+    }
+    vec3 c = mix(paper, vec3(0.1, 0.1, 0.12), ink * inPaper * (0.75 + 0.25 * noise(uv * 90.0)));
+    c = mix(vec3(0.97), c, inPaper);                  // the white mount
+    float edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+    return mix(vec3(0.08), c, step(0.02, edge));      // a thin black frame
 }
 
 struct Surface { vec3 albedo; float spec; float gloss; vec3 emissive; float wrap; };
@@ -1045,6 +1111,8 @@ void main()
         s = Surface(toLinear(vec3(0.1, 0.7, 0.3)), 0.0, 8.0, toLinear(vec3(0.15, 1.0, 0.45)) * 2.0, 0.0);
     } else if (m == 51) {          // a canvas from its seed
         s = Surface(toLinear(seeded(clamp(vUV, 0.0, 1.0), vSeed)), 0.1, 24.0, vec3(0), 0.0);
+    } else if (m == 92) {          // a drawing on paper, framed
+        s = Surface(toLinear(drawing(clamp(vUV, 0.0, 1.0), vSeed)), 0.05, 12.0, vec3(0), 0.0);
     } else if (m == 52) {          // polished concrete
         float n = noise(vWorld.xz * 1.7) * 0.6 + noise(vWorld.xz * 9.0) * 0.4;
         s = Surface(toLinear(vec3(0.58, 0.58, 0.56) * (0.9 + 0.12 * n)), 0.5, 60.0, vec3(0), 0.0);
@@ -1079,10 +1147,17 @@ void main()
     } else if (m == 62) {          // ice
         float scratch = noise(vWorld.xz * vec2(30.0, 3.0)) * noise(vWorld.zx * vec2(25.0, 4.0));
         s = Surface(toLinear(vec3(0.82, 0.9, 0.97) * (0.9 + 0.15 * scratch)), 0.9, 140.0, vec3(0), 0.0);
-    } else if (m == 63) {          // moving light, by pattern (seed) and time
+    } else if (m == 63 || m == 93) {
+        // moving light, by pattern (seed) and time; 93: a video on a
+        // screen, opaque, lit, with fine lines
         vec4 l = lightShow(clamp(vUV, 0.0, 1.0), vSeed, uTime);
-        gAlpha = l.a;
-        s = Surface(vec3(0.0), 0.0, 8.0, toLinear(l.rgb) * (0.8 + 4.5 * uNight), 0.0);
+        if (m == 93) {
+            vec3 v = l.rgb * (0.85 + 0.15 * step(0.5, fract(vUV.y * 240.0)));
+            s = Surface(vec3(0.02), 0.3, 40.0, toLinear(v) * 1.8 + vec3(0.004), 0.0);
+        } else {
+            gAlpha = l.a;
+            s = Surface(vec3(0.0), 0.0, 8.0, toLinear(l.rgb) * (0.8 + 4.5 * uNight), 0.0);
+        }
     } else if (m == 65) {          // a striped awning
         vec3 c1 = posterColour(floor(vSeed));
         float st = step(0.5, fract(vUV.x * 6.0));
