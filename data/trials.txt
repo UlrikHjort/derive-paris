@@ -1,0 +1,38 @@
+# Time trials: runs from a start to a finish through the real streets,
+# in the traffic, against the clock.  For each:
+#   [trial]
+#   name   what it is called
+#   hour   the time of day it is driven at (optional; 23: by night)
+#   start  lat lon             (the car is put on the nearest street,
+#                               facing the first point)
+#   via    lat lon             (points to pass on the way, in order; 0 or more)
+#   finish lat lon
+[trial]
+name Concorde to the Étoile
+start 48.867400 2.315800
+via 48.869900 2.307300
+finish 48.872941 2.298570
+[trial]
+name Saint-Sulpice to Notre-Dame
+start 48.851900 2.333020
+via 48.853600 2.341000
+finish 48.853400 2.348300
+[trial]
+name The Grands Boulevards: République to the Opéra
+start 48.868200 2.360700
+via 48.869900 2.354500
+via 48.871400 2.341700
+finish 48.870700 2.332500
+[trial]
+name Night run along the Seine: Hôtel de Ville to the Eiffel Tower
+hour 23
+start 48.856000 2.351200
+via 48.858500 2.338200
+via 48.865400 2.320500
+via 48.863700 2.304600
+finish 48.860000 2.293000
+[trial]
+name Up to Montmartre: Pigalle to the Place du Tertre
+start 48.882080 2.337680
+via 48.884300 2.339400
+finish 48.886500 2.340800

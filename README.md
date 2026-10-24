@@ -171,6 +171,17 @@ forgets it.  They are kept in `~/.derive_places`, one per line as
 `latitude longitude name`, so the names can be changed there.  Saved
 places show as green diamonds on the minimap.
 
+### Time trials
+
+F2, **Time trials**: runs through Paris against the clock, in the
+traffic: Concorde to the Étoile up the Champs-Élysées, Saint-Sulpice to
+Notre-Dame, the Grands Boulevards from République to the Opéra, a night
+run along the Seine from the Hôtel de Ville to the Eiffel Tower, and up
+to Montmartre.  After a countdown, the GPS takes you from checkpoint to
+checkpoint to the finish; your best time for each is kept in
+`~/.derive_trials`.  Enter at the end runs it again.  The runs are in
+`data/trials.txt`, easy to add to.
+
 ### Stunts in the plane
 
 Fly through the great vault of the Arc de Triomphe, as Charles Godefroy

@@ -70,6 +70,7 @@ with Rooms;
 with Postcards;
 with Closures;
 with Stunts;
+with Trials;
 with Altimeter;
 with River;
 with Gdk.Keyval;
@@ -212,6 +213,7 @@ package body Game is
    Results_Up : Boolean := False;     --  shown (once) after the finish
    Results_Open : Boolean := False;   --  and still on the screen
    Taxi_Goal    : Natural := 0;       --  the taxi goal the GPS has
+   Trial_Goal   : Natural := Natural'Last;   --  the time trial goal the GPS has
    Panel_Shown  : Ada.Strings.Unbounded.Unbounded_String;   --  the taxi's ride panel
    Gate_X, Gate_Z : Float := 0.0;      --  where the GPS points
    Sign    : Gtk.Label.Gtk_Label;      --  street name, like a Paris plaque
@@ -793,6 +795,7 @@ package body Game is
          Arc_Top.Load (Dir & "/arc.txt");
          Scenes.Load;
          Postcards.Load;
+         Trials.Load;
          Addresses.Load (Dir);
          Scenes.Set_Override (Xmas_Setting);
          Scenes.Create;
@@ -2453,10 +2456,10 @@ package body Game is
    ---------------------------------------------------------------------------
 
    --  The games menu: the games at the top, each with its own menu below
-   type Menu_Level is (Games, Racing, Tracks, Taxi_Menu);
+   type Menu_Level is (Games, Racing, Tracks, Taxi_Menu, Trials_Menu);
    Level : Menu_Level := Games;
    type Menu_Item is
-     (Go_Racing, Go_Taxi, Go_Free, Race_Again, Leave_Race, Street_Race, Random_Race,
+     (Go_Racing, Go_Taxi, Go_Trials, Go_Free, Race_Again, Leave_Race, Street_Race, Random_Race,
       Make_Track, Save_Track, Drop_Track, Start_Shift, Stop_Shift, Up);
    type Item_Array is array (1 .. 8) of Menu_Item;
 
@@ -2473,6 +2476,7 @@ package body Game is
          when Games =>
             Add (Go_Racing);
             Add (Go_Taxi);
+            Add (Go_Trials);
             Add (Go_Free);
          when Taxi_Menu =>
             if Taxi.Active then
@@ -2495,8 +2499,8 @@ package body Game is
                Add (Make_Track);
             end if;
             Add (Up);
-         when Tracks =>
-            null;   --  the tracks themselves (see Menu_Items)
+         when Tracks | Trials_Menu =>
+            null;   --  the tracks or runs themselves (see Menu_Items)
       end case;
    end List_Items;
 
@@ -2506,6 +2510,8 @@ package body Game is
    begin
       if Level = Tracks then
          return Race.Track_Count + 1;
+      elsif Level = Trials_Menu then
+         return Trials.Count + 1;
       end if;
       List_Items (L, N);
       return N;
@@ -2529,7 +2535,8 @@ package body Game is
                                   when Games  => "Games",
                                   when Racing => "Street racing",
                                   when Tracks => "Street racing: choose a track",
-                                  when Taxi_Menu => "Taxi")
+                                  when Taxi_Menu => "Taxi",
+                                  when Trials_Menu => "Time trials: through Paris against the clock")
                              & "</span></b>" & LF & LF
                              & (if Level = Tracks then
                                   "  Laps:  &lt; " & (if Race.Laps_Setting = 0 then "as the track suits"
@@ -2554,15 +2561,28 @@ package body Game is
             Line (I, Escape (Race.Track_Name (I)));
          end loop;
          Line (Race.Track_Count + 1, "back");
+      elsif Level = Trials_Menu then
+         for I in 1 .. Trials.Count loop
+            Line (I, Escape (Trials.Name (I))
+                  & (if Trials.Best (I) > 0.0
+                     then "  <span foreground='#9fd4a8'>(best" & Natural'Image (Natural (Trials.Best (I) / 60.0))
+                          & ":" & Ada.Strings.Fixed.Tail (Ada.Strings.Fixed.Trim
+                            (Natural'Image (Natural (Float'Floor (Trials.Best (I))) mod 60), Ada.Strings.Left), 2, '0')
+                          & ")</span>"
+                     else ""));
+         end loop;
+         Line (Trials.Count + 1, "back");
       else
          for I in 1 .. Menu_Items loop
             Line (I, (case Item_At (I) is
                         when Go_Racing    => "Street racing  &gt;",
                         when Go_Taxi      => "Taxi  &gt;",
+                        when Go_Trials    => "Time trials  &gt;",
                         when Start_Shift  => "Start a shift",
                         when Stop_Shift   => "End the shift",
                         when Go_Free      =>
                           (if Race.Active then "Back to the city (leave the race)"
+                           elsif Trials.Active then "Back to the city (leave the run)"
                            elsif Taxi.Active then "Back to the city (end the shift)"
                            elsif Race.Editing then "Back to the city (drop the track)"
                            else "Free driving"),
@@ -2599,7 +2619,8 @@ package body Game is
          end if;
          --  in a race (or making a track) straight to its own menu
          Level := (if Race.Active or else Race.Editing then Racing
-                   elsif Taxi.Active then Taxi_Menu else Games);
+                   elsif Taxi.Active then Taxi_Menu
+                   elsif Trials.Active then Trials_Menu else Games);
          Menu_Sel := 1;
          Refresh_Menu;
          Game_Menu.Show;
@@ -2616,6 +2637,7 @@ package body Game is
          when Racing => Level := Games;
          when Tracks => Level := Racing;
          when Taxi_Menu => Level := Games;
+         when Trials_Menu => Level := Games;
       end case;
       Menu_Sel := 1;
       if Menu_Open then
@@ -2633,6 +2655,11 @@ package body Game is
    --  Back to the city: the race (or the editor) away, the traffic back
    procedure End_Race is
    begin
+      if Trials.Active then
+         Trials.Stop;
+         Navigation.Clear;
+         Trial_Goal := Natural'Last;
+      end if;
       if Race.Active then
          Race.Stop;
          Traffic.Set_Density (Config.Get ("traffic", 1.0));
@@ -2674,6 +2701,7 @@ package body Game is
       end if;
       End_Race;
       Race.Edit_Cancel;
+      Trials.Stop;
       Taxi.Start_Shift (Player);
       Taxi_Goal := 0;
       Panel_Shown := Ada.Strings.Unbounded.Null_Unbounded_String;
@@ -2742,8 +2770,42 @@ package body Game is
       Race_Hud.Show;
    end Begin_Again;
 
+   procedure Begin_Trial (I : Natural) is
+   begin
+      if Visiting or else Walking or else Mode /= Driving then
+         Say ("Get back in the car first");
+         return;
+      end if;
+      End_Race;
+      Race.Edit_Cancel;
+      End_Taxi;
+      if I = 0 then
+         Trials.Again (Player, Hour);
+      else
+         Trials.Start (I, Player, Hour);
+      end if;
+      Cam_Pos := (Player.X, 6.0 + Player.Ground, Player.Z) - 10.0 * Car.Forward (Player);
+      Cam_Look := (Player.X, 1.2 + Player.Ground, Player.Z);
+      Pending_Load := True;
+      Trial_Goal := Natural'Last;
+      Panel_Shown := Ada.Strings.Unbounded.Null_Unbounded_String;
+      if not Show_Compass then
+         Set_Key (16#67#, True);   --  the minimap, for the way
+      end if;
+      Race_Hud.Show;
+   end Begin_Trial;
+
    procedure Menu_Choose is
    begin
+      if Level = Trials_Menu then
+         if Menu_Sel > Trials.Count then
+            Menu_Back;
+         else
+            Toggle_Menu;
+            Begin_Trial (Menu_Sel);
+         end if;
+         return;
+      end if;
       if Level = Tracks then
          if Menu_Sel > Race.Track_Count then
             Menu_Back;
@@ -2760,6 +2822,10 @@ package body Game is
             Refresh_Menu;
          when Go_Taxi =>
             Level := Taxi_Menu;
+            Menu_Sel := 1;
+            Refresh_Menu;
+         when Go_Trials =>
+            Level := Trials_Menu;
             Menu_Sel := 1;
             Refresh_Menu;
          when Start_Shift =>
@@ -2961,6 +3027,65 @@ package body Game is
 
    --  Each frame in a taxi shift: the HUD, a fine, the ride's panel, the
    --  GPS and the speed limit sign
+   --  The time trial: its line at the top, the countdown, the result, the GPS
+   procedure Trial_Overlays is
+      use Ada.Strings.Unbounded;
+      use type Trials.Phase_Kind;
+   begin
+      if not Trials.Active then
+         return;
+      end if;
+      declare
+         T : constant String := Trials.Hud_Text;
+         B : constant String := Trials.Banner;
+         P : constant String := Trials.Panel_Text;
+      begin
+         if To_String (Race_Shown) /= T then
+            Race_Shown := To_Unbounded_String (T);
+            if T = "" then
+               Race_Hud.Hide;
+            else
+               Race_Hud.Set_Markup (T);
+               Race_Hud.Show;
+            end if;
+         end if;
+         if To_String (Banner_Shown) /= B then
+            Banner_Shown := To_Unbounded_String (B);
+            if B = "" then
+               Race_Banner.Hide;
+            else
+               Race_Banner.Set_Markup ("<span font_family='sans' weight='heavy' size='60000' foreground='#ffd27a'>"
+                                       & B & "</span>");
+               Race_Banner.Show;
+            end if;
+         end if;
+         if not Menu_Open and then To_String (Panel_Shown) /= P then
+            Panel_Shown := To_Unbounded_String (P);
+            if P = "" then
+               Game_Menu.Hide;
+            else
+               Game_Menu.Set_Markup (P);
+               Game_Menu.Show;
+            end if;
+         end if;
+      end;
+      declare
+         Serial : Natural;
+         X, Z   : Float;
+         Name   : Unbounded_String;
+      begin
+         Trials.Goal (Serial, X, Z, Name);
+         if Serial /= Trial_Goal then
+            Trial_Goal := Serial;
+            if Length (Name) = 0 then
+               Navigation.Clear;
+            else
+               Navigation.Set_Destination (To_String (Name), X, Z);
+            end if;
+         end if;
+      end;
+   end Trial_Overlays;
+
    procedure Taxi_Overlays is
       use Ada.Strings.Unbounded;
    begin
@@ -3523,6 +3648,24 @@ package body Game is
             Set_Key (16#FF0D#, True);   --  Race on a track
          end if;
       end if;
+      --  PARIS_TRIAL=n: start that time trial; PARIS_TRIAL_AUTO=1: jump to
+      --  each checkpoint in turn (testing)
+      if Ready and then Frame_Number = 30 and then Env ("PARIS_TRIAL") /= "" then
+         Begin_Trial (Natural'Value (Env ("PARIS_TRIAL")));
+      end if;
+      if Ready and then Env ("PARIS_TRIAL_AUTO") /= "" and then Frame_Number mod 100 = 0
+        and then Trials."=" (Trials.Phase, Trials.Running)
+      then
+         declare
+            Serial : Natural;
+            X, Z   : Float;
+            Name   : Ada.Strings.Unbounded.Unbounded_String;
+         begin
+            Trials.Goal (Serial, X, Z, Name);
+            Player := (X => X, Z => Z, Heading => Player.Heading, others => <>);
+            Player.Ground := Terrain.Height (X, Z);
+         end;
+      end if;
       --  PARIS_TAXI_AUTO=1: jump to each fare and destination in turn (testing)
       if Ready and then Env ("PARIS_TAXI_AUTO") /= "" and then Frame_Number mod 150 = 0 then
          declare
@@ -3768,6 +3911,10 @@ package body Game is
             end if;
             Race.Update (Dt, Player);
             Taxi.Update (Dt, Player, Hour, Almanac.Sunday, Rain_Amount);
+            Trials.Update (Dt, Player);
+            if Trials.Holding then
+               Player.Speed := 0.0;   --  the countdown: wait for it
+            end if;
             --  the traffic: rush hour on weekdays, quiet late at night
             Density_Wait := Density_Wait - Dt;
             if Density_Wait <= 0.0 and then not Race.Active then
@@ -3822,6 +3969,7 @@ package body Game is
          Update_Camera (Dt);
          Race_Overlays;
          Taxi_Overlays;
+         Trial_Overlays;
          --  the altimeter: height above the ground, or the water of the Seine
          declare
             Wet : constant Boolean := River.In_Channel (Aircraft.Pos.X, Aircraft.Pos.Z);
@@ -4079,6 +4227,17 @@ package body Game is
          return;
       end if;
       if Menu_Open and then Down and then Menu_Key (K) then
+         return;
+      end if;
+      --  after a time trial: again, or back to the city
+      if Down and then not Menu_Open and then Trials."=" (Trials.Phase, Trials.Done)
+        and then (K = 16#FF0D# or else K = 16#FF8D# or else K = 16#FF1B#)
+      then
+         if K = 16#FF1B# then
+            End_Race;
+         else
+            Begin_Trial (0);
+         end if;
          return;
       end if;
       --  after a taxi ride: on to the next fare, or end the shift
