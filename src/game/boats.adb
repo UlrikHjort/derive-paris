@@ -12,6 +12,7 @@ with Meshes;
 with River;
 with Road_Network;
 with Shaders;
+with Seasons;
 with Terrain;
 
 package body Boats is
@@ -92,7 +93,7 @@ package body Boats is
          Off : constant Float := (if B.Kind = Peniche then 13.0 else 9.0);
          C : constant Vec3 := (X, 0.0, Z) + Off * Right;
       begin
-         P := (C.X, Terrain.Height (C.X, C.Z) - River.Depth, C.Z);
+         P := (C.X, Terrain.Height (C.X, C.Z) - River.Depth + Seasons.Flood, C.Z);
       end;
    end Place;
 
@@ -127,6 +128,9 @@ package body Boats is
             end;
          end loop;
          Placed := True;
+      end if;
+      if Seasons.Flood > 2.5 then
+         return;   --  the river in flood: too high to pass under the bridges, all moored
       end if;
       for B of Fleet loop
          if B.Wait > 0.0 then

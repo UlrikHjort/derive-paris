@@ -71,6 +71,20 @@ package body River is
          end if;
    end Load;
 
+   function Points return Natural is
+   begin
+      if not Loaded then
+         Load;
+      end if;
+      return Count;
+   end Points;
+
+   procedure Point_At (I : Positive; X, Z : out Float) is
+   begin
+      X := Line (I).X;
+      Z := Line (I).Z;
+   end Point_At;
+
    function Length return Float is
       L : Float := 0.0;
    begin

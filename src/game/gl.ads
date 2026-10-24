@@ -248,6 +248,8 @@ package GL is
      with Import, Convention => C, External_Name => "epoxy_glDepthRange";
    glUniform4fv : P_Uniform_FV
      with Import, Convention => C, External_Name => "epoxy_glUniform4fv";
+   glUniform2fv : P_Uniform_FV
+     with Import, Convention => C, External_Name => "epoxy_glUniform2fv";
 
    glClear : P_Bitfield
      with Import, Convention => C, External_Name => "epoxy_glClear";

@@ -61,6 +61,7 @@ with Arc_Top;
 with Hall_B;
 with Decals;
 with Scenes;
+with Seasons;
 with Birds;
 with Stravinsky;
 with Addresses;
@@ -360,7 +361,8 @@ package body Game is
       Sky_Zenith, Sky_Horizon, Fog_Density, Time, Car_Color,
       Shadow_Map, Shadows, Amb_Sky, Amb_Ground, Night, Lights, Light_Count,
       Head_Pos, Head_Dir, Head_On, Extra_Color, Extra_Color2, Wet,
-      Tower_Lights, Sparkle, Snow_Cover, Xmas_On, Autumn, Bare, Litter, Trash, Gallery : GLint;
+      Tower_Lights, Sparkle, Snow_Cover, Xmas_On, Autumn, Bare, Litter, Trash, Gallery,
+      Mist, Mist_Y, Heat, Blossom, Petals, Flood, Seine, Seine_N : GLint;
    end record;
    WU : World_Uniforms;
 
@@ -759,7 +761,15 @@ package body Game is
              Head_On       => Location (World_Prog, "uHeadOn"),
              Extra_Color   => Location (World_Prog, "uExtraColor"),
              Extra_Color2  => Location (World_Prog, "uExtraColor2"),
-             Wet           => Location (World_Prog, "uWet"));
+             Wet           => Location (World_Prog, "uWet"),
+             Mist          => Location (World_Prog, "uMist"),
+             Mist_Y        => Location (World_Prog, "uMistY"),
+             Heat          => Location (World_Prog, "uHeat"),
+             Blossom       => Location (World_Prog, "uBlossom"),
+             Petals        => Location (World_Prog, "uPetals"),
+             Flood         => Location (World_Prog, "uFlood"),
+             Seine         => Location (World_Prog, "uSeine"),
+             Seine_N       => Location (World_Prog, "uSeineN"));
       Sky_Inv_VP := Location (Sky_Prog, "uInvViewProj");
       Sky_Cam := Location (Sky_Prog, "uCamPos");
       Sky_Era := Location (Sky_Prog, "uEra");
@@ -1231,6 +1241,12 @@ package body Game is
          Set (WU.Bare, Almanac.Bare);
          Set (WU.Litter, Almanac.Leaf_Litter * (1.0 - Snow_Cover));
          Set (WU.Trash, Trash_Now);
+         Seasons.Set_Uniforms (WU.Mist, WU.Mist_Y, WU.Heat, WU.Blossom, WU.Petals, WU.Flood,
+                               WU.Seine, WU.Seine_N);
+         if In_Museum or else In_Hall_B or else In_Room then
+            Set (WU.Mist, 0.0);   --  (indoors, and the metro deep under the river's level)
+            Set (WU.Heat, 0.0);
+         end if;
          Set (WU.Time, Time);
          Set (WU.Car_Color, Car_Color);
          Set (WU.Shadow_Map, 0);
@@ -1303,6 +1319,7 @@ package body Game is
             Birds.Draw (WU.Model, WU.Car_Color, Cam_Pos);
             Extras.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos);
             Boats.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos, Night);
+            Seasons.Draw (WU.Model, WU.Car_Color, Cam_Pos);
             Closures.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, WU.Extra_Color, Cam_Pos, Time);
             Set (WU.Car_Color, Car_Color);
          end if;
@@ -1354,6 +1371,7 @@ package body Game is
          Set (WU.Model, Identity);
          End_Pass (P_Solid);
          Begin_Pass (P_Ground);
+         Set (WU.Flood, 0.0);   --  (the river's hole at street level stays put)
          World.Draw_Ground;
          Tyre_Effects.Draw_Marks (VP, Cam_Pos);
          Beacon.Draw (VP, Cam_Pos, Time, Hour, Night, Rain_Amount);
@@ -4060,6 +4078,7 @@ package body Game is
          Wetness := Float'Max (Rain_Amount, Wetness - Dt / 60.0);
       end if;
       --  (the morning round: the dawn comes up slowly)
+      Seasons.Update (Dt, Hour, Rain_Amount, Cam_Pos);
       Hour := Hour + Dt * (if Rounds.Clock_Pace > 0.0 then Rounds.Clock_Pace else Clock_Rate);
       if Hour >= 24.0 then
          Hour := Hour - 24.0;

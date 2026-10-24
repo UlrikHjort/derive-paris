@@ -164,6 +164,28 @@ package body Almanac is
      (if Day_Of_Year < 150 then 0.0
       else 0.12 * Ramp (283, 300) * (1.0 - Ramp (325, 340)));
 
+   --  Spring: the cherries and horse chestnuts flower from late March to
+   --  early May, and their petals drift down as it ends
+   function Blossom return Float is (Ramp (84, 98) * (1.0 - Ramp (118, 132)));
+   function Petals return Float is (Ramp (105, 118) * (1.0 - Ramp (128, 140)));
+
+   --  The winter flood: the Seine swells late in January after weeks of
+   --  rain (as in 1910, 2018), up past the Zouave's knees at the height of
+   --  it early in February, and slowly down again
+   function Flood_Rise return Float is
+     (if Day_Of_Year > 60 then 0.0 else 4.6 * Ramp (20, 33) * (1.0 - Ramp (36, 52)));
+
+   --  The hot weeks: from mid-July to the end of August
+   function Summer_Heat return Float is (Ramp (190, 200) * (1.0 - Ramp (232, 245)));
+
+   --  Mist on the river: on one autumn, winter or spring morning in three,
+   --  the same days each year
+   function Misty_Morning return Boolean is
+      D : constant Integer := Day_Of_Year;
+   begin
+      return (D < 135 or else D > 255) and then (D * 7919 + 104_729) mod 97 < 33;
+   end Misty_Morning;
+
    function Christmas return Boolean is
      (Month = 12 or else (Month = 1 and then Day <= 6));
    function Bastille_Day return Boolean is (Month = 7 and then Day = 14);

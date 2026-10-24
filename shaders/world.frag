@@ -66,6 +66,11 @@ uniform float uHeadOn;
 uniform vec3 uExtraColor;    // pedestrians: skin
 uniform vec3 uExtraColor2;   // pedestrians: trousers
 uniform float uWet;          // 0 dry .. 1 soaked streets
+uniform float uMist;         // 0 .. 1: mist lying on the Seine in the morning
+uniform float uMistY;        // the water's level, where it is thickest
+uniform float uHeat;         // 0 .. 1: a hot afternoon, the roads shimmer
+uniform float uBlossom;      // 0 .. 1: spring, the cherries and chestnuts in flower
+uniform float uPetals;       // 0 .. 1: their petals on the ground
 
 out vec4 fragColor;
 
@@ -871,6 +876,32 @@ vec3 roofColour(vec3 fallback)
     return rgb * (0.85 + 0.15 * fbm(vWorld.xz * 0.2));
 }
 
+// How much of the haze lies between the eye and p: the usual haze (more
+// on a hot day), and the morning mist, thick on the water and thinning
+// above it (the density falls by e every 4 m: integrated along the ray)
+float fogAt(vec3 p)
+{
+    float d = length(uCamPos - p);
+    float f = 1.0 - exp(-d * uFogDensity * (1.0 + 0.9 * uHeat));
+    if (uMist > 0.0) {
+        float H = 4.0;
+        float y0 = max(uCamPos.y - uMistY, 0.0);
+        float y1 = max(p.y - uMistY, 0.0);
+        float dy = y1 - y0;
+        float avg = abs(dy) > 0.05 ? H * (exp(-y0 / H) - exp(-y1 / H)) / dy : exp(-y0 / H);
+        float dens = uMist * (0.0025 + 0.05 * avg);
+        f = 1.0 - (1.0 - f) * exp(-d * dens);
+    }
+    return f;
+}
+
+// The colour of the haze: the sky at the horizon, whiter in the mist
+vec3 fogColour()
+{
+    vec3 c = toLinear(uSkyHorizon);
+    return mix(c, vec3(dot(c, vec3(0.3, 0.5, 0.2))) * 1.08, 0.6 * uMist);
+}
+
 // ------------------------------------------------------------------ main ---
 
 void main()
@@ -897,8 +928,7 @@ void main()
         vec3 col = mix(deep, toLinear(skyColor(R)), fres * 0.8);
         col += uSunColor * pow(max(dot(R, L), 0.0), 300.0) * 2.0 * shadowFactor(N, L);
         col += localLight(wn) * (0.08 + 0.5 * fres) * (0.7 + 0.6 * h0);   // lamps on the water
-        float fog = 1.0 - exp(-length(uCamPos - vWorld) * uFogDensity);
-        col = mix(col, toLinear(uSkyHorizon), fog);
+        col = mix(col, fogColour(), fogAt(vWorld));
         col = col / (1.0 + col) * 1.25;
         if (uEra > 0.5) col = kodachrome(col);
         fragColor = vec4(pow(col, vec3(1.0 / 2.2)), 1.0);
@@ -925,6 +955,15 @@ void main()
             fall *= 0.7 + 0.5 * n;
             float turn = clamp(uAutumn * 1.4 - k * 0.6 + 0.15 * (n - 0.5), 0.0, 1.0);
             leaf = mix(leaf, fall, turn);
+        }
+        // spring: one tree in four flowers, cherries pink, chestnuts white
+        if (uBlossom > 0.0) {
+            float k = fract(vSeed * 3.17);
+            if (k < 0.25) {
+                float b = noise(vWorld.xy * 4.1 + vWorld.zy * 3.7 + vSeed * 9.0);
+                vec3 flower = k < 0.12 ? vec3(0.97, 0.74, 0.82) : vec3(0.96, 0.95, 0.9);
+                leaf = mix(leaf, flower * (0.85 + 0.2 * n), smoothstep(0.62 - 0.5 * uBlossom, 0.72 - 0.5 * uBlossom, b));
+            }
         }
         // winter: the crown thins out to bare twigs
         if (uBare > 0.0) {
@@ -1156,6 +1195,11 @@ void main()
         float bevel = mix(1.0, smoothstep(0.0, 0.25, e), detail);
         vec3 c = mix(vec3(0.93, 0.92, 0.88) * (0.85 + 0.15 * bevel), vec3(0.62, 0.6, 0.55), grout);
         s = Surface(toLinear(c), 0.6, 70.0, vec3(0), 0.0);
+    } else if (m == 90) {          // a statue's weathered stone, darker and greener low down
+        float n = fbm(vWorld.xz * 2.0 + vWorld.y * 1.5);
+        vec3 c = mix(vec3(0.52, 0.5, 0.45), vec3(0.66, 0.63, 0.56), n);
+        c = mix(c * vec3(0.7, 0.75, 0.68), c, smoothstep(uMistY + 1.0, uMistY + 4.0, vWorld.y));
+        s = Surface(toLinear(c), 0.05, 10.0, vec3(0), 0.0);
     } else if (m == 89) {          // a baguette's crust: golden, the cuts paler
         float cut = smoothstep(0.35, 0.5, abs(fract(vWorld.y * 9.0 + vWorld.x * 3.0) - 0.5));
         s = Surface(toLinear(mix(vec3(0.78, 0.52, 0.22), vec3(0.93, 0.8, 0.55), cut)), 0.15, 12.0, vec3(0), 0.0);
@@ -1303,6 +1347,15 @@ void main()
                 }
             }
         }
+        if (uPetals > 0.0 && (m == 0 || m == 3 || m == 4 || m == 8)) {
+            vec2 cell = floor(vWorld.xz / 0.09);
+            float h = hash(cell + 7.7);
+            vec2 f = fract(vWorld.xz / 0.09) - 0.5;
+            float patch = smoothstep(0.45, 0.8, noise(vWorld.xz * 0.06 + 2.0));
+            if (h < uPetals * 0.5 * patch && dot(f, f) < 0.09) {
+                s.albedo = toLinear(fract(h * 53.0) < 0.5 ? vec3(0.97, 0.78, 0.85) : vec3(0.97, 0.96, 0.92));
+            }
+        }
         if (uLitter > 0.0 && (m == 0 || m == 3 || m == 4 || m == 8)) {
             vec2 cell = floor(vWorld.xz / 0.22);
             float h = hash(cell + 3.1);
@@ -1399,8 +1452,19 @@ void main()
         col = mix(col, toLinear(skyColor(R)) * 0.8, puddle * (0.25 + 0.6 * fres));
     }
 
-    float fog = 1.0 - exp(-length(uCamPos - vWorld) * uFogDensity);
-    col = mix(col, toLinear(uSkyHorizon), fog);
+    // A hot afternoon: far down the road the tarmac turns to sky, a
+    // trembling mirage just above the horizon of the street
+    if (uHeat > 0.0 && (m == 1 || m == 9 || m == 21) && N.y > 0.9) {
+        float dist = length(uCamPos - vWorld);
+        float graze = 1.0 - smoothstep(0.02, 0.07, V.y);
+        float far_ = smoothstep(25.0, 70.0, dist);
+        float shimmer = 0.6 + 0.4 * noise(vec2(vWorld.x * 0.15 + uTime * 1.3, vWorld.z * 0.15 - uTime * 0.9)
+                                          + vec2(sin(uTime * 7.0 + vWorld.x), 0.0) * 0.4);
+        float mir = uHeat * graze * far_ * shimmer;
+        col = mix(col, toLinear(skyColor(reflect(-V, vec3(0.0, 1.0, 0.0)))) * 0.95, 0.85 * mir);
+    }
+
+    col = mix(col, fogColour(), fogAt(vWorld));
 
     col = col / (1.0 + col) * 1.25;   // gentle tone mapping
     if (uEra > 0.5) col = kodachrome(col);

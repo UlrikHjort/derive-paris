@@ -36,6 +36,11 @@ package Almanac is
    function Bare return Float;            --  leaves gone
    function Leaf_Litter return Float;     --  leaves on the ground
    function Leaves_Falling return Float;  --  leaves in the air
+   function Blossom return Float;         --  spring: cherries and chestnuts in flower
+   function Petals return Float;          --  their petals on the ground
+   function Flood_Rise return Float;      --  metres the Seine stands above its usual level
+   function Summer_Heat return Float;     --  0 .. 1: the hot weeks of July and August
+   function Misty_Morning return Boolean; --  today the mist lies on the Seine at dawn
    --  0 .. 1 through the lunar month: 0 new, 0.25 first quarter,
    --  0.5 full, 0.75 last quarter
 

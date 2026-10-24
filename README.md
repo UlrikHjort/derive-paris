@@ -352,6 +352,19 @@ The game runs on today's date: the sun rises and sets as it does in Paris
 in that season, the moon shows its real phase, the trees change with the
 year, and the clock carries on into the next day at midnight.
 
+The weather follows the seasons too:
+- **Mist:** on many autumn, winter and spring mornings, mist lies on the
+  Seine at dawn. It is thick down on the water and thin on the quays,
+  and it lifts as the sun climbs.
+- **Spring:** from late March into May, the cherries and horse
+  chestnuts flower pink and white, and their petals end up on the paths.
+- **Heat:** on hot July and August afternoons, the haze thickens and the
+  far end of a long avenue turns into a shimmering mirage of sky.
+- **Flood:** late in winter the Seine floods. It rises over the lower
+  quays, the bateaux-mouches stay moored because they can't pass under
+  the bridges, and the water climbs the Zouave of the Pont de l'Alma.
+  Parisians have always read their floods on that stone soldier.
+
 Paris celebrates its days, and the game knows them: holidays, festivals,
 the seasons and the evenings before them all bring something to see and
 hear.  Other things happen at random, by day or at night, now and then or

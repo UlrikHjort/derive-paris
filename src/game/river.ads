@@ -10,6 +10,10 @@ package River is
 
    function In_Channel (X, Z : Float) return Boolean;
 
+   function Points return Natural;
+   procedure Point_At (I : Positive; X, Z : out Float);
+   --  The middle line itself, upstream to downstream
+
    function Length return Float;
    --  Of the middle line, from Austerlitz (0) down to Bir-Hakeim
 
