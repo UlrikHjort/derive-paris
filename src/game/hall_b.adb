@@ -796,7 +796,26 @@ package body Hall_B is
       Z := Origin.Z + LZ;
    end Keep_Inside;
 
+   function Looked_At (X, Z, Yaw : Float) return Natural;
+
    function Caption (X, Z, Yaw : Float) return String is
+      Best : constant Natural := Looked_At (X, Z, Yaw);
+   begin
+      if Best = 0 then
+         return "";
+      end if;
+      if Works (Best).Kind = Shop then
+         return "<span font_family='sans' size='large'><b>"
+           & (if Ada.Strings.Unbounded.Length (Shop_Text) > 0 then To_String (Shop_Text) else "The shop") & "</b></span>" & ASCII.LF
+           & "<span font_family='sans'>" & Title & "  ·  postcards, 1.50 €  ·  Enter: buy one</span>";
+      end if;
+      return "<span font_family='serif' size='large'><i>" & To_String (Works (Best).Name)
+        & "</i>, 2026</span>" & ASCII.LF
+        & "<span font_family='sans'>" & Artist & "  ·  " & To_String (Works (Best).Medium) & "</span>";
+   end Caption;
+
+   --  The work you look at, as Caption picks it (0: none)
+   function Looked_At (X, Z, Yaw : Float) return Natural is
       Look_X : constant Float := Sin (Yaw);
       Look_Z : constant Float := -Cos (Yaw);
       Best   : Natural := 0;
@@ -811,8 +830,8 @@ package body Hall_B is
             Sculpture : constant Boolean := W.N.X = 0.0 and then W.N.Z = 0.0;
          begin
             if D < (if Sculpture then 3.5 else 5.0) and then D > 0.1
-              and then (DX * Look_X + DZ * Look_Z) / D > 0.75            --  looking at it
-              and then (Sculpture or else -(DX * W.N.X + DZ * W.N.Z) > 0.5)   --  in front of it
+              and then (DX * Look_X + DZ * Look_Z) / D > 0.75
+              and then (Sculpture or else -(DX * W.N.X + DZ * W.N.Z) > 0.5)
               and then D < Best_D
             then
                Best := I;
@@ -820,18 +839,40 @@ package body Hall_B is
             end if;
          end;
       end loop;
-      if Best = 0 then
-         return "";
-      end if;
-      if Works (Best).Kind = Shop then
-         return "<span font_family='sans' size='large'><b>"
-           & (if Ada.Strings.Unbounded.Length (Shop_Text) > 0 then To_String (Shop_Text) else "The shop") & "</b></span>" & ASCII.LF
-           & "<span font_family='sans'>" & Title & "  ·  postcards, 1.50 €</span>";
-      end if;
-      return "<span font_family='serif' size='large'><i>" & To_String (Works (Best).Name)
-        & "</i>, 2026</span>" & ASCII.LF
-        & "<span font_family='sans'>" & Artist & "  ·  " & To_String (Works (Best).Medium) & "</span>";
-   end Caption;
+      return Best;
+   end Looked_At;
+
+   function At_Shop (X, Z, Yaw : Float) return Boolean is
+      I : constant Natural := Looked_At (X, Z, Yaw);
+   begin
+      return I /= 0 and then Works (I).Kind = Shop;
+   end At_Shop;
+
+   Card_Turn : Natural := 0;
+
+   procedure Next_Card (Name, Text : out Unbounded_String; Eye, Look : out Vec3) is
+      I : Positive := 1;
+   begin
+      --  the next painting in turn
+      for K in 1 .. Slots'Length loop
+         Card_Turn := Card_Turn mod Slots'Length + 1;
+         if Kind_Of (Card_Turn) = Painting then
+            I := Card_Turn;
+            exit;
+         end if;
+      end loop;
+      declare
+         W : Work renames Works (I);
+         --  far enough back for it to fill the picture
+         D : constant Float := 1.3 * Float'Max (Sizes_H (I) / 1.2, Sizes_W (I) / 2.2) + 0.05;
+      begin
+         Look := W.C;
+         Eye := W.C + D * W.N;
+         Name := +(To_String (W.Name) & " (" & Title & ")");
+         Text := +(Artist & ", " & To_String (W.Name) & ", 2026, " & To_String (W.Medium) & ".  From "
+                   & Title & ", " & Heading & "; a postcard from the shop, 1.50 €.");
+      end;
+   end Next_Card;
 
    procedure Update (Dt : Float) is
    begin
@@ -875,6 +916,7 @@ package body Hall_B is
       Figures.Person (Translation (G (6.0, 0.0, Shop_Z1 - 1.1)) * Rotation_Y (Pi), (0.1, 0.1, 0.12),
                       (0.76, 0.57, 0.44), (0.12, 0.12, 0.14));   --  at the till
       for K in Visitors'Range loop
+         exit when Snapping;
          declare
             V : Visitor renames Visitors (K);
          begin

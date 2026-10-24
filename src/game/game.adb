@@ -321,6 +321,9 @@ package body Game is
    Drone    : Boolean := False;
    Zoom     : Float := 1.0;      --  camera distance factor (wheel, +/-)
    Fixed_Camera : Boolean := False;  --  PARIS_CAM: a still camera for screenshots
+   Snap_Frames  : Natural := 0;      --  a bought postcard: the camera before the work
+   Snap_Eye, Snap_Look : Vec3 := (0.0, 0.0, 0.0);
+   Snap_Name, Snap_Text : Ada.Strings.Unbounded.Unbounded_String;
 
    type Float_List is array (1 .. 16) of Float;
 
@@ -1540,6 +1543,18 @@ package body Game is
       K : constant Float := 1.0 - Exp (-Dt * (if Mode = Flying then 8.0 else 6.0));
    begin
       if Fixed_Camera then
+         return;
+      end if;
+      --  a postcard being printed: for a few frames, right before the work
+      if Snap_Frames > 0 then
+         Cam_Pos := Snap_Eye;
+         Cam_Look := Snap_Look;
+         Snap_Frames := Snap_Frames - 1;
+         Hall_B.Snapping := Snap_Frames > 0;
+         if Snap_Frames = 1 then
+            Postcards.Buy (Ada.Strings.Unbounded.To_String (Snap_Name),
+                           Ada.Strings.Unbounded.To_String (Snap_Text));
+         end if;
          return;
       end if;
       --  PARIS_ORBIT="angle distance height": look at the car from there
@@ -4221,6 +4236,14 @@ package body Game is
             Player.Ground := Terrain.Height (X, Z);
          end;
       end if;
+      --  PARIS_BUY=n: in the hall, n postcards bought at the shop (testing)
+      if Ready and then In_Hall_B and then Env ("PARIS_BUY") /= "" and then Frame_Number >= 60
+        and then Frame_Number mod 20 = 0 and then Frame_Number < 60 + 20 * Natural'Value (Env ("PARIS_BUY"))
+      then
+         Hall_B.Next_Card (Snap_Name, Snap_Text, Snap_Eye, Snap_Look);
+         Snap_Frames := 4;
+         Hall_B.Snapping := True;
+      end if;
       --  PARIS_RADIO=1: the radio on (testing)
       if Ready and then Frame_Number = 30 and then Env ("PARIS_RADIO") /= "" then
          Radio.Toggle (Radio_Facts);
@@ -4862,6 +4885,15 @@ package body Game is
          return;   --  (the metro: choosing a station)
       end if;
       if Menu_Open and then Down and then Menu_Key (K) then
+         return;
+      end if;
+      --  in the hall's shop: Enter buys a postcard of one of the works
+      if Down and then In_Hall_B and then Walking and then (K = 16#FF0D# or else K = 16#FF8D#)
+        and then Hall_B.At_Shop (Walk_X, Walk_Z, Walk_Yaw)
+      then
+         Hall_B.Next_Card (Snap_Name, Snap_Text, Snap_Eye, Snap_Look);
+         Snap_Frames := 4;
+         Hall_B.Snapping := True;
          return;
       end if;
       --  after the night bus: the line again, or back to the city

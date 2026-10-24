@@ -33,6 +33,7 @@ package body Postcards is
       Name, Text : Unbounded_String;
       X, Z, Radius : Float := 0.0;
       Got : Boolean := False;
+      Bought : Boolean := False;   --  from a shop, not a place to find
    end record;
    package Card_Vectors is new Ada.Containers.Vectors (Positive, Card);
    Cards : Card_Vectors.Vector;
@@ -68,13 +69,26 @@ package body Postcards is
    function Picture_Of (C : Card) return String is
      (Folder & "/" & Slug (To_String (C.Name)) & ".png");
 
-   function Total return Natural is (Natural (Cards.Length));
+   --  the bought cards: one per line, name <tab> words
+   function Bought_File return String is (Folder & "/bought.txt");
+
+   --  How many places there are to find (the bought cards are extra)
+   function Total return Natural is
+      N : Natural := 0;
+   begin
+      for C of Cards loop
+         if not C.Bought then
+            N := N + 1;
+         end if;
+      end loop;
+      return N;
+   end Total;
 
    function Collected return Natural is
       N : Natural := 0;
    begin
       for C of Cards loop
-         if C.Got then
+         if C.Got and then not C.Bought then
             N := N + 1;
          end if;
       end loop;
@@ -130,6 +144,28 @@ package body Postcards is
       end loop;
       Finish;
       Ada.Text_IO.Close (F);
+      --  the bought ones
+      begin
+         Ada.Text_IO.Open (F, Ada.Text_IO.In_File, Bought_File);
+         while not Ada.Text_IO.End_Of_File (F) loop
+            declare
+               L : constant String := Ada.Text_IO.Get_Line (F);
+               T : constant Natural := Ada.Strings.Fixed.Index (L, (1 => ASCII.HT));
+            begin
+               if T > L'First then
+                  Cards.Append ((Name => To_Unbounded_String (L (L'First .. T - 1)),
+                                 Text => To_Unbounded_String (L (T + 1 .. L'Last)),
+                                 Bought => True, others => <>));
+               end if;
+            end;
+         end loop;
+         Ada.Text_IO.Close (F);
+      exception
+         when others =>
+            if Ada.Text_IO.Is_Open (F) then
+               Ada.Text_IO.Close (F);
+            end if;
+      end;
       --  the ones already in the album
       for C of Cards loop
          C.Got := Ada.Directories.Exists (Picture_Of (C));
@@ -161,7 +197,7 @@ package body Postcards is
             Up : constant Float := Cam.Y - Terrain.Height (C.X, C.Z);
          begin
             --  near, not too high above it, and before you (within 30 degrees)
-            if not C.Got and then D < C.Radius and then D > 12.0
+            if not C.Got and then not C.Bought and then D < C.Radius and then D > 12.0
               and then Up < C.Radius
               and then (DX * LX + DZ * LZ) / (D * LL) > 0.866
               --  and in sight: no houses in between (its own walls may be
@@ -197,13 +233,43 @@ package body Postcards is
          C.Got := True;
          Sound.Shutter;
          Fresh := To_Unbounded_String
-           ("Postcard: " & To_String (C.Name) & "  ("
+           (if C.Bought then "Bought a postcard: " & To_String (C.Name) & "  (F4 for the album)" else
+            "Postcard: " & To_String (C.Name) & "  ("
             & Ada.Strings.Fixed.Trim (Natural'Image (Collected), Ada.Strings.Left) & "/"
             & Ada.Strings.Fixed.Trim (Natural'Image (Total), Ada.Strings.Left) & ", F4 for the album)");
          Shown := Pending;
       end;
       Pending := 0;
    end Take_Picture;
+
+   procedure Buy (Name, Text : String) is
+      F : Ada.Text_IO.File_Type;
+   begin
+      for I in Cards.First_Index .. Cards.Last_Index loop
+         if Cards (I).Bought and then To_String (Cards (I).Name) = Name then
+            Pending := I;   --  bought before: a new print
+            return;
+         end if;
+      end loop;
+      Cards.Append ((Name => To_Unbounded_String (Name), Text => To_Unbounded_String (Text),
+                     Bought => True, others => <>));
+      Pending := Cards.Last_Index;
+      begin
+         Ada.Directories.Create_Path (Folder);
+         if Ada.Directories.Exists (Bought_File) then
+            Ada.Text_IO.Open (F, Ada.Text_IO.Append_File, Bought_File);
+         else
+            Ada.Text_IO.Create (F, Ada.Text_IO.Out_File, Bought_File);
+         end if;
+         Ada.Text_IO.Put_Line (F, Name & ASCII.HT & Text);
+         Ada.Text_IO.Close (F);
+      exception
+         when others =>
+            if Ada.Text_IO.Is_Open (F) then
+               Ada.Text_IO.Close (F);
+            end if;
+      end;
+   end Buy;
 
    function News return String is
       S : constant String := To_String (Fresh);
@@ -288,7 +354,9 @@ package body Postcards is
            ("<b><span size='x-large' font_family='serif' foreground='#ffd27a'>" & Esc (To_String (C.Name))
             & "</span></b>" & ASCII.LF & ASCII.LF
             & "<span font_family='serif' size='large'>" & Esc (To_String (C.Text)) & "</span>" & ASCII.LF & ASCII.LF
-            & "<span foreground='#aab'>card" & Natural'Image (Page) & " of the " & N & " you have found, of " & T
+            & "<span foreground='#aab'>"
+            & (if C.Bought then "a postcard you bought"
+               else "card" & Natural'Image (Page) & " of the " & N & " you have found, of " & T)
             & "      Left / Right: turn the page      F4 or Esc: close</span>");
       end;
    end Show_Page;

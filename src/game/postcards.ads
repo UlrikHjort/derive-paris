@@ -22,6 +22,10 @@ package Postcards is
    procedure Take_Picture (Width, Height : Natural);
    --  After a frame is drawn, into the bound framebuffer
 
+   procedure Buy (Name, Text : String);
+   --  A card bought (in a museum shop): into the album, its picture taken
+   --  from the next frame drawn (the caller puts the camera before it)
+
    function News return String;
    --  "" or what was just collected (once)
 

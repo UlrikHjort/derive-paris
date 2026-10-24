@@ -6,7 +6,10 @@
 --  plinths and people looking at them; it is set up anew each time you
 --  come in.  Its words are in data/gallery.dat.
 
+with Ada.Strings.Unbounded;
+
 with GL;
+with Math3D;
 
 package Hall_B is
 
@@ -37,6 +40,17 @@ package Hall_B is
    function Caption (X, Z, Yaw : Float) return String;
    --  The label of the work you are standing before and looking at
    --  (Pango markup), "" if none
+
+   function At_Shop (X, Z, Yaw : Float) return Boolean;
+   --  Standing at the shop's counter, looking at the postcards
+
+   procedure Next_Card (Name, Text : out Ada.Strings.Unbounded.Unbounded_String;
+                        Eye, Look : out Math3D.Vec3);
+   --  A postcard of the next painting not yet bought (in turn): its title
+   --  and words, and where to stand to take its picture
+
+   Snapping : Boolean := False;
+   --  A postcard's picture is being taken: the visitors step aside
 
    procedure Update (Dt : Float);
 
