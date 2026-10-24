@@ -2,6 +2,7 @@
 --  Copyright (c) 2026 Ulrik Hørlyk Hjort
 --  SPDX-License-Identifier: MIT
 --
+with Ada.Environment_Variables;
 with Ada.Numerics;
 with Ada.Numerics.Elementary_Functions;
 with Ada.Numerics.Float_Random;
@@ -103,6 +104,12 @@ package body Sky_Life is
    Next_Launch : Float := 0.0;
    Ear         : Vec3 := (0.0, 0.0, 0.0);
    French      : Boolean := False; --  tricolour shells
+   National    : Boolean := False; --  the 14th of July at the Eiffel Tower
+   Next_Salvo  : Float := 0.0;
+   Fountain_Due : Float := 0.0;
+   After_Show  : Float := 99.0;    --  seconds since a big show ended (the cheering)
+   Test_Show_Done : Boolean := False;
+   Solid       : constant := 100_000;   --  a shell of one colour: Solid + 4 * colour
 
    function Show_Running return Boolean is (Show_On);
 
@@ -126,8 +133,9 @@ package body Sky_Life is
       Show_On := True;
       Show_Centre := Centre;
       Show_Big := Big;
-      Show_Left := (if Big then 240.0 else 75.0);
+      Show_Left := (if National then 420.0 elsif Big then 240.0 else 75.0);
       Next_Launch := 0.5;
+      Next_Salvo := 20.0;
    end Start_Show;
 
    --  The bang reaches you later the further away you are
@@ -141,11 +149,16 @@ package body Sky_Life is
    procedure Burst (P : Vec3; Shell : Integer) is
       Kind  : constant Integer := Shell mod 4;   --  peony, ring, willow, glitter
       N     : constant Natural := (if Show_Big then 220 else 120);
-      Speed : constant Float := (if Show_Big then 60.0 else 38.0) * (0.8 + 0.4 * Rnd);
+      Speed : constant Float := (if Show_Big then 60.0 else 38.0) * (0.8 + 0.4 * Rnd)
+        * (if National and then Show_Left < 45.0 then 1.3 else 1.0);
+      One   : constant Boolean := Shell >= Solid;   --  one colour (the salvos)
       C1    : constant Vec3 :=
-        (if French then Tricolore (1 + Shell / 4 mod 3) else Palette (1 + Shell / 4 mod 7));
+        (if One then Tricolore (1 + (Shell - Solid) / 4 mod 3)
+         elsif French then Tricolore (1 + Shell / 4 mod 3) else Palette (1 + Shell / 4 mod 7));
       C2    : constant Vec3 :=
-        (if French then Tricolore (1 + (Shell / 4 + 1) mod 3) else Palette (1 + (Shell / 4 + 3) mod 7));
+        (if One then C1
+         elsif French then Tricolore (1 + (Shell / 4 + 1) mod 3) else Palette (1 + (Shell / 4 + 3) mod 7));
+      Finale : constant Boolean := National and then Show_Left < 45.0;
       Ring_Axis : constant Vec3 := Normalize ((Sym, 0.6 + Rnd, Sym));
    begin
       for I in 1 .. N loop
@@ -164,9 +177,9 @@ package body Sky_Life is
             if Kind = 2 then
                V := V * 0.7;
             end if;
-            Add ((Kind   => (if Kind = 3 then Glitter else Star),
-                  Alive  => True, Pos => P, Vel => V * D,
-                  Colour => (if Kind = 2 then Vec3'(1.0, 0.7, 0.3)
+            Add ((Kind   => (if Kind = 3 and then not One then Glitter else Star),
+                  Alive  => True, Pos => P, Vel => (if Finale then 1.15 else 1.0) * V * D,
+                  Colour => (if Kind = 2 and then not One then Vec3'(1.0, 0.7, 0.3)
                              elsif I mod 2 = 0 then C1 else C2),
                   Age    => 0.0,
                   Life   => (if Kind = 2 then 3.5 else 1.8) + 0.8 * Rnd,
@@ -176,6 +189,59 @@ package body Sky_Life is
       end loop;
       Bang (P, Show_Big);
    end Burst;
+
+   --  Three shells side by side, bursting together: bleu, blanc, rouge
+   procedure Salvo is
+   begin
+      for K in 0 .. 2 loop
+         declare
+            X : constant Float := Show_Centre.X + 90.0 * Float (K - 1);
+            Z : constant Float := Show_Centre.Z + 40.0;
+         begin
+            Add ((Kind => Rocket, Alive => True,
+                  Pos => (X, Terrain.Height (X, Z) + 2.0, Z),
+                  Vel => (0.0, 64.0, 0.0),
+                  Colour => (1.0, 0.75, 0.4), Age => 0.0, Life => 8.0, Drag => 0.05,
+                  Shell => Solid + 4 * K));
+         end;
+      end loop;
+   end Salvo;
+
+   --  Gold falling from the Tower's two platforms, all round (the second
+   --  half of the 14th of July)
+   procedure Fountains (Dt : Float) is
+      Levels : constant array (1 .. 2) of Float := (57.0, 115.0);
+      Halves : constant array (1 .. 2) of Float := (35.0, 21.0);
+   begin
+      Fountain_Due := Fountain_Due + 160.0 * Dt;
+      while Fountain_Due >= 1.0 loop
+         Fountain_Due := Fountain_Due - 1.0;
+         declare
+            L  : constant Positive := (if Rnd < 0.55 then 1 else 2);
+            A  : constant Float := 2.0 * Pi * Rnd;
+            H  : constant Float := Halves (L);
+            Edge : constant Vec3 := (H * Cos (A), 0.0, H * Sin (A));
+            G  : constant Float := Terrain.Height (Show_Centre.X, Show_Centre.Z);
+         begin
+            Add ((Kind => Glitter, Alive => True,
+                  Pos => Show_Centre + Edge + Vec3'(0.0, G + Levels (L), 0.0),
+                  Vel => (0.15 * Edge.X + 2.0 * Sym, 2.0 * Rnd, 0.15 * Edge.Z + 2.0 * Sym),
+                  Colour => (1.0, 0.8, 0.4), Age => 0.0, Life => 2.2 + Rnd, Drag => 0.8, Shell => 0));
+         end;
+      end loop;
+   end Fountains;
+
+   function Crowd (Listener : Vec3) return Float is
+      D : constant Float := Sqrt ((Listener.X - Show_Centre.X) ** 2 + (Listener.Z - Show_Centre.Z) ** 2);
+      Near : constant Float := Float'Max (0.0, 1.0 - D / 1500.0);
+   begin
+      if Show_On and then National then
+         return Near * (if Show_Left < 45.0 then 0.6 else 0.25);   --  "oh!" at each burst, more at the end
+      elsif After_Show < 25.0 then
+         return Near * (1.0 - After_Show / 25.0);                      --  the cheering after the finale
+      end if;
+      return 0.0;
+   end Crowd;
 
    procedure Launch is
       Base : constant Vec3 :=
@@ -207,6 +273,7 @@ package body Sky_Life is
          if Almanac.Bastille_Day and then Crossed (23.0) then
             Geo.To_Local (48.85826, 2.29450, X, Z);
             French := True;
+            National := True;
             Start_Show ((Float (X), 0.0, Float (Z)), Big => True);
          --  New Year: at the Arc de Triomphe at midnight
          elsif Almanac.Month = 1 and then Almanac.Day = 1 and then Hour < 0.5
@@ -214,6 +281,7 @@ package body Sky_Life is
          then
             Geo.To_Local (48.87378, 2.29504, X, Z);
             French := False;
+            National := False;
             Start_Show ((Float (X), 0.0, Float (Z)), Big => True);
          end if;
       end if;
@@ -236,6 +304,7 @@ package body Sky_Life is
             D : constant Float := 500.0 + 1800.0 * Rnd;
          begin
             French := False;
+            National := False;
             Start_Show ((Near.X + D * Cos (A), 0.0, Near.Z + D * Sin (A)), Big => False);
             Surprise_At := -1.0;
          end;
@@ -298,18 +367,46 @@ package body Sky_Life is
       end loop;
 
       Schedule (Hour, Night, Listener);
+      --  PARIS_JULY14=seconds: the 14th of July show, that long before
+      --  its end (testing)
+      if not Test_Show_Done and then Ada.Environment_Variables.Exists ("PARIS_JULY14") then
+         declare
+            X, Z : Long_Float;
+         begin
+            Test_Show_Done := True;
+            Geo.To_Local (48.85826, 2.29450, X, Z);
+            French := True;
+            National := True;
+            Start_Show ((Float (X), 0.0, Float (Z)), Big => True);
+            Show_Left := Float'Value (Ada.Environment_Variables.Value ("PARIS_JULY14"));
+         end;
+      end if;
       if Show_On then
          Show_Left := Show_Left - Dt;
          Next_Launch := Next_Launch - Dt;
          if Next_Launch <= 0.0 and then Show_Left > 4.0 then
             Launch;
             --  the finale: many at once
-            Next_Launch := (if Show_Left < 25.0 and then Show_Big then 0.12 + 0.2 * Rnd
+            Next_Launch := (if National and then Show_Left < 45.0 then 0.05 + 0.1 * Rnd
+                            elsif Show_Left < 25.0 and then Show_Big then 0.12 + 0.2 * Rnd
                             elsif Show_Big then 0.4 + 1.2 * Rnd else 1.0 + 2.5 * Rnd);
+         end if;
+         if National then
+            Next_Salvo := Next_Salvo - Dt;
+            if Next_Salvo <= 0.0 and then Show_Left > 50.0 then
+               Salvo;
+               Next_Salvo := 15.0;
+            end if;
+            if Show_Left < 210.0 and then Show_Left > 4.0 then
+               Fountains (Dt);
+            end if;
          end if;
          if Show_Left <= 0.0 then
             Show_On := False;
+            After_Show := (if National then 0.0 else 99.0);
          end if;
+      else
+         After_Show := After_Show + Dt;
       end if;
 
       for S of Sparks loop

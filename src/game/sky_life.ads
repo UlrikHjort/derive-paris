@@ -25,6 +25,10 @@ package Sky_Life is
 
    function Show_Running return Boolean;
 
+   function Crowd (Listener : Math3D.Vec3) return Float;
+   --  0 .. 1: the crowd on the Champ de Mars on the 14th of July, gasping
+   --  at the bursts and cheering the finale
+
    procedure Magic_Dust (Where : Math3D.Vec3; Dt : Float);
    --  Golden glitter left behind (Father Christmas's sleigh)
 

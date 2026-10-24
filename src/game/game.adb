@@ -3860,7 +3860,8 @@ package body Game is
           Jingle   => Sleigh.Jingle,
           Jets     => Surprises.Jets,
           Crowd    => (if In_Museum or else In_Hall_B or else In_Room then 0.1
-                       else Float'Max (Float'Max (Surprises.Crowd, Race.Crowd),
+                       else Float'Max (Float'Max (Float'Max (Surprises.Crowd, Race.Crowd),
+                                                  Sky_Life.Crowd (Where)),
                                        Scenes.Crowd (Where.X, Where.Z))),   --  the murmur of visitors
           Busker   => Surprises.Busker,
           Busker_Level => Surprises.Busker_Level,
