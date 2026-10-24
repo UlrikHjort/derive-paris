@@ -7,6 +7,7 @@ with Ada.Numerics;
 with Ada.Numerics.Elementary_Functions;
 with Ada.Numerics.Float_Random;
 
+with Era;
 with Math3D;
 with Meshes;
 with Terrain;
@@ -89,6 +90,10 @@ package body Pedestrians is
      ((0.10, 0.10, 0.12), (0.80, 0.80, 0.78), (0.18, 0.22, 0.40), (0.50, 0.12, 0.12),
       (0.35, 0.33, 0.30), (0.62, 0.52, 0.36), (0.15, 0.30, 0.22), (0.70, 0.62, 0.20),
       (0.25, 0.25, 0.28), (0.55, 0.30, 0.45));
+   --  1973: brown, orange, mustard, olive, beige, rust, denim, purple
+   Seventies_Shirts : constant array (0 .. 7) of Vec3 :=
+     ((0.42, 0.27, 0.14), (0.85, 0.45, 0.12), (0.78, 0.6, 0.18), (0.4, 0.42, 0.18),
+      (0.82, 0.72, 0.55), (0.62, 0.25, 0.1), (0.25, 0.35, 0.55), (0.45, 0.22, 0.42));
    Skins : constant array (0 .. 4) of Vec3 :=
      ((0.86, 0.68, 0.56), (0.76, 0.57, 0.44), (0.58, 0.40, 0.29),
       (0.40, 0.27, 0.19), (0.92, 0.76, 0.64));
@@ -314,7 +319,8 @@ package body Pedestrians is
                               Offset => Ways (Way_I).Width / 2.0 + 1.2 + 0.6 * Rnd,
                               Speed => 1.1 + 0.5 * Rnd,
                               Phase => 6.3 * Rnd,
-                              Shirt => Shirts (Natural (Float'Floor (Rnd * 9.99))),
+                              Shirt => (if Era.In_1973 then Seventies_Shirts (Natural (Float'Floor (Rnd * 7.99)))
+                                        else Shirts (Natural (Float'Floor (Rnd * 9.99)))),
                               Skin => Skins (Natural (Float'Floor (Rnd * 4.99))),
                               Legs => Trousers (Natural (Float'Floor (Rnd * 4.99))),
                               others => <>);

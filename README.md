@@ -121,6 +121,7 @@ fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
 | Y / Shift+Y | one day later / earlier (hold it to run through the calendar) |
 | F3 | find an address: type a street and a number (in any order, accents and capitals don't matter), Enter sets the GPS |
 | F4 | your postcards: the album of the famous places you have found (Left/Right to turn the pages) |
+| U | Paris in 1973, or today again |
 | X | stop navigating |
 | J | clear the traffic around you (new cars arrive gradually) |
 | M | sound on/off |
@@ -181,6 +182,17 @@ unloading, and in the mornings the green street sweepers with their
 brooms.  The morning after the 14th of July, the Fête de la Musique and
 New Year's Eve, the pavements are strewn with flyers, cups and cans, and
 the sweepers are out in force; by noon it is clean again.
+
+### Paris in 1973
+
+U takes you back to 1973 (or `era = 1973` in `~/.deriverc`): the traffic
+is 2CVs, DSs and Renault 4s in the colours of the time, mopeds and a few
+motorbikes, and you drive a DS; the people dress in browns, oranges and
+mustards; the picture has the warmth of a Kodachrome slide.  There is no
+Pyramid at the Louvre, no Centre Pompidou (the Plateau Beaubourg is an
+open square), no Opéra Bastille and no Vélib', and at Les Halles, where
+the old pavilions have just been pulled down, the great hole lies behind
+its hoardings, with two tower cranes over it.  U again brings you back.
 
 ### The metro
 

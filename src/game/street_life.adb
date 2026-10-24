@@ -12,6 +12,7 @@ with Ada.Numerics;
 with Ada.Numerics.Elementary_Functions;
 with Ada.Numerics.Float_Random;
 
+with Era;
 with Figures;
 with Geo;
 with Meshes;
@@ -649,6 +650,14 @@ package body Street_Life is
       end;
    end Velib_Station;
 
+   procedure Clear is
+   begin
+      for C of Cells loop
+         Meshes.Free (C.Mesh);
+      end loop;
+      Cells.Clear;
+   end Clear;
+
    procedure Nearest_Entrance (X, Z, Max : Float; Found : out Boolean; EX, EZ, UX, UZ : out Float) is
       Best : Float := Max * Max;
    begin
@@ -1041,7 +1050,7 @@ package body Street_Life is
          Read_Velibs;
       end if;
       for P of Velibs loop
-         if Mine (P.X, P.Z) then
+         if Mine (P.X, P.Z) and then not Era.In_1973 then
             declare
                Found : Boolean;
                RX, RZ, RH : Float;

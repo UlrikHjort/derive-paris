@@ -6,6 +6,7 @@ with Ada.Numerics;
 with Ada.Numerics.Elementary_Functions;
 with Ada.Numerics.Float_Random;
 
+with Era;
 with Meshes;
 with Road_Network;
 with Shaders;
@@ -23,7 +24,7 @@ package body Traffic is
    Retire_Far   : constant := 320.0;
    Car_Length   : constant := 4.6;
 
-   type Vehicle_Kind is (Car_Kind, Scooter, Motorbike, Deux_Chevaux, DS);
+   type Vehicle_Kind is (Car_Kind, Scooter, Motorbike, Deux_Chevaux, DS, R4);
 
    type Agent is record
       Kind     : Vehicle_Kind := Car_Kind;
@@ -48,12 +49,17 @@ package body Traffic is
    Agents : array (1 .. Max_Cars) of Agent;
 
    function Four_Wheels (K : Vehicle_Kind) return Boolean is
-     (K in Car_Kind | Deux_Chevaux | DS);
+     (K in Car_Kind | Deux_Chevaux | DS | R4);
 
    --  the colours the 2CV and the DS came in
    Vintage : constant array (0 .. 5) of Vec3 :=
      ((0.55, 0.57, 0.58), (0.80, 0.74, 0.58), (0.45, 0.08, 0.10),
       (0.42, 0.58, 0.72), (0.90, 0.88, 0.80), (0.10, 0.10, 0.11));
+
+   --  the colours of the 1970s: orange, mustard, olive, sky blue, white, brown
+   Seventies : constant array (0 .. 5) of Vec3 :=
+     ((0.85, 0.42, 0.1), (0.8, 0.62, 0.15), (0.38, 0.42, 0.18),
+      (0.45, 0.62, 0.78), (0.9, 0.88, 0.82), (0.4, 0.27, 0.15));
 
    type Float_Pair is array (1 .. 2) of Float;
    Gen    : Ada.Numerics.Float_Random.Generator;
@@ -325,15 +331,21 @@ package body Traffic is
                if Ok then
                   declare
                      R : constant Float := Rnd;
+                     --  in 1973: only the cars of the time (the scooters are
+                     --  mopeds, the Solex and the Mobylette)
                      K : constant Vehicle_Kind :=
-                       (if R < 0.12 then Scooter elsif R < 0.2 then Motorbike
+                       (if Era.In_1973 then
+                          (if R < 0.1 then Scooter elsif R < 0.15 then Motorbike
+                           elsif R < 0.45 then Deux_Chevaux elsif R < 0.65 then DS else R4)
+                        elsif R < 0.12 then Scooter elsif R < 0.2 then Motorbike
                         elsif R < 0.23 then Deux_Chevaux elsif R < 0.245 then DS
                         else Car_Kind);
                   begin
                      A := (Active => True, Kind => K, Cur => L, T => Len / 2.0,
                            Speed => 6.0,
                            Lane_Pick => Pick_Lane,
-                           Color => (if K in Deux_Chevaux | DS
+                           Color => (if K = R4 then Seventies (Natural (Float'Floor (Rnd * 5.99)))
+                                     elsif K in Deux_Chevaux | DS
                                      then Vintage (Natural (Float'Floor (Rnd * 5.99)))
                                      else Palette (Natural (Float'Floor (Rnd * 11.99)))),
                            others => <>);
@@ -374,12 +386,12 @@ package body Traffic is
       W      : constant Way := Ways (A.Cur.W);
       Base   : constant Float := (if W.Width >= 9.0 then 13.0 else 8.5);
       Cruise : constant Float := (case A.Kind is
-                                    when Car_Kind | DS => Base,
+                                    when Car_Kind | DS | R4 => Base,
                                     when Deux_Chevaux => Base * 0.85,
                                     when Scooter   => Float'Min (Base, 11.0),
                                     when Motorbike => Base * 1.15);
       Accel  : constant Float := (case A.Kind is
-                                    when Car_Kind | DS => 2.8,
+                                    when Car_Kind | DS | R4 => 2.8,
                                     when Deux_Chevaux => 1.8,
                                     when Scooter   => 3.2,
                                     when Motorbike => 4.8);
@@ -708,6 +720,7 @@ package body Traffic is
                when Car_Kind  => Car.Draw_Model (Car.Modern);
                when Deux_Chevaux => Car.Draw_Model (Car.Deux_Chevaux);
                when DS        => Car.Draw_Model (Car.DS);
+               when R4        => Car.Draw_Model (Car.R4);
                when Scooter   => Meshes.Draw (Scooter_Mesh);
                when Motorbike => Meshes.Draw (Motorbike_Mesh);
             end case;

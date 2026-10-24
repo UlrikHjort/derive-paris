@@ -78,8 +78,8 @@ package Car is
    procedure Create_Mesh;
    --  Build the GPU mesh (GL context must be current)
 
-   type Model_Kind is (Modern, Deux_Chevaux, DS);
-   --  A plain modern car, the Citroën 2CV and the Citroën DS
+   type Model_Kind is (Modern, Deux_Chevaux, DS, R4);
+   --  A plain modern car, the Citroën 2CV, the Citroën DS, the Renault 4
 
    procedure Set_Player_Model (M : Model_Kind);
 

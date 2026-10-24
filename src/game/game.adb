@@ -72,6 +72,7 @@ with Closures;
 with Stunts;
 with Trials;
 with Boats;
+with Era;
 with Altimeter;
 with River;
 with Gdk.Keyval;
@@ -361,6 +362,9 @@ package body Game is
    end record;
    WU : World_Uniforms;
 
+   Sky_Era : GLint := -1;
+   Sh_Erase, Sh_Erase_B, Sh_Erase_N : GLint := -1;
+   W_Erase, W_Erase_B, W_Erase_N, W_Era : GLint := -1;
    Sky_Inv_VP, Sky_Cam, Sky_Sun, Sky_Zen, Sky_Hor, Sky_Night, Sky_Clouds,
    Sky_Sun_True, Sky_Moon, Sky_Moon_Age : GLint;
    Sun_True : Vec3 := (0.0, 1.0, 0.0);    --  the sun, also at night
@@ -756,6 +760,14 @@ package body Game is
              Wet           => Location (World_Prog, "uWet"));
       Sky_Inv_VP := Location (Sky_Prog, "uInvViewProj");
       Sky_Cam := Location (Sky_Prog, "uCamPos");
+      Sky_Era := Location (Sky_Prog, "uEra");
+      W_Erase := Location (World_Prog, "uErase");
+      W_Erase_B := Location (World_Prog, "uEraseB");
+      W_Erase_N := Location (World_Prog, "uEraseN");
+      W_Era := Location (World_Prog, "uEra");
+      Sh_Erase := Location (Shadow_Prog, "uErase");
+      Sh_Erase_B := Location (Shadow_Prog, "uEraseB");
+      Sh_Erase_N := Location (Shadow_Prog, "uEraseN");
       Sky_Sun := Location (Sky_Prog, "uSunDir");
       Sky_Sun_True := Location (Sky_Prog, "uSunTrue");
       Sky_Moon := Location (Sky_Prog, "uMoonDir");
@@ -1162,7 +1174,9 @@ package body Game is
          Set (Sh_Light_VP, LVP);
          Set (Sh_Model, Identity);
          World.Cull_To (LVP);
+         Era.Set_Shadow_Uniforms (Sh_Erase, Sh_Erase_B, Sh_Erase_N);
          World.Draw_Solid;
+         Set (Sh_Erase_N, Integer'(0));
          Set (Sh_Model, Car_M);
          Car.Draw;
          Traffic.Draw (Sh_Model, GLint (-1));
@@ -1183,6 +1197,7 @@ package body Game is
          glUseProgram (Sky_Prog);
          Set (Sky_Inv_VP, Inverse (VP));
          Set (Sky_Cam, Cam_Pos);
+         Set (Sky_Era, (if Era.In_1973 then 1.0 else 0.0));
          Set (Sky_Sun, Sun_Dir);
          Set (Sky_Zen, Sky_Zenith);
          Set (Sky_Hor, Sky_Horizon);
@@ -1257,10 +1272,15 @@ package body Game is
          glDepthFunc (GL_LESS);
          World.Cull_To (VP);
          glEnable (GL_SAMPLE_ALPHA_TO_COVERAGE);
+         Era.Set_Uniforms (W_Erase, W_Erase_B, W_Erase_N, W_Era);
          World.Draw_Solid;
+         Set (W_Erase_N, Integer'(0));   --  (only the city's tiles are left out)
+         Era.Draw (WU.Model, WU.Car_Color, Cam_Pos);
          Street_Life.Draw (WU.Model, WU.Car_Color, Cam_Pos);   --  benches, bins, posters, tags, papers
          Scenes.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos.X, Cam_Pos.Z);
-         Stravinsky.Draw (WU.Model, WU.Car_Color, Cam_Pos);
+         if not Era.In_1973 then
+            Stravinsky.Draw (WU.Model, WU.Car_Color, Cam_Pos);   --  (from 1983)
+         end if;
          Moulin.Draw (WU.Model, WU.Car_Color, Cam_Pos);
          Set (WU.Car_Color, Car_Color);
          if Walking and then not In_Museum and then not In_Hall_B and then not In_Room
@@ -1954,7 +1974,11 @@ package body Game is
          when Decals.Decal_A => Enter_Museum;
          when Decals.Decal_B => Go_Up;
          when Decals.Decal_C => Up_The_Arc;
-         when Decals.Decal_D => Enter_Hall_B;
+         when Decals.Decal_D =>
+            if Era.In_1973 then
+               return False;   --  no Pompidou yet
+            end if;
+            Enter_Hall_B;
          when Decals.Decal_F => Enter_Room (Rooms.Room_A);
          when Decals.Decal_G => Enter_Room (Rooms.Room_B);
          when Decals.Decal_H => Enter_Room (Rooms.Room_D);
@@ -2318,6 +2342,7 @@ package body Game is
         & "  J                clear the traffic around you" & LF & LF
         & Head ("Time and weather")
         & "  T                one hour later" & LF
+        & "  U                Paris in 1973, or today" & LF
         & "  P                weather: rain, storm, snow, dry" & LF
         & "  M                sound on / off" & LF
         & "  F2               games: street racing, taxi" & LF
@@ -4301,6 +4326,20 @@ package body Game is
    --  Input
    ---------------------------------------------------------------------------
 
+   --  Paris in 1973 or today: the cars and the street are made again
+   procedure Set_Year (In_1973 : Boolean) is
+      M : constant String := Config.Get ("car", "modern");
+   begin
+      Era.Set (In_1973);
+      Car.Set_Player_Model
+        ((if In_1973 then Car.DS
+          elsif M = "2cv" then Car.Deux_Chevaux elsif M = "ds" then Car.DS elsif M = "r4" then Car.R4
+          else Car.Modern));
+      Traffic.Reset;
+      Street_Life.Clear;
+      Say ((if In_1973 then "Paris, 1973" else "Paris, today"), 3.0);
+   end Set_Year;
+
    procedure Set_Key (Key : Gdk.Types.Gdk_Key_Type; Down : Boolean) is
       K : Gdk.Types.Gdk_Key_Type := Key;
    begin
@@ -4539,6 +4578,10 @@ package body Game is
                else
                   Start_Recording := True;   --  at the next frame, its size
                end if;
+            end if;
+         when 16#75# =>                                       --  u: Paris in 1973, or today
+            if Down then
+               Set_Year (not Era.In_1973);
             end if;
          when 16#79# =>                                       --  y: one day later
             if Down then
@@ -4885,7 +4928,11 @@ package body Game is
          M : constant String := Config.Get ("car", "modern");
       begin
          Car.Set_Player_Model ((if M = "2cv" then Car.Deux_Chevaux elsif M = "ds" then Car.DS
-                                else Car.Modern));
+                                elsif M = "r4" then Car.R4 else Car.Modern));
+         if Config.Get ("era", "today") = "1973" or else Env ("PARIS_1973") /= "" then
+            Era.Set (True);
+            Car.Set_Player_Model (Car.DS);
+         end if;
       end;
       declare
          X : constant String := Config.Get ("christmas", "auto");

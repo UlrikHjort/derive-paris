@@ -32,6 +32,31 @@ uniform float uGallery;      // 1 while drawing the inside of the Louvre
 uniform float uAutumn;       // 0 .. 1: the leaves turning yellow, orange and brown
 uniform float uBare;         // 0 .. 1: the trees losing their leaves (winter)
 uniform float uLitter;       // 0 .. 1: fallen leaves on the ground
+uniform vec4 uErase[4];      // Paris in 1973: buildings not there yet (centre xz, half sizes)
+uniform vec4 uEraseB[4];     //   their turn (cos, sin) and the ground under them (y)
+uniform int uEraseN;
+uniform float uEra;          // 1: the colours of a Kodachrome of 1973
+
+bool erased(vec3 p)
+{
+    for (int i = 0; i < uEraseN; i++) {
+        vec2 d = p.xz - uErase[i].xy;
+        float u = dot(d, uEraseB[i].xy);
+        float v = dot(d, vec2(-uEraseB[i].y, uEraseB[i].x));
+        if (abs(u) < uErase[i].z && abs(v) < uErase[i].w && p.y > uEraseB[i].z) return true;
+    }
+    return false;
+}
+
+// Warm, a little faded and contrasty, the blacks lifted: a slide of 1973
+vec3 kodachrome(vec3 c)
+{
+    float l = dot(c, vec3(0.3, 0.55, 0.15));
+    c = mix(vec3(l), c, 0.82);
+    c *= vec3(1.08, 1.0, 0.82);
+    c = c * 0.94 + vec3(0.025, 0.018, 0.01);
+    return c;
+}
 uniform float uTrash;        // 0 .. 1: paper, cans and bottles the morning after a fête
 uniform vec4 uLights[64];    // street lamps: xyz position, w intensity
 uniform int uLightCount;
@@ -850,6 +875,7 @@ vec3 roofColour(vec3 fallback)
 
 void main()
 {
+    if (uEraseN > 0 && erased(vWorld)) discard;
     int m = int(vMat + 0.5);
     vec3 N = normalize(vNormal);
     vec3 V = normalize(uCamPos - vWorld);
@@ -874,6 +900,7 @@ void main()
         float fog = 1.0 - exp(-length(uCamPos - vWorld) * uFogDensity);
         col = mix(col, toLinear(uSkyHorizon), fog);
         col = col / (1.0 + col) * 1.25;
+        if (uEra > 0.5) col = kodachrome(col);
         fragColor = vec4(pow(col, vec3(1.0 / 2.2)), 1.0);
         return;
     } else if (m == 10) {
@@ -1373,5 +1400,6 @@ void main()
     col = mix(col, toLinear(uSkyHorizon), fog);
 
     col = col / (1.0 + col) * 1.25;   // gentle tone mapping
+    if (uEra > 0.5) col = kodachrome(col);
     fragColor = vec4(pow(col, vec3(1.0 / 2.2)), gAlpha);
 }

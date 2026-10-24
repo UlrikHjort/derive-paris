@@ -15,6 +15,7 @@ uniform float uNight;
 uniform float uClouds;      // 0 clear .. 1 overcast (hides stars and moon)
 uniform vec3 uSunTrue;       // the sun, also below the horizon
 uniform vec3 uMoonDir;
+uniform float uEra;          // 1: graded like a Kodachrome of 1973 (as world.frag)
 uniform float uMoonAge;      // 0 new, 0.5 full, 1 new again
 
 out vec4 fragColor;
@@ -70,6 +71,10 @@ void main()
         float star = step(0.9965, h) * (0.4 + 0.6 * hash(cell + 7.0));
         col += vec3(star) * smoothstep(0.05, 0.4, dir.y) * uNight * (1.0 - uClouds)
              * (1.0 - onDisc);
+    }
+    if (uEra > 0.5) {
+        float l = dot(col, vec3(0.3, 0.55, 0.15));
+        col = mix(vec3(l), col, 0.82) * vec3(1.06, 1.0, 0.84) * 0.95 + vec3(0.02, 0.015, 0.01);
     }
     fragColor = vec4(min(col, vec3(1.0)), 1.0);
 }

@@ -478,6 +478,27 @@ package body Car is
          Box (WX - 0.08, WX + 0.08, 0.0, 0.42, 1.0, 1.6, Mat_Tyre);      --  rear, behind the skirts
       end loop;
       Finish (Models (DS));
+
+      --  The Renault 4: a small box on wheels, upright, the roof flat and
+      --  long, the tailgate straight, a broad flat grille between round lamps
+      Start;
+      Box (-0.76, 0.76, 0.32, 0.88, -1.6, 1.75, Mat_Paint, Top_Inset_X => 0.03);          --  body
+      Box (-0.74, 0.74, 0.32, 0.8, -1.95, -1.6, Mat_Paint, Top_Inset_Front => 0.12);      --  the short bonnet's nose
+      Box (-0.72, 0.72, 0.88, 1.52, -0.75, 1.75, Mat_Paint,
+           Top_Inset_X => 0.07, Top_Inset_Front => 0.3, Side_Mat => Mat_Glass);           --  tall glasshouse
+      Box (-0.6, 0.6, 0.45, 0.68, -1.97, -1.92, Mat_Tyre);                               --  the grille
+      for Side of Float_Array'(-1.0, 1.0) loop
+         Box (Side * 0.55 - 0.09, Side * 0.55 + 0.09, 0.5, 0.66, -1.98, -1.94, Mat_Headlight);
+         Box (Side * 0.68 - 0.05, Side * 0.68 + 0.05, 0.62, 0.8, 1.75, 1.78, Mat_Taillight);
+      end loop;
+      Box (-0.8, 0.8, 0.32, 0.42, -2.0, -1.9, Mat_Tyre);                                --  bumpers
+      Box (-0.8, 0.8, 0.32, 0.42, 1.75, 1.85, Mat_Tyre);
+      for WX of Float_Array'(-0.7, 0.7) loop
+         for WZ of Float_Array'(-1.25, 1.2) loop
+            Box (WX - 0.1, WX + 0.1, 0.0, 0.6, WZ - 0.28, WZ + 0.28, Mat_Tyre);
+         end loop;
+      end loop;
+      Finish (Models (R4));
    end Create_Mesh;
 
    procedure Set_Player_Model (M : Model_Kind) is
