@@ -1008,7 +1008,12 @@ package body World_Builder is
    end Speed_Limit;
 
    procedure Classify_Highway (W : Way_Rec) is
-      HW    : constant String := Tag (W.Tags, "highway");
+      --  a way still being built (the Place Denfert-Rochereau, being made
+      --  over) is drawn as what it is to become
+      HW    : constant String :=
+        (if Tag (W.Tags, "highway") = "construction" and then Tag (W.Tags, "construction") /= ""
+           and then Tag (W.Tags, "construction") /= "yes"
+         then Tag (W.Tags, "construction") else Tag (W.Tags, "highway"));
       Fw    : constant String := Tag (W.Tags, "footway");
       Width : Long_Float := -1.0;
       Group : Group_Id := Path;

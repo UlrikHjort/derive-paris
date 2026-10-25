@@ -35,7 +35,7 @@ package body Decals is
    begin
       K := Decal_A;
       for I in Spots'Range loop
-         if Spots (I).On and then (Spots (I).X - X) ** 2 + (Spots (I).Z - Z) ** 2 < 0.7 ** 2 then
+         if Spots (I).On and then (Spots (I).X - X) ** 2 + (Spots (I).Z - Z) ** 2 < 1.5 ** 2 then   --  (generous: it is hard enough to find)
             K := I;
             return True;
          end if;
