@@ -861,6 +861,15 @@ package body World_Builder is
    Bridge_Polys : Poly_Vectors.Vector;
    Marina_Polys : Poly_Vectors.Vector;   --  the river ports: lower quays
 
+   --  Basins and fountain pools (not ponds or lakes): a stone rim round
+   --  them, as high as OpenStreetMap says (height) or 0.45 m
+   type Basin is record
+      P : Poly;
+      H : Long_Float;
+   end record;
+   package Basin_Vectors is new Ada.Containers.Vectors (Natural, Basin);
+   Basins : Basin_Vectors.Vector;
+
    type Landmark_Kind is (None, Lattice_Tower, Triumphal_Arch);
 
    function Landmark (Tags : Tag_Maps.Map) return Landmark_Kind is
@@ -950,6 +959,22 @@ package body World_Builder is
                      end loop;
                      Areas.Append ((P, Mat, Size, Hash01 (Id),
                                     (if Is_Bridge then Deck else Area)));
+                     if Mat = Mat_Water
+                       and then (Tag (Tags, "water") = "basin" or else Tag (Tags, "amenity") = "fountain"
+                                 or else Tag (Tags, "barrier") = "wall")
+                     then
+                        declare
+                           H : Long_Float := 0.45;
+                        begin
+                           if Tag (Tags, "height") /= "" then
+                              H := Long_Float'Value (Tag (Tags, "height"));
+                           end if;
+                           Basins.Append ((P, Long_Float'Max (0.2, Long_Float'Min (1.2, H))));
+                        exception
+                           when Constraint_Error =>
+                              Basins.Append ((P, 0.45));
+                        end;
+                     end if;
                      if Is_Bridge then
                         Bridge_Polys.Append (P);
                      end if;
@@ -4283,6 +4308,26 @@ package body World_Builder is
 
    --  The river: a hole in the street level, the water surface far below
    --  and stone quay walls with a parapet along the banks.
+   --  A basin's rim: a band of dressed stone 0.5 m wide over its edge,
+   --  H high, that the car stops at
+   procedure Emit_Rim (B : Basin) is
+      N : constant Natural := Natural (B.P.Outer.Length);
+   begin
+      for I in 0 .. N - 1 loop
+         declare
+            A   : constant P2 := B.P.Outer (I);
+            C   : constant P2 := B.P.Outer ((I + 1) mod N);
+            Mid : constant P2 := 0.5 * (A + C);
+         begin
+            if Dist (A, C) > 0.05 and then In_Data (Mid.X, Mid.Z) then
+               Prism (Tile_At (Mid).all, Strip (A, C, Edge_Out (A, C), -0.25, 0.5),
+                      0.0, B.H, Mat_Stone, 0.4);
+               Add_Edge (A, C, 0.0, B.H);
+            end if;
+         end;
+      end loop;
+   end Emit_Rim;
+
    procedure Emit_River (Pl : Poly) is
       Pts  : Earcut.Point_Array (0 .. Point_Count (Pl) - 1);
       Tris : Earcut.Index_Vectors.Vector;
@@ -5294,6 +5339,9 @@ package body World_Builder is
 
       for R of River_Polys loop
          Emit_River (R);
+      end loop;
+      for B of Basins loop
+         Emit_Rim (B);
       end loop;
       Emit_Low_Quays;
       Ada.Text_IO.Put_Line ("  river done");
