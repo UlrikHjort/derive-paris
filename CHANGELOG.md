@@ -1,5 +1,21 @@
 # Changes
 
+## 0.6.0 (October 2026)
+
+- **A prebuilt download for Linux** on the release page: unpack it, then
+  `./city small` and `./derive`. No Ada compiler needed.
+- **Faster:** the panels are drawn in OpenGL, about half as fast again
+  as before. A graphics level (`graphics = low/medium/high`) helps
+  slower cards.
+- **Settings in the game:** F2, then Settings.
+- **The Funiculaire de Montmartre**, to ride.
+- **Stone rims** round the basins and fountain pools, such as the Grand
+  Bassin of the Luxembourg.
+- **The lower quays close to cars in summer.**
+- **Esc asks before quitting.**
+- **A quiet terminal:** the details only with `PARIS_VERBOSE=1`.
+- **CONTRIBUTING.md** and issue templates.
+
 ## 0.5.0 (October 2026): the first public version
 
 The city:
