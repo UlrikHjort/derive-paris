@@ -22,6 +22,8 @@ On Linux, with the packages listed under [Building](#building):
     make tiles        # all of Paris (a few hundred MB, much longer)
     make run
 
+![Off from the Rue Bonaparte](docs/gifs/start.gif)
+
 You start in your car on the Rue Bonaparte by Saint-Sulpice.  Arrow keys
 or W/A/S/D to drive, **F1** for all the keys, **F2** for the games, **Q**
 to get out and walk.  Running `make tiles` later builds all of Paris,
@@ -35,8 +37,10 @@ keeping what the small build downloaded.
 | Up the Champs-Élysées towards the Arc de Triomphe | Flying past the Eiffel Tower |
 | ![The Eiffel Tower sparkling](docs/gifs/sparkle.gif) | ![A burnout](docs/gifs/burnout.gif) |
 | The Eiffel Tower sparkling, from the Trocadéro | Drop the clutch |
-| ![The market in the Rue d'Aligre](docs/gifs/market.gif) | |
-| Market morning in the Rue d'Aligre | |
+| ![The market in the Rue d'Aligre](docs/gifs/market.gif) | ![On a Vélib'](docs/gifs/velib.gif) |
+| Market morning in the Rue d'Aligre | On a Vélib' |
+| ![The night bus](docs/gifs/bus.gif) | ![The morning round](docs/gifs/round.gif) |
+| The night bus, from the Gare de Lyon | The morning round, on the baker's scooter |
 
 (Made from the game with `scripts/make_gifs.sh`.)
 

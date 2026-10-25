@@ -24,7 +24,8 @@ trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/home"
 printf 'volume = 0\ntraffic = 1.0\npedestrians = 1.0\ncompass = no\nstreet_names = no\n' > "$WORK/home/.deriverc"
 
-# record NAME SECONDS [VAR=value ...]
+# record NAME SECONDS [VAR=value ...]   (FPS, WIDTH and COLOURS make the
+# GIF lighter)
 record () {
     name=$1; secs=$2; shift 2
     echo "== $name"
@@ -44,7 +45,7 @@ record () {
     sleep 1
     # drop the first second (the scene settling), make it small, loop it
     ffmpeg -loglevel error -y -ss 1 -i "$mp4" \
-        -vf "fps=12,scale=480:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" \
+        -vf "fps=${FPS:-12},scale=${WIDTH:-480}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=${COLOURS:-128}:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" \
         -loop 0 "$OUT/$name.gif"
     echo "   $OUT/$name.gif ($(du -k "$OUT/$name.gif" | cut -f1) kB)"
 }
@@ -52,6 +53,14 @@ record () {
 ALL="$*"
 pick () { [ -z "$ALL" ] && return 0; for w in $ALL; do [ "$w" = "$1" ] && return 0; done; return 1; }
 
+# Getting started: off from the Rue Bonaparte, as you begin
+pick start && FPS=10 WIDTH=400 COLOURS=96 record start 7 PARIS_TIME=17.5 PARIS_AUTODRIVE=1
+# On a Vélib' through the streets
+pick velib && FPS=10 WIDTH=400 COLOURS=96 record velib 6 PARIS_VELIB=1 PARIS_AUTODRIVE=1 PARIS_TIME=12
+# The night bus pulling away from the Gare de Lyon
+pick bus && FPS=10 WIDTH=400 COLOURS=96 record bus 6 PARIS_BUS=1 PARIS_AUTODRIVE=1
+# The morning round: the baker's scooter at dawn
+pick round && FPS=10 WIDTH=400 COLOURS=96 record round 6 PARIS_ROUND=1 PARIS_AUTODRIVE=1
 # Up the Champs-Élysées towards the Arc de Triomphe, in the late sun
 pick champs && record champs 7 PARIS_SPAWN="48.871941 2.300946 296" PARIS_TIME=17.3 PARIS_AUTODRIVE=1
 # Flying past the Eiffel Tower
