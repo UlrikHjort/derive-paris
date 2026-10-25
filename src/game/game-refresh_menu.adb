@@ -111,7 +111,7 @@ begin
    Append (T, LF & "<span foreground='#aab'>"
            & (if Level = Settings_Menu then "  up/down  choose    left/right  change (kept for next time)"
               else "  up/down  choose    Enter  select") & LF
-           & "  Backspace  back    F2 / Esc  close"
+           & (if Level = Settings_Menu then "  F5 / Esc  close" else "  Backspace  back    F2 / Esc  close")
            & (if Wheel.Present then LF & "  wheel: d-pad choose, X select, circle close" else "")
            & "</span></span>");
    Game_Menu.Set_Markup (To_String (T));

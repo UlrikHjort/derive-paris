@@ -176,6 +176,7 @@ smaller or larger one.
 | Y / Shift+Y | one day later / earlier (hold it to run through the calendar) |
 | F3 | find an address: type a street and a number (in any order, accents and capitals don't matter), Enter sets the GPS |
 | F4 | your postcards: the album of the famous places you have found (Left/Right to turn the pages) |
+| F5 | settings: volume, traffic, graphics, your car... (Left/Right to change them) |
 | U | Paris in 1973, or today again |
 | X | stop navigating |
 | J | clear the traffic around you (new cars arrive gradually) |
@@ -501,7 +502,7 @@ time.
 
 ## Settings
 
-The most used ones can be changed while you play: **F2**, **Settings**
+The most used ones can be changed while you play: **F5**
 (volume, traffic, people, graphics level, your car, how fast time
 passes, speed limits, the wheel's gearbox, compass and street names);
 left and right change them, and they are kept.

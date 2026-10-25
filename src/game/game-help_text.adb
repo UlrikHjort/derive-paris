@@ -100,6 +100,7 @@ begin
      & "  F2               games: racing, taxi, time trials, the morning round" & LF
      & "  F3               find an address (GPS)" & LF
      & "  F4               your postcards" & LF
+     & "  F5               settings" & LF
      & "  Y / Shift+Y      one day later / earlier" & LF
      & "  F9               record a video (again: stop)" & LF
      & "  F12              take a photo" & LF

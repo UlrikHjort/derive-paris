@@ -315,6 +315,10 @@ begin
                Help.Show;
             end if;
          end if;
+      when 16#FFC2# =>                                     --  F5: settings
+         if Down then
+            Open_Settings;
+         end if;
       when 16#FFBF# =>                                     --  F2: games
          if Down then
             Toggle_Menu;   --  (over the results, if they are up)

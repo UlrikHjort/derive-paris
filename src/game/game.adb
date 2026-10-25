@@ -1870,7 +1870,6 @@ package body Game is
             Add (Go_Rounds);
             Add (Go_Bus);
             Add (Go_Free);
-            Add (Go_Settings);
          when Taxi_Menu =>
             if Taxi.Active then
                Add (Stop_Shift);
@@ -1965,6 +1964,17 @@ package body Game is
       end if;
    end Toggle_Menu;
 
+   --  F5: the settings, on their own (out of the games menu)
+   procedure Open_Settings is
+   begin
+      if not Menu_Open then
+         Toggle_Menu;
+      end if;
+      Level := Settings_Menu;
+      Menu_Sel := 1;
+      Refresh_Menu;
+   end Open_Settings;
+
    --  Up a level (or close at the top)
    procedure Menu_Back is
    begin
@@ -1976,7 +1986,7 @@ package body Game is
          when Trials_Menu => Level := Games;
          when Rounds_Menu => Level := Games;
          when Bus_Menu => Level := Games;
-         when Settings_Menu => Level := Games;
+         when Settings_Menu => Toggle_Menu;   --  (opened with F5: back is out)
       end case;
       Menu_Sel := 1;
       if Menu_Open then
@@ -2248,6 +2258,13 @@ package body Game is
                Race.Set_Laps (if Race.Laps_Setting = 5 then 0 else Race.Laps_Setting + 1);
             else
                return True;
+            end if;
+         when 16#FFC2# =>                                     --  F5: settings, or out of them
+            if Level = Settings_Menu then
+               Toggle_Menu;
+            else
+               Level := Settings_Menu;
+               Menu_Sel := 1;
             end if;
          when 16#FFBF# | 16#FF1B# =>                          --  F2, Escape
             Toggle_Menu;

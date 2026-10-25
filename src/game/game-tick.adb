@@ -163,14 +163,10 @@ begin
          Set_Key (16#FF0D#, True);   --  Race on a track
       end if;
    end if;
-   --  PARIS_MENU=settings: F2, Settings, then the graphics a step lower
+   --  PARIS_MENU=settings: F5, then the graphics a step lower
    --  and the car a step on (testing)
    if Ready and then Frame_Number = 20 and then Env ("PARIS_MENU") = "settings" then
-      Set_Key (16#FFBF#, True);
-      for I in 1 .. 7 loop
-         Set_Key (16#FF54#, True);   --  down to Settings
-      end loop;
-      Set_Key (16#FF0D#, True);
+      Set_Key (16#FFC2#, True);      --  F5
       for I in 1 .. 3 loop
          Set_Key (16#FF54#, True);   --  to Graphics
       end loop;
