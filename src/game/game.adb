@@ -227,6 +227,21 @@ package body Game is
    Riding_Velib : Boolean := False;          --  on a Vélib', the car parked
    Parked       : Car.State;                 --  where the car was left meanwhile
 
+   --  Has the city been built (make tiles)?  A fresh checkout has none
+   function City_Built return Boolean is
+      use Ada.Directories;
+      Search_It : Search_Type;
+      Found : Boolean := False;
+   begin
+      Start_Search (Search_It, "tiles", "t_*.bin", (Ordinary_File => True, others => False));
+      Found := More_Entries (Search_It);
+      End_Search (Search_It);
+      return Found;
+   exception
+      when others =>
+         return False;
+   end City_Built;
+
    --  The player's own car: as chosen in ~/.deriverc, or a DS in 1973
    function Usual_Model return Car.Model_Kind is
       M : constant String := Config.Get ("car", "modern");
@@ -903,6 +918,15 @@ package body Game is
       end;
       Reset_Car;
       World.Load_All_Near (Player.X, Player.Z);
+      if not City_Built then
+         --  a fresh checkout: say how to build the city
+         Ada.Text_IO.Put_Line ("No city built yet: quit, and run ""make tiles"" (all of Paris)"
+                               & " or ""make tiles-small"" (only the centre, quicker)");
+         Announce := Ada.Strings.Unbounded.To_Unbounded_String
+           ("No city yet: quit and run  make tiles  (all of Paris) or  make tiles-small  (the centre)");
+         Announce_Timer := 1.0E9;
+         Street_Timer := 1.0;
+      end if;
       Ready := True;
    exception
       when E : others =>

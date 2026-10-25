@@ -11,6 +11,22 @@ and pedestrians, day and night, and rain.
 
 ![The Eiffel Tower seen from the Trocadéro](docs/screenshots/eiffel.jpg)
 
+## Quick start
+
+On Linux, with the packages listed under [Building](#building):
+
+    git clone https://github.com/UlrikHjort/derive-paris.git
+    cd derive-paris
+    make              # checks what is needed, builds the converter and the game
+    make tiles-small  # builds the centre of Paris, 4 x 4 km (a few minutes), or
+    make tiles        # all of Paris (a few hundred MB, much longer)
+    make run
+
+You start in your car on the Rue Bonaparte by Saint-Sulpice.  Arrow keys
+or W/A/S/D to drive, **F1** for all the keys, **F2** for the games, **Q**
+to get out and walk.  Running `make tiles` later builds all of Paris,
+keeping what the small build downloaded.
+
 ## In motion
 
 | | |
@@ -96,6 +112,26 @@ other from the Overpass API (`scripts/build_city.sh`, query in
 `data/query.overpassql`) and converted in parallel.  An interrupted
 download simply continues where it stopped when run again; `make download`
 fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
+
+### When something goes wrong
+
+- **`make` stops and lists missing packages**: install them with the
+  command it shows (or say yes when it offers to run it).  On some
+  releases the GtkAda package has a version in its name
+  (`libgtkada20-dev`, `libgtkada19-dev`...).
+- **The game starts but there is no city**: the tiles have not been built
+  yet; run `make tiles-small` or `make tiles` (the game says so too).
+- **`make tiles` reports failed chunks**: the Overpass API is busy or limits
+  how much one may download.  Run it again later; it only fetches what is
+  still missing.
+- **The ground is flat**: the heights from IGN could not be downloaded;
+  remove `data/elevation/` and run `make tiles` again.
+- **A black window, or "Initialisation failed" about shaders**: the
+  graphics card or its driver does not offer OpenGL 3.3; on a laptop with
+  two GPUs try `DRI_PRIME=1 make run`.
+- **No sound**: the game plays through PulseAudio (PipeWire's PulseAudio
+  layer works too); without it the game is simply silent.  **M** switches
+  the sound on and off.
 
 ## Controls
 
