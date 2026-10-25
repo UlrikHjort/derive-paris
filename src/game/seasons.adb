@@ -91,6 +91,15 @@ package body Seasons is
       end;
    end Down_By_The_Water;
 
+   --  In summer the quay by the Hôtel de Ville is given to the walkers
+   --  (from the 10th of July to the 20th of August, as the beach is)
+   function Summer_Quays return Boolean is
+     ((Almanac.Month = 7 and then Almanac.Day >= 10)
+      or else (Almanac.Month = 8 and then Almanac.Day <= 20)
+      or else Env ("PARIS_SUMMER_QUAYS") /= "");
+
+   Summer_Closing : Boolean := False;   --  closed for the summer, not the flood
+
    procedure Close_Quays is
       use Road_Network;
    begin
@@ -139,12 +148,14 @@ package body Seasons is
                N := N + 1;
             end if;
          end loop;
-         Ada.Text_IO.Put_Line ("Closed for the flood:" & Natural'Image (N) & " ways,"
+         Ada.Text_IO.Put_Line ((if Summer_Closing then "Closed for the summer:" else "Closed for the flood:")
+                               & Natural'Image (N) & " ways,"
                                & Natural'Image (Natural (Barriers.Length)) & " barriers");
       end;
       Quays_Closed := True;
       Pending_News := Ada.Strings.Unbounded.To_Unbounded_String
-        ("Crue de la Seine : the lower quays are closed");
+        (if Summer_Closing then "The quays are for walkers this summer: closed to cars"
+         else "Crue de la Seine : the lower quays are closed");
    end Close_Quays;
 
    procedure Open_Quays is
@@ -160,7 +171,8 @@ package body Seasons is
       Barriers.Clear;
       Quays_Closed := False;
       Pending_News := Ada.Strings.Unbounded.To_Unbounded_String
-        ("The Seine goes down: the lower quays are open again");
+        (if Summer_Closing then "Summer is over: the quays are open to cars again"
+         else "The Seine goes down: the lower quays are open again");
    end Open_Quays;
 
    procedure Update (Dt, Hour, Rain : Float; Cam : Vec3) is
@@ -197,9 +209,10 @@ package body Seasons is
       Flood_Now := (if Env ("PARIS_FLOOD") /= "" then Float'Value (Env ("PARIS_FLOOD")) else Almanac.Flood_Rise);
 
       if Road_Network.Loaded then
-         if not Quays_Closed and then Flood_Now > 1.0 then
+         if not Quays_Closed and then (Flood_Now > 1.0 or else Summer_Quays) then
+            Summer_Closing := Flood_Now <= 1.0;
             Close_Quays;
-         elsif Quays_Closed and then Flood_Now < 0.8 then
+         elsif Quays_Closed and then Flood_Now < 0.8 and then not Summer_Quays then
             Open_Quays;
          end if;
       end if;
