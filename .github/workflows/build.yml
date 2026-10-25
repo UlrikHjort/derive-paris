@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Ulrik Hørlyk Hjort
 # SPDX-License-Identifier: MIT
 #
-# On every push and pull request: install what Dérive needs on Ubuntu,
+# On every push to main and every pull request: install what Dérive needs on Ubuntu,
 # check it as `make` does, build the converter and the game, convert a
 # small piece of Paris (no download), and look over the shell scripts.
 # (The game itself needs OpenGL 3.3 and a screen, so it is not run here.)
@@ -11,6 +11,7 @@ name: build
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
