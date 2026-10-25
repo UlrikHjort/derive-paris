@@ -1,0 +1,41 @@
+# Dérive: open-world Paris in Ada
+# Copyright (c) 2026 Ulrik Hørlyk Hjort
+# SPDX-License-Identifier: MIT
+#
+# On every push and pull request: install what Dérive needs on Ubuntu,
+# check it as `make` does, build the converter and the game, convert a
+# small piece of Paris (no download), and look over the shell scripts.
+# (The game itself needs OpenGL 3.3 and a screen, so it is not run here.)
+
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the compiler and the libraries
+        run: |
+          sudo apt-get update
+          GTKADA=$(apt-cache search --names-only '^libgtkada[0-9.]*-dev$' | awk '{print $1}' | sort -V | tail -1)
+          sudo apt-get install -y gnat gprbuild "${GTKADA:-libgtkada-dev}" libgtk-3-dev \
+            libepoxy-dev zlib1g-dev libpulse-dev pkg-config curl
+
+      - name: Check what is needed
+        run: make check
+
+      - name: Build the converter and the game
+        run: make tools game
+
+      - name: Convert the Place Saint-Sulpice
+        run: make test
+
+      - name: Look over the shell scripts
+        run: |
+          sudo apt-get install -y shellcheck
+          shellcheck -S error scripts/*.sh tests/*.sh

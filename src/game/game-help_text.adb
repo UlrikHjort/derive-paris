@@ -2,6 +2,8 @@
 --  Copyright (c) 2026 Ulrik Hørlyk Hjort
 --  SPDX-License-Identifier: MIT
 --
+with Version;
+
 separate (Game)
 function Help_Text return String is
    LF : constant String := (1 => ASCII.LF);
@@ -116,6 +118,7 @@ begin
           & "  d-pad right/left save place / saved places" & LF
         else "")
      & LF & "  F1 or Esc        close" & LF
-     & "  Esc otherwise    quit the game"
+     & "  Esc otherwise    quit the game" & LF & LF
+     & "<span foreground='#8890a0'>  Dérive " & Version.Number & "</span>"
      & "</span>";
 end Help_Text;

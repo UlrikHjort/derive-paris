@@ -11,6 +11,7 @@
 # Overpass server is tried first, then a mirror, a few times each.  The
 # result is only kept when it is a complete OSM file.
 
+VERSION=$(sed -n 's/.*Number : constant String := "\(.*\)";/\1/p' "$(dirname "$0")/../src/common/version.ads")
 set -eu
 
 if [ $# -ne 5 ]; then
@@ -23,7 +24,7 @@ BBOX="$2,$3,$4,$5"
 DIR=$(dirname "$0")/..
 QUERY_TEMPLATE=$DIR/data/query.overpassql
 SERVERS="https://overpass-api.de/api/interpreter https://overpass.kumi.systems/api/interpreter"
-AGENT="derive-game/0.4 (OpenStreetMap city game)"
+AGENT="derive-game/$VERSION (OpenStreetMap city game)"
 
 mkdir -p "$(dirname "$OUT")"
 TMP=$(mktemp "${OUT}.XXXXXX")

@@ -8,12 +8,13 @@
 #
 #   scripts/download_velib.sh [south west north east]
 
+VERSION=$(sed -n 's/.*Number : constant String := "\(.*\)";/\1/p' "$(dirname "$0")/../src/common/version.ads")
 set -eu
 cd "$(dirname "$0")/.."
 BBOX="${1:-48.8150},${2:-2.2240},${3:-48.9030},${4:-2.4700}"
 OUT=data/velib.txt
 TMP=$(mktemp)
-curl -s -A "derive-game/0.4 (OpenStreetMap city game)" --data-urlencode \
+curl -s -A "derive-game/$VERSION (OpenStreetMap city game)" --data-urlencode \
   "data=[out:csv(::lat,::lon;false;' ')][timeout:120];node[amenity=bicycle_rental]($BBOX);out;" \
   https://overpass-api.de/api/interpreter > "$TMP"
 N=$(grep -c '^[0-9]' "$TMP" || true)

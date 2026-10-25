@@ -8,6 +8,7 @@
 #
 # usage: download_terrain.sh SOUTH WEST NORTH EAST [WIDTH HEIGHT]
 
+VERSION=$(sed -n 's/.*Number : constant String := "\(.*\)";/\1/p' "$(dirname "$0")/../src/common/version.ads")
 set -e
 S=$1; W=$2; N=$3; E=$4
 COLS=${5:-2000}; ROWS=${6:-1100}
@@ -18,7 +19,7 @@ URL="$URL&LAYERS=ELEVATION.ELEVATIONGRIDCOVERAGE.HIGHRES&STYLES=&CRS=EPSG:4326"
 URL="$URL&BBOX=$S,$W,$N,$E&WIDTH=$COLS&HEIGHT=$ROWS&FORMAT=image/x-bil;bits=32"
 
 echo "Downloading ground heights ($COLS x $ROWS) from IGN"
-curl -sS -f --retry 3 -A "derive-game/0.4" -o "$DIR/paris.bil.part" "$URL"
+curl -sS -f --retry 3 -A "derive-game/$VERSION" -o "$DIR/paris.bil.part" "$URL"
 SIZE=$(wc -c < "$DIR/paris.bil.part")
 if [ "$SIZE" -ne $((COLS * ROWS * 4)) ]; then
     echo "Unexpected answer from IGN ($SIZE bytes); the ground stays flat" >&2

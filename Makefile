@@ -11,6 +11,7 @@
 #                   Hôtel de Ville, Montparnasse to the Louvre): quicker,
 #                   to try it out; "make tiles" later reuses its downloads
 #   make run        start the game
+#   make test       a quick test of the converter (no download needed)
 #   make download   fetch all OSM chunks again (Overpass API)
 #
 # The OSM data and the generated tiles are not kept in git: a fresh
@@ -50,6 +51,9 @@ run: game
 	  echo "or 'make tiles-small' (only the centre, quicker) first."; exit 1; }
 	./bin/derive
 
+test: tools
+	./tests/convert.sh
+
 download: tools
 	rm -rf data/osm/chunks data/elevation
 	./scripts/build_city.sh $(BBOX)
@@ -58,4 +62,4 @@ clean:
 	gprclean -P tools.gpr
 	gprclean -P derive.gpr
 
-.PHONY: all check tools game tiles tiles-small run download clean
+.PHONY: all check tools game tiles tiles-small run test download clean

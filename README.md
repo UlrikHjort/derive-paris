@@ -1,5 +1,8 @@
 # Dérive
 
+[![build](https://github.com/UlrikHjort/derive-paris/actions/workflows/build.yml/badge.svg)](https://github.com/UlrikHjort/derive-paris/actions/workflows/build.yml)
+Version 0.5.0 ([what's in it](CHANGELOG.md))
+
 *La dérive* is the Parisian art of drifting through a city, letting the
 streets lead you.  Dérive is an open-world driving (and flying, and
 walking) game in Ada and GtkAda.  The 3D city of
@@ -105,6 +108,7 @@ Then:
     make            # check, build the converter (bin/osm2tiles) and the game (bin/derive)
     make tiles      # download the map data and the ground heights, build tiles/
     make run        # play
+    make test       # a quick test of the converter, no download needed
 
 Building the city the first time downloads a few hundred MB and takes a
 while; the tiles take about 800 MB.
