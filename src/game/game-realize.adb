@@ -81,6 +81,7 @@ begin
 
    glGenVertexArrays (1, Empty_VAO'Address);
    Create_Shadow_Map;
+   Hud_Layer.Create;
    Car.Create_Mesh;
    Plane.Create_Mesh;
    Traffic.Create_Meshes;
@@ -98,7 +99,9 @@ begin
    Ufo.Create_Mesh;
    Surprises.Create;
 
-   Profiling := Ada.Environment_Variables.Exists ("PARIS_PROFILE");
+   Profiling := Ada.Environment_Variables.Exists ("PARIS_PROFILE")
+     and then Ada.Environment_Variables.Value ("PARIS_PROFILE") /= "cpu";
+   Profiling_Cpu := Ada.Environment_Variables.Exists ("PARIS_PROFILE");
    declare
       Dir : constant String :=
         (if Ada.Environment_Variables.Exists ("PARIS_TILES")

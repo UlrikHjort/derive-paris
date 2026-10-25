@@ -12,6 +12,7 @@ is
    Now : constant Glib.Gint64 := Frame_Clock.Get_Frame_Time;
    Dt  : Float;
    Steps : Positive;
+   Started : constant Ada.Real_Time.Time := Clock_Now;
 begin
    if Last_Frame = 0 then
       Last_Frame := Now;
@@ -850,6 +851,35 @@ begin
       end if;
    end if;
 
+   --  PARIS_BARE=1: nothing over the 3D view (testing the cost of GTK's
+   --  compositing)
+   if Env ("PARIS_BARE") /= "" then
+      declare
+         use Gtk.Widget.Widget_List;
+         Children : Glist := Hud_Over.Get_Children;
+         Item     : Glist := Children;
+      begin
+         while Item /= Null_List loop
+            if Gtk.Widget."/=" (Get_Data (Item), Gtk.Widget.Gtk_Widget (Hud_Base)) then
+               Get_Data (Item).Hide;
+            end if;
+            Item := Next (Item);
+         end loop;
+         Free (Children);
+      end;
+   end if;
+   declare
+      AW : constant Integer := Integer (Area.Get_Allocated_Width);
+      AH : constant Integer := Integer (Area.Get_Allocated_Height);
+   begin
+      if AW > 1 and then AH > 1 and then (AW /= Hud_W or else AH /= Hud_H) then
+         Hud_W := AW;
+         Hud_H := AH;
+         Hud_Base.Set_Size_Request (Glib.Gint (AW), Glib.Gint (AH));
+         Hud_Win.Resize (Glib.Gint (AW), Glib.Gint (AH));
+      end if;
+   end;
+   Add (C_Tick, Started);
    Area.Queue_Render;
    return True;
 exception

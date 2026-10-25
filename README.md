@@ -499,12 +499,15 @@ So far: `traffic`, `pedestrians` (1.0 = normal), `volume` (0 .. 1),
 `start_hour`, `time_speed` (game minutes per real second), `compass`,
 `street_names` and `instruments` (yes/no), `date` (`today` or e.g.
 `2026-12-24`), `christmas` and `halloween` (auto/yes/no), `car`
-(`modern`, `2cv` or `ds`), and for the wheel `manual_gearbox` (no:
+(`modern`, `2cv`, `ds` or `r4`), and for the wheel `manual_gearbox` (no:
 automatic), `clutch` (no: change gear without the clutch) and
 `force_feedback` (0 .. 1), `steering` (sensitivity) and `wheel_centre`
 (degrees), `home` (`latitude longitude heading`, set with Shift+H in the game), and for the taxi `taxi_police` and `taxi_fines` (1.0 =
 normal: how often the police check, how much they fine) and
-`speed_limits` (`game` or `real`).
+`speed_limits` (`game` or `real`), `era` (`1973` to start in the past),
+and `graphics` (`high`, `medium` or `low`: on a slower graphics card
+`low` draws smaller shadows, without multisampling and at three
+quarters of the window's resolution).
 
 ## How it works
 

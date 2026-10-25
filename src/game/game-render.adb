@@ -10,6 +10,8 @@ is
    Target   : aliased GLint := 0;
    Viewport : aliased GLint_Array (0 .. 3) := (others => 0);
    W, H     : Integer;
+   RW, RH   : Integer;   --  the world is drawn at this size (the render scale)
+   Started  : constant Ada.Real_Time.Time := Clock_Now;
 begin
    if not Ready then
       return 1;
@@ -18,6 +20,8 @@ begin
    glGetIntegerv (GL_VIEWPORT, Viewport'Address);
    W := Integer (Viewport (2));
    H := Integer (Viewport (3));
+   RW := Integer'Max (1, Integer (Float (W) * Render_Scale));
+   RH := Integer'Max (1, Integer (Float (H) * Render_Scale));
    if W <= 0 or else H <= 0 then
       return 1;
    end if;
@@ -76,9 +80,9 @@ begin
       Begin_Pass (P_Solid);
 
       --  Main pass into the multisampled framebuffer
-      Ensure_MSAA (W, H);
+      Ensure_MSAA (RW, RH);
       glBindFramebuffer (GL_FRAMEBUFFER, MSAA_FBO);
-      glViewport (0, 0, GLsizei (W), GLsizei (H));
+      glViewport (0, 0, GLsizei (RW), GLsizei (RH));
       glClear (GL_DEPTH_BUFFER_BIT + GL_STENCIL_BUFFER_BIT);
 
       glDisable (GL_DEPTH_TEST);
@@ -265,26 +269,43 @@ begin
       Ufo.Draw_Beam (VP, Cam_Pos);
       Surprises.Draw_Lights (VP, Cam_Pos);
       Boats.Draw_Lights (VP, Cam_Pos, Night);
-      Sky_Life.Draw (VP, Float (H) / (2.0 * Tan (0.525)), Night);
+      Sky_Life.Draw (VP, Float (RH) / (2.0 * Tan (0.525)), Night);
       Rain.Draw (VP, Cam_Pos, Time, (if In_Museum or else In_Hall_B or else In_Room then 0.0 else Float'Max (Rain_Amount, Snow_Amount)),
-                 Snow_Amount > Rain_Amount, Float (H) / (2.0 * Tan (0.525)),
+                 Snow_Amount > Rain_Amount, Float (RH) / (2.0 * Tan (0.525)),
                  Mix (Vec3'(0.30, 0.32, 0.36), Vec3'(0.75, 0.78, 0.82), 1.0 - Night));
       if (Mode = Driving or else Visiting or else Walking)
         and then not In_Museum and then not In_Hall_B and then not In_Room
         and then not On_Tower and then not On_Arc
       then
          Rain.Draw_Leaves (VP, Cam_Pos, Time, Almanac.Leaves_Falling * (1.0 - Snow_Amount),
-                           Float (H) / (2.0 * Tan (0.525)), 0.15 + 0.85 * (1.0 - Night));
+                           Float (RH) / (2.0 * Tan (0.525)), 0.15 + 0.85 * (1.0 - Night));
       end if;
-      Tyre_Effects.Draw_Smoke (VP, Cam_Pos, Float (H) / (2.0 * Tan (0.525)), 1.0 - Night);
+      Tyre_Effects.Draw_Smoke (VP, Cam_Pos, Float (RH) / (2.0 * Tan (0.525)), 1.0 - Night);
       End_Pass (P_Ground);
       Begin_Pass (P_Resolve);
 
       --  Resolve into GTK's framebuffer
-      glBindFramebuffer (GL_READ_FRAMEBUFFER, MSAA_FBO);
-      glBindFramebuffer (GL_DRAW_FRAMEBUFFER, GLuint (Target));
-      glBlitFramebuffer (0, 0, GLint (W), GLint (H), 0, 0, GLint (W), GLint (H),
-                         GL_COLOR_BUFFER_BIT, GL_NEAREST);
+      if RW = W and then RH = H then
+         glBindFramebuffer (GL_READ_FRAMEBUFFER, MSAA_FBO);
+         glBindFramebuffer (GL_DRAW_FRAMEBUFFER, GLuint (Target));
+         glBlitFramebuffer (0, 0, GLint (W), GLint (H), 0, 0, GLint (W), GLint (H),
+                            GL_COLOR_BUFFER_BIT, GL_NEAREST);
+      else
+         --  drawn smaller: (resolve the samples, then) stretch to the window
+         if Samples > 1 then
+            Ensure_Mid (RW, RH);
+            glBindFramebuffer (GL_READ_FRAMEBUFFER, MSAA_FBO);
+            glBindFramebuffer (GL_DRAW_FRAMEBUFFER, Mid_FBO);
+            glBlitFramebuffer (0, 0, GLint (RW), GLint (RH), 0, 0, GLint (RW), GLint (RH),
+                               GL_COLOR_BUFFER_BIT, GL_NEAREST);
+            glBindFramebuffer (GL_READ_FRAMEBUFFER, Mid_FBO);
+         else
+            glBindFramebuffer (GL_READ_FRAMEBUFFER, MSAA_FBO);
+         end if;
+         glBindFramebuffer (GL_DRAW_FRAMEBUFFER, GLuint (Target));
+         glBlitFramebuffer (0, 0, GLint (RW), GLint (RH), 0, 0, GLint (W), GLint (H),
+                            GL_COLOR_BUFFER_BIT, GL_LINEAR);
+      end if;
       glBindFramebuffer (GL_FRAMEBUFFER, GLuint (Target));
       if Start_Recording then
          Start_Recording := False;
@@ -305,6 +326,10 @@ begin
          Announce_Timer := 3.0;
          Street_Timer := 1.0;
       end if;
+      --  the panels, after the photos, films and postcards (which show
+      --  the city only) and before a screenshot
+      glViewport (0, 0, GLsizei (W), GLsizei (H));
+      Draw_Hud (W, H);
       End_Pass (P_Resolve);
    end;
    Fps_Frames := Fps_Frames + 1;
@@ -350,7 +375,7 @@ begin
               & Integer'Image (Integer (Aircraft.Pos.Z))
               & (if Aircraft.Crashed > 0.0 then " CRASHED" else "")
             else ""));
-      if Profiling then
+      if Profiling_Cpu then
          Ada.Text_IO.Put ("  frame times:");
          for B in Dt_Hist'Range loop
             Ada.Text_IO.Put (Integer'Image (B * 4) & "ms:" & Natural'Image (Dt_Hist (B)));
@@ -372,5 +397,6 @@ begin
       end if;
       Gtk.Main.Main_Quit;
    end if;
+   Add (C_Render, Started);
    return 1;
 end Render;

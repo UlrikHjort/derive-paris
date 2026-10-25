@@ -102,6 +102,10 @@ package GL is
    GL_RGBA8              : constant := 16#8058#;
    GL_RGBA16F            : constant := 16#881A#;
    GL_RGBA               : constant := 16#1908#;
+   GL_BGRA               : constant := 16#80E1#;
+   GL_UNPACK_ROW_LENGTH  : constant := 16#0CF2#;
+   GL_UNPACK_SKIP_ROWS   : constant := 16#0CF3#;
+   GL_UNPACK_SKIP_PIXELS : constant := 16#0CF4#;
    GL_DEPTH24_STENCIL8   : constant := 16#88F0#;
 
    GL_FRAMEBUFFER        : constant := 16#8D40#;
@@ -196,6 +200,12 @@ package GL is
    type P_Tex_Image_2D is access procedure
      (Target : GLenum; Level, Internal : GLint; Width, Height : GLsizei;
       Border : GLint; Format, Kind : GLenum; Data : System.Address)
+     with Convention => C;
+   type P_Pixel_Store is access procedure (Name : GLenum; Value : GLint)
+     with Convention => C;
+   type P_Tex_Sub_Image_2D is access procedure
+     (Target : GLenum; Level, X, Y : GLint; Width, Height : GLsizei;
+      Format, Kind : GLenum; Data : System.Address)
      with Convention => C;
    type P_Tex_Parameter_I is access procedure
      (Target, Pname : GLenum; Param : GLint)
@@ -379,6 +389,10 @@ package GL is
      with Import, Convention => C, External_Name => "epoxy_glActiveTexture";
    glTexImage2D : P_Tex_Image_2D
      with Import, Convention => C, External_Name => "epoxy_glTexImage2D";
+   glPixelStorei : P_Pixel_Store
+     with Import, Convention => C, External_Name => "epoxy_glPixelStorei";
+   glTexSubImage2D : P_Tex_Sub_Image_2D
+     with Import, Convention => C, External_Name => "epoxy_glTexSubImage2D";
    glTexParameteri : P_Tex_Parameter_I
      with Import, Convention => C, External_Name => "epoxy_glTexParameteri";
    glTexParameterfv : P_Tex_Parameter_FV

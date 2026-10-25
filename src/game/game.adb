@@ -25,6 +25,7 @@ with Cairo.Png;
 with Cairo.Surface;
 with Gdk;
 with Gdk.Event;
+with Gdk.Rectangle;
 with Gdk.Frame_Clock;
 with Gdk.Types;
 with Glib;
@@ -32,6 +33,8 @@ with Gtk.Css_Provider;
 with Gtk.Enums;
 with Gtk.Label;
 with Gtk.Main;
+with Gtk.Box;
+with Gtk.Offscreen_Window;
 with Gtk.Overlay;
 with Gtk.Style_Context;
 with Gtk.Style_Provider;
@@ -52,6 +55,7 @@ with GL_Area;
 with Math3D;
 with Museum;
 with Motorboat;
+with Hud_Layer;
 with Navigation;
 with Night_Bus;
 with Pedestrians;
@@ -163,9 +167,13 @@ package body Game is
       when Constraint_Error => null;   --  a bad line: the default home
    end Read_Home;
 
-   Shadow_Size   : constant := 4096;
+   --  The graphics level (graphics = low | medium | high in ~/.deriverc):
+   --  the shadow map's size, the multisampling, and the share of the
+   --  window's pixels the world is drawn at (then scaled up)
+   Shadow_Size   : GLsizei := 4096;
+   Render_Scale  : Float := 1.0;
    Shadow_Extent : constant := 260.0;   --  half-size of the shadow box (m)
-   Samples       : constant := 4;
+   Samples       : GLsizei := 4;
 
    Car_Color    : constant Vec3 := (0.62, 0.07, 0.06);
    Taxi_Black   : constant Vec3 := (0.04, 0.04, 0.05);   --  your car on a taxi shift
@@ -211,6 +219,12 @@ package body Game is
    Area    : GL_Area.Gtk_GL_Area;
    Hud     : Gtk.Label.Gtk_Label;
    Overlay : Gtk.Overlay.Gtk_Overlay;   --  the 3D view with everything on top
+   --  The panels: laid out in an offscreen window of the 3D view's size,
+   --  drawn over it in OpenGL (Draw_Hud, Hud_Layer)
+   Hud_Win  : Gtk.Offscreen_Window.Gtk_Offscreen_Window;
+   Hud_Over : Gtk.Overlay.Gtk_Overlay;
+   Hud_Base : Gtk.Box.Gtk_Box;
+   Hud_W, Hud_H : Integer := 0;
    Help    : Gtk.Label.Gtk_Label;   --  the keys, shown with F1
    Start_Recording : Boolean := False;   --  F9 pressed
    Take_Photo      : Boolean := False;   --  F12 pressed
@@ -537,9 +551,10 @@ package body Game is
    type Pass is (P_Shadow, P_Solid, P_Ground, P_Resolve);
    Queries   : array (Pass) of aliased GLuint := (others => 0);
    Gpu_Total : array (Pass) of Long_Float := (others => 0.0);
-   Profiling : Boolean := False;
+   Profiling : Boolean := False;      --  GPU timer queries (PARIS_PROFILE=1)
+   Profiling_Cpu : Boolean := False;  --  CPU times only, no stalls (PARIS_PROFILE=cpu)
    Dt_Hist   : array (0 .. 10) of Natural := (others => 0);   --  4 ms buckets
-   type Cpu_Part is (C_Physics, C_Traffic, C_Lights, C_World);
+   type Cpu_Part is (C_Physics, C_Traffic, C_Lights, C_World, C_Tick, C_Render);
    Cpu_Total : array (Cpu_Part) of Duration := (others => 0.0);
 
    function Clock_Now return Ada.Real_Time.Time renames Ada.Real_Time.Clock;
@@ -590,6 +605,48 @@ package body Game is
       glDrawBuffer (GL_NONE);
       glReadBuffer (GL_NONE);
    end Create_Shadow_Map;
+
+   --  At a lower render scale with multisampling, the samples are first
+   --  resolved into this (at the scaled size), then stretched to the window
+   Mid_FBO, Mid_Color : aliased GLuint := 0;
+   Mid_W, Mid_H : Integer := 0;
+
+   procedure Ensure_Mid (W, H : Integer) is
+   begin
+      if W = Mid_W and then H = Mid_H then
+         return;
+      end if;
+      if Mid_FBO /= 0 then
+         glDeleteFramebuffers (1, Mid_FBO'Address);
+         glDeleteRenderbuffers (1, Mid_Color'Address);
+      end if;
+      glGenFramebuffers (1, Mid_FBO'Address);
+      glBindFramebuffer (GL_FRAMEBUFFER, Mid_FBO);
+      glGenRenderbuffers (1, Mid_Color'Address);
+      glBindRenderbuffer (GL_RENDERBUFFER, Mid_Color);
+      glRenderbufferStorageMultisample (GL_RENDERBUFFER, 0, GL_RGBA8, GLsizei (W), GLsizei (H));
+      glFramebufferRenderbuffer (GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, Mid_Color);
+      Mid_W := W;
+      Mid_H := H;
+   end Ensure_Mid;
+
+   --  graphics = low | medium | high
+   procedure Set_Graphics (Level : String) is
+   begin
+      if Level = "low" then
+         Shadow_Size := 1024;
+         Samples := 0;
+         Render_Scale := 0.75;
+      elsif Level = "medium" then
+         Shadow_Size := 2048;
+         Samples := 2;
+         Render_Scale := 1.0;
+      else
+         Shadow_Size := 4096;
+         Samples := 4;
+         Render_Scale := 1.0;
+      end if;
+   end Set_Graphics;
 
    procedure Ensure_MSAA (W, H : Integer) is
    begin
@@ -985,6 +1042,117 @@ package body Game is
       pragma Unreferenced (Status);
       Surface_Destroy (Surface);
    end Save_Composite;
+
+   --  The panels' picture, over the 3D view
+   Hud_Surface : Cairo.Cairo_Surface := Cairo.Null_Surface;
+   Surf_W, Surf_H : Integer := 0;
+   --  what changed in the panels' window since the picture was last made
+   --  (GTK tells: the damage event), redrawn and uploaded alone
+   Dirty : Boolean := True;
+   Dirty_X0, Dirty_Y0, Dirty_X1, Dirty_Y1 : Integer := 0;
+
+   function Hud_Damaged
+     (Self  : access Gtk.Widget.Gtk_Widget_Record'Class;
+      Event : Gdk.Event.Gdk_Event_Expose) return Boolean
+   is
+      pragma Unreferenced (Self);
+      A : constant Gdk.Rectangle.Gdk_Rectangle := Event.Area;
+      X0 : constant Integer := Integer (A.X);
+      Y0 : constant Integer := Integer (A.Y);
+      X1 : constant Integer := Integer (A.X) + Integer (A.Width);
+      Y1 : constant Integer := Integer (A.Y) + Integer (A.Height);
+   begin
+      if not Dirty then
+         Dirty := True;
+         Dirty_X0 := X0;
+         Dirty_Y0 := Y0;
+         Dirty_X1 := X1;
+         Dirty_Y1 := Y1;
+      else
+         Dirty_X0 := Integer'Min (Dirty_X0, X0);
+         Dirty_Y0 := Integer'Min (Dirty_Y0, Y0);
+         Dirty_X1 := Integer'Max (Dirty_X1, X1);
+         Dirty_Y1 := Integer'Max (Dirty_Y1, Y1);
+      end if;
+      return False;
+   end Hud_Damaged;
+
+   procedure Draw_Hud (W, H : Integer) is
+      use Cairo;
+      use type Gtk.Offscreen_Window.Gtk_Offscreen_Window;
+      Cr : Cairo_Context;
+      use Gtk.Widget.Widget_List;
+      Children : Glist;
+      Item     : Glist;
+   begin
+      if Hud_Win = null then
+         return;
+      end if;
+      if Hud_Surface = Null_Surface or else W /= Surf_W or else H /= Surf_H then
+         if Hud_Surface /= Null_Surface then
+            Cairo.Surface.Destroy (Hud_Surface);
+         end if;
+         Hud_Surface := Cairo.Image_Surface.Create
+           (Cairo.Image_Surface.Cairo_Format_ARGB32, Glib.Gint (W), Glib.Gint (H));
+         Surf_W := W;
+         Surf_H := H;
+         Dirty := True;
+         Dirty_X0 := 0;
+         Dirty_Y0 := 0;
+         Dirty_X1 := W;
+         Dirty_Y1 := H;
+      end if;
+      --  lay out what changed (a label with a new text) before it is drawn
+      Hud_Win.Check_Resize;
+      if not Dirty then
+         Hud_Layer.Draw (Cairo.Image_Surface.Get_Data_Generic (Hud_Surface), W, H,
+                         Natural (Cairo.Image_Surface.Get_Stride (Hud_Surface)), 0, 0, 0, 0);
+         return;
+      end if;
+      declare
+         X0 : constant Integer := Integer'Max (0, Dirty_X0);
+         Y0 : constant Integer := Integer'Max (0, Dirty_Y0);
+         X1 : constant Integer := Integer'Min (W, Dirty_X1);
+         Y1 : constant Integer := Integer'Min (H, Dirty_Y1);
+      begin
+         Dirty := False;
+         Cr := Create (Hud_Surface);
+         Rectangle (Cr, Glib.Gdouble (X0), Glib.Gdouble (Y0), Glib.Gdouble (X1 - X0), Glib.Gdouble (Y1 - Y0));
+         Clip (Cr);
+         Set_Operator (Cr, Cairo_Operator_Clear);
+         Paint (Cr);
+         Set_Operator (Cr, Cairo_Operator_Over);
+         Children := Hud_Over.Get_Children;
+         Item := Children;
+         while Item /= Null_List loop
+            declare
+               Child : constant Gtk.Widget.Gtk_Widget := Get_Data (Item);
+               X, Y  : Glib.Gint;
+               Ok    : Boolean;
+            begin
+               if Gtk.Widget."/=" (Child, Gtk.Widget.Gtk_Widget (Hud_Base)) and then Child.Get_Mapped then
+                  Child.Translate_Coordinates (Hud_Over, 0, 0, X, Y, Ok);
+                  --  only those in the changed part
+                  if Integer (X) < X1 and then Integer (Y) < Y1
+                    and then Integer (X) + Integer (Child.Get_Allocated_Width) > X0
+                    and then Integer (Y) + Integer (Child.Get_Allocated_Height) > Y0
+                  then
+                     Save (Cr);
+                     Translate (Cr, Glib.Gdouble (X), Glib.Gdouble (Y));
+                     Child.Draw (Cr);
+                     Restore (Cr);
+                  end if;
+               end if;
+            end;
+            Item := Next (Item);
+         end loop;
+         Free (Children);
+         Destroy (Cr);
+         Cairo.Surface.Flush (Hud_Surface);
+         Hud_Layer.Draw (Cairo.Image_Surface.Get_Data_Generic (Hud_Surface), W, H,
+                         Natural (Cairo.Image_Surface.Get_Stride (Hud_Surface)), X0, Y0, X1, Y1);
+      end;
+   end Draw_Hud;
 
    --  For testing: a label as a picture
    procedure Save_Label_Png (L : Gtk.Label.Gtk_Label; File_Name : String) is

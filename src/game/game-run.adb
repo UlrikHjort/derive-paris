@@ -10,6 +10,7 @@ begin
    Gtk.Main.Init;
    Gtkada.Bindings.Set_On_Exception (Callback_Failed'Access);
    Config.Load;
+   Set_Graphics (Config.Get ("graphics", "high"));
    Read_Home;
    Terrain.Load;
    Hour := Config.Get ("start_hour", 18.0);
@@ -99,38 +100,47 @@ begin
    Area.On_Render (Render'Access);
    Overlay.Add (Area);
 
+   --  the panels' own window, offscreen (see Draw_Hud)
+   Gtk.Offscreen_Window.Gtk_New (Hud_Win);
+   Gtk.Overlay.Gtk_New (Hud_Over);
+   Gtk.Box.Gtk_New_Hbox (Hud_Base);
+   Hud_Base.Set_Size_Request (1600, 900);
+   Hud_Over.Add (Hud_Base);
+   Hud_Win.Add (Hud_Over);
+   Hud_Win.On_Damage_Event (Hud_Damaged'Access);
+
    Gtk.Label.Gtk_New (Hud);
    Hud.Set_Halign (Gtk.Widget.Align_Start);
    Hud.Set_Valign (Gtk.Widget.Align_End);
    Hud.Set_Margin_Start (10);
    Hud.Set_Margin_Bottom (10);
-   Overlay.Add_Overlay (Hud);
+   Hud_Over.Add_Overlay (Hud);
 
    Gtk.Label.Gtk_New (Help);
    Help.Set_Halign (Gtk.Widget.Align_Center);
    Help.Set_Valign (Gtk.Widget.Align_Center);
    Help.Set_No_Show_All (True);
-   Overlay.Add_Overlay (Help);
+   Hud_Over.Add_Overlay (Help);
 
    Gtk.Label.Gtk_New (Place_List);
    Place_List.Set_Halign (Gtk.Widget.Align_Center);
    Place_List.Set_Valign (Gtk.Widget.Align_Center);
    Place_List.Set_No_Show_All (True);
-   Overlay.Add_Overlay (Place_List);
+   Hud_Over.Add_Overlay (Place_List);
 
    Gtk.Label.Gtk_New (Search_Box);
    Search_Box.Set_Halign (Gtk.Widget.Align_Center);
    Search_Box.Set_Valign (Gtk.Widget.Align_Start);
    Search_Box.Set_Margin_Top (80);
    Search_Box.Set_No_Show_All (True);
-   Overlay.Add_Overlay (Search_Box);
-   Overlay.Add_Overlay (Postcards.Album);
+   Hud_Over.Add_Overlay (Search_Box);
+   Hud_Over.Add_Overlay (Postcards.Album);
 
    Gtk.Label.Gtk_New (Confirm);
    Confirm.Set_Halign (Gtk.Widget.Align_Center);
    Confirm.Set_Valign (Gtk.Widget.Align_Center);
    Confirm.Set_No_Show_All (True);
-   Overlay.Add_Overlay (Confirm);
+   Hud_Over.Add_Overlay (Confirm);
 
    Gtk.Label.Gtk_New (Caption);
    Caption.Set_Halign (Gtk.Widget.Align_Center);
@@ -138,27 +148,27 @@ begin
    Caption.Set_Margin_Bottom (60);
    Caption.Set_Justify (Gtk.Enums.Justify_Center);
    Caption.Set_No_Show_All (True);
-   Overlay.Add_Overlay (Caption);
+   Hud_Over.Add_Overlay (Caption);
 
    Gtk.Label.Gtk_New (Game_Menu);
    Game_Menu.Set_Halign (Gtk.Widget.Align_Center);
    Game_Menu.Set_Valign (Gtk.Widget.Align_Center);
    Game_Menu.Set_No_Show_All (True);
-   Overlay.Add_Overlay (Game_Menu);
+   Hud_Over.Add_Overlay (Game_Menu);
 
    Gtk.Label.Gtk_New (Race_Hud);
    Race_Hud.Set_Halign (Gtk.Widget.Align_Center);
    Race_Hud.Set_Valign (Gtk.Widget.Align_Start);
    Race_Hud.Set_Margin_Top (70);
    Race_Hud.Set_No_Show_All (True);
-   Overlay.Add_Overlay (Race_Hud);
+   Hud_Over.Add_Overlay (Race_Hud);
 
    Gtk.Label.Gtk_New (Radio_Box);
    Radio_Box.Set_Halign (Gtk.Widget.Align_Center);
    Radio_Box.Set_Valign (Gtk.Widget.Align_End);
    Radio_Box.Set_Margin_Bottom (60);
    Radio_Box.Set_No_Show_All (True);
-   Overlay.Add_Overlay (Radio_Box);
+   Hud_Over.Add_Overlay (Radio_Box);
 
    Gtk.Label.Gtk_New (Race_Banner);
    Race_Banner.Set_Halign (Gtk.Widget.Align_Center);
@@ -166,7 +176,7 @@ begin
    Race_Banner.Set_Margin_Top (120);
    Race_Banner.Set_Justify (Gtk.Enums.Justify_Center);
    Race_Banner.Set_No_Show_All (True);
-   Overlay.Add_Overlay (Race_Banner);
+   Hud_Over.Add_Overlay (Race_Banner);
 
    --  Street name plaque, top centre: enamel blue, white letters, green frame
    Gtk.Label.Gtk_New (Sign);
@@ -216,7 +226,7 @@ begin
         (Gtk.Css_Provider."+" (Css), Gtk.Style_Provider.Priority_Application);
       Gtk.Style_Context.Get_Style_Context (Sign).Add_Class ("street-sign");
    end;
-   Overlay.Add_Overlay (Sign);
+   Hud_Over.Add_Overlay (Sign);
 
    declare
       Sign_W : constant Gtk.Widget.Gtk_Widget := Limit_Sign.Create;
@@ -225,7 +235,7 @@ begin
       Sign_W.Set_Valign (Gtk.Widget.Align_End);
       Sign_W.Set_Margin_Start (272);
       Sign_W.Set_Margin_Bottom (40);
-      Overlay.Add_Overlay (Sign_W);
+      Hud_Over.Add_Overlay (Sign_W);
    end;
 
    declare
@@ -234,16 +244,16 @@ begin
       Alt_W.Set_Halign (Gtk.Widget.Align_Start);
       Alt_W.Set_Valign (Gtk.Widget.Align_Center);
       Alt_W.Set_Margin_Start (12);
-      Overlay.Add_Overlay (Alt_W);
+      Hud_Over.Add_Overlay (Alt_W);
    end;
 
    Panel := Instruments.Create;
    Panel.Set_No_Show_All (True);
-   Overlay.Add_Overlay (Panel);
+   Hud_Over.Add_Overlay (Panel);
    Compass_Widget := Compass.Create;
-   Overlay.Add_Overlay (Compass_Widget);
-   Overlay.Add_Overlay (Navigation.Create_Minimap);
-   Overlay.Add_Overlay (Navigation.Create_Instructions);
+   Hud_Over.Add_Overlay (Compass_Widget);
+   Hud_Over.Add_Overlay (Navigation.Create_Minimap);
+   Hud_Over.Add_Overlay (Navigation.Create_Instructions);
 
    Gtk.Label.Gtk_New (Credit);
    Credit.Set_Markup
@@ -253,12 +263,13 @@ begin
    Credit.Set_Valign (Gtk.Widget.Align_End);
    Credit.Set_Margin_End (10);
    Credit.Set_Margin_Bottom (10);
-   Overlay.Add_Overlay (Credit);
+   Hud_Over.Add_Overlay (Credit);
 
    Id := Area.Add_Tick_Callback (Tick'Access);
    pragma Unreferenced (Id);
 
    Window.Show_All;
+   Hud_Win.Show_All;
    if not Show_Compass then
       Compass_Widget.Hide;
       Navigation.Show (False);
