@@ -276,6 +276,14 @@ begin
       end if;
       Motorboat.Hire_Point (Walk_X, Walk_Z);
    end if;
+   --  PARIS_FUNICULAR=1: on foot at the lower station's mark (testing)
+   if Ready and then Frame_Number = 40 and then Env ("PARIS_FUNICULAR") /= "" then
+      Player.Speed := 0.0;
+      if not Walking then
+         Toggle_Walk;
+      end if;
+      Funicular.Lower_Mark (Walk_X, Walk_Z);
+   end if;
    --  PARIS_RADIO=1: the radio on (testing)
    if Ready and then Frame_Number = 30 and then Env ("PARIS_RADIO") /= "" then
       Radio.Toggle (Radio_Facts);
@@ -637,6 +645,7 @@ begin
          end;
          Stravinsky.Update (Dt);
          Boats.Update (Dt, Cam_Pos);
+         Funicular.Update (Dt);
          Moulin.Update (Dt);
          Extras.Update (Dt, Hour, Night,
                         (if Walking then Vec3'(Walk_X, 0.0, Walk_Z) else Vec3'(Player.X, 0.0, Player.Z)));

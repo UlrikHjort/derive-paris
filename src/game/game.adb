@@ -46,6 +46,7 @@ with Almanac;
 with Car;
 with Compass;
 with Config;
+with Funicular;
 with Geo;
 with Halloween;
 with Instruments;
@@ -354,6 +355,8 @@ package body Game is
    On_Tower   : Boolean := False;  --  on top of the Eiffel Tower
    On_Arc     : Boolean := False;  --  on the roof of the Arc de Triomphe
    On_Boat    : Boolean := False;  --  on a bateau-mouche's upper deck
+   On_Funicular : Boolean := False;  --  in a cabin of the Funiculaire de Montmartre
+   Cabin_Floor  : Float := 0.0;
    Boat_Deck  : Float := 0.0;
 
    Player   : Car.State;
@@ -847,6 +850,7 @@ package body Game is
                 elsif On_Tower then Tower.Top_Floor_Y
                 elsif On_Arc then Arc_Top.Roof_Y
                 elsif On_Boat then Boat_Deck
+                elsif On_Funicular then Cabin_Floor
                 else Terrain.Height (Walk_X, Walk_Z))
                + 1.65 + 0.03 * abs Sin (Walk_Step), Walk_Z));
 

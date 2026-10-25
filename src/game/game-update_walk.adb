@@ -10,6 +10,34 @@ procedure Update_Walk (Dt : Float) is
    DX, DZ : Float := 0.0;
    Turn  : constant Float := 1.8 * Dt;
 begin
+   --  in the funicular: carried up (or down), off at the other end
+   if On_Funicular then
+      if Funicular.Arrived then
+         On_Funicular := False;
+         Funicular.Alight (Walk_X, Walk_Z);
+         Announce := Ada.Strings.Unbounded.To_Unbounded_String
+           ((if Walk_Z < -3200.0 then "The Sacré-Cœur, at the top of Montmartre"
+             else "Place Suzanne-Valadon, at the foot of the hill"));
+         Announce_Timer := 3.0;
+         Street_Timer := 1.0;
+      else
+         Funicular.Ride_Eye (Walk_X, Walk_Z, Cabin_Floor);
+         return;
+      end if;
+   end if;
+   if not In_Museum and then not In_Hall_B and then not In_Room and then not On_Tower
+     and then not On_Arc and then not On_Boat and then Funicular.At_Station (Walk_X, Walk_Z)
+   then
+      Funicular.Board (Walk_X, Walk_Z);
+      On_Funicular := True;
+      Funicular.Ride_Eye (Walk_X, Walk_Z, Cabin_Floor);
+      Traffic.Set_Walker (False, 0.0, 0.0);
+      Announce := Ada.Strings.Unbounded.To_Unbounded_String
+        ("Aboard the Funiculaire de Montmartre: the doors close, and off it goes");
+      Announce_Timer := 4.0;
+      Street_Timer := 1.0;
+      return;
+   end if;
    --  on a boat: carried along (the mouse looks round)
    if On_Boat then
       declare

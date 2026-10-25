@@ -258,6 +258,14 @@ their lines, in `data/metro_stations.txt`) and Enter: you ride in the car
 while the tunnel lights rush by, and come up the stairs of the entrance
 nearest that station.  Q takes you back up where you came down.
 
+### Up to Montmartre
+
+The Funiculaire de Montmartre runs up the hill from the Place
+Suzanne-Valadon to the Sacré-Cœur: two green cabins, one going up as the
+other comes down.  On foot, stand at the bottom (or the top) of its
+track when a cabin is waiting there, and ride; you step out at the
+other end.
+
 ### On a Vélib'
 
 On foot by a Vélib' station, **Q** takes one of the mint-green bikes: ride

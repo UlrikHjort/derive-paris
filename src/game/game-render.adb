@@ -218,6 +218,7 @@ begin
          Birds.Draw (WU.Model, WU.Car_Color, Cam_Pos);
          Extras.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos);
          Boats.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos, Night);
+         Funicular.Draw (WU.Model, WU.Car_Color, Cam_Pos);
          Seasons.Draw (WU.Model, WU.Car_Color, Cam_Pos);
          Closures.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, WU.Extra_Color, Cam_Pos, Time);
          Set (WU.Car_Color, Car_Color);
