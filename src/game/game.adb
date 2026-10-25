@@ -327,7 +327,7 @@ package body Game is
 
    type Float_List is array (1 .. 16) of Float;
 
-   --  Home (V): standing in the top-floor apartment at 76 rue Bonaparte.
+   --  Home (V): standing in a top-floor apartment on Place Saint-Sulpice.
    --  The converter writes its position to tiles/home.txt.
    type Home_Info is record
       Known          : Boolean := False;
@@ -1733,7 +1733,7 @@ package body Game is
          --  from up here you see far: the Pantheon is 1.1 km away
          World.Set_Radius (6);
          Pending_Load := True;
-         Announce := Ada.Strings.Unbounded.To_Unbounded_String ("76, rue Bonaparte");
+         Announce := Ada.Strings.Unbounded.To_Unbounded_String ("Place Saint-Sulpice");
          Announce_Timer := 1.0E9;
          Street_Timer := 1.0;
       end;
@@ -4311,7 +4311,7 @@ package body Game is
             Walk_Pitch := -0.45;
          end;
       end if;
-      --  PARIS_SEARCH="76 rue bonaparte": the address box with that typed (testing)
+      --  PARIS_SEARCH="12 rue de rivoli": the address box with that typed (testing)
       if Ready and then Frame_Number = 40 and then Env ("PARIS_SEARCH") /= "" then
          Open_Search;
          Search_Text := Ada.Strings.Unbounded.To_Unbounded_String (Env ("PARIS_SEARCH"));

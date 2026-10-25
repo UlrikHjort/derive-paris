@@ -1,7 +1,7 @@
-# Home: the top-floor apartment at 76 rue Bonaparte, on Place Saint-Sulpice.
+# Home: a top-floor apartment on Place Saint-Sulpice.
 # Read by osm2tiles; the game's V key takes you there.
 #
-# osm_id       OSM id of the building (relation "Le Foyer Français")
+# osm_id       OSM id of the building (a relation)
 # facade       compass direction the street facade faces
 # depth        depth of the apartment behind the street facade, metres
 # kitchen      end of the back wall with the kitchen window (towards the

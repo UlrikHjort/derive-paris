@@ -5,7 +5,7 @@
 --  Street addresses for the GPS: every named street, and the house
 --  numbers from OpenStreetMap (tiles/addresses_*.txt, written by
 --  osm2tiles).  The search ignores case and accents, and takes the
---  number before or after the street ("76 rue bonaparte").
+--  number before or after the street ("12 rue de rivoli").
 
 package Addresses is
 
