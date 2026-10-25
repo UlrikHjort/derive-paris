@@ -393,6 +393,11 @@ stand by the road with a speed gun: 45 € up to 20 km/h too fast, 135 €
 up to 40, 375 € beyond.  How often, and how much, can be changed in
 `~/.deriverc` (`taxi_police = 1.0`, `taxi_fines = 1.0`).
 
+On a rainy night (after half past nine), once a night, comes *la
+ruée*, the rush: everyone wants a taxi at once.  For seven minutes the
+tips are doubled, but a fare who waves for more than 75 seconds takes
+another cab.  The shift's account shows what you made in the rush.
+
 Tourists sometimes ask to go past a sight on the way: the Eiffel Tower,
 Notre-Dame, the Arc de Triomphe, the Louvre's Pyramid, and others. The
 GPS takes you past it first. Drive by slowly, under 30 km/h, so they can

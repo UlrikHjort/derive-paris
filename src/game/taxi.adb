@@ -251,6 +251,16 @@ package body Taxi is
    Raining : Float := 0.0;
    Busy    : Boolean := False;
 
+   --  The rush: a rainy night, everyone wants a taxi at once.  For a few
+   --  minutes tips are doubled, but a fare who waits too long takes
+   --  another cab
+   Rush_Left     : Float := 0.0;      --  seconds of it to go
+   Rush_Had      : Boolean := False;  --  (once a night)
+   Rush_Rides    : Natural := 0;
+   Rush_Money    : Float := 0.0;
+   Fare_Waited   : Float := 0.0;      --  how long the fare has been waving
+   Rush_Patience : constant := 75.0;
+
    procedure Look_For_Fare (Hour : Float) is
       use Road_Network;
       --  rush hour and rain: people everywhere want one, the next is nearer
@@ -389,6 +399,10 @@ package body Taxi is
       Current := Finding;
       Waiting := False;
       Look_Wait := 0.0;
+      Rush_Left := 0.0;
+      Rush_Had := False;
+      Rush_Rides := 0;
+      Rush_Money := 0.0;
    end Start_Shift;
 
    procedure Next_Fare (Player : Car.State) is
@@ -629,6 +643,9 @@ package body Taxi is
       if Who_Kind = Business and then Late then
          Tip := 0.0;
       end if;
+      if Rush_Left > 0.0 then
+         Tip := 2.0 * Tip;   --  the rush: glad to have found one at all
+      end if;
       if Chasing then
          Chase.Stop;
          Chasing := False;
@@ -651,6 +668,10 @@ package body Taxi is
       Last_Late := Late;
       Last_Dest := Dest_Name;
       Ride := Last_Meter + Last_Tip + Last_Bonus + Last_Sight;
+      if Rush_Left > 0.0 then
+         Rush_Rides := Rush_Rides + 1;
+         Rush_Money := Rush_Money + Ride;
+      end if;
       Total := Total + Ride;
       Sum_Meter := Sum_Meter + Last_Meter;
       Sum_Tips := Sum_Tips + Last_Tip;
@@ -753,6 +774,29 @@ package body Taxi is
       end if;
       Shift_Time := Shift_Time + Dt;
 
+      --  a rainy night: the rush (once a night; PARIS_RUSH=1 at once)
+      if Hour > 8.0 and then Hour < 20.0 then
+         Rush_Had := False;
+      end if;
+      if Rush_Left > 0.0 then
+         Rush_Left := Float'Max (0.0, Rush_Left - Dt);
+         if Rush_Left = 0.0 then
+            Warn := +("!FIN DE LA RUÉE|The rush is over: " & Natural'Image (Rush_Rides) & " rides, "
+                      & Money (Rush_Money));
+            Warn_Time := 6.0;
+         end if;
+      elsif not Rush_Had
+        and then ((Rain > 0.3 and then (Hour >= 21.5 or else Hour < 4.0)) or else Test ("PARIS_RUSH"))
+      then
+         Rush_Had := True;
+         Rush_Left := 420.0;
+         Warn := +"!LA RUÉE|Rain at night: everyone wants a taxi.  Tips doubled for 7 minutes,"
+           & " but don't keep them waiting";
+         Warn_Time := 7.0;
+         Sound.Effect (Sound.Go_Beep, 1.0, 0.0);
+         Look_Wait := 0.0;
+      end if;
+
       --  the speed limit of the street here
       Limit_Wait := Limit_Wait - Dt;
       if Limit_Wait <= 0.0 then
@@ -764,6 +808,14 @@ package body Taxi is
 
       case Current is
          when Finding =>
+            --  in the rush nobody waits long for you
+            Fare_Waited := (if Waiting then Fare_Waited + Dt else 0.0);
+            if Waiting and then Rush_Left > 0.0 and then Fare_Waited > Rush_Patience then
+               Waiting := False;
+               Look_Wait := 0.5;
+               Warn := +("!TROP TARD|" & To_String (Who) & " took another taxi");
+               Warn_Time := 3.5;
+            end if;
             if not Waiting then
                Look_Wait := Look_Wait - Dt;
                if Look_Wait <= 0.0 then
@@ -951,7 +1003,17 @@ package body Taxi is
                  & "   bonus " & Money (Bonus_Now));
       end if;
       return "<span font_family='sans' weight='bold' foreground='white' background='#000000a0'>"
-        & "  TAXI  " & Light & To_String (Line) & "   shift " & Money (Total) & "  </span>"
+        & "  TAXI  " & Light & To_String (Line) & "   shift " & Money (Total)
+        & (if Rush_Left > 0.0 then
+             "   <span foreground='#ffd27a'>RUSH " & Natural'Image (Natural (Rush_Left) / 60) & ":"
+             & Ada.Strings.Fixed.Tail (Ada.Strings.Fixed.Trim (Natural'Image (Natural (Rush_Left) mod 60),
+                                                               Ada.Strings.Left), 2, '0')
+             & (if Current = Finding and then Waiting then
+                  "  waiting" & Natural'Image (Natural (Float'Max (0.0, Rush_Patience - Fare_Waited))) & " s"
+                else "")
+             & "</span>"
+           else "")
+        & "  </span>"
         & (if Said_Time > 0.0 and then Current = Carrying then
              LF & "<span font_family='sans' foreground='white' background='#000000a0'>  &#x201C;"
              & To_String (Said_Fr) & "&#x201D;  <i>" & To_String (Said_En) & "</i>  </span>"
@@ -1006,6 +1068,8 @@ package body Taxi is
            & LF
            & Row ("Earned", Total)
            & Row ("Best ride", Best)
+           & (if Rush_Rides > 0 then Row ("In the rush", Rush_Money, "(" & Ada.Strings.Fixed.Trim
+                (Natural'Image (Rush_Rides), Ada.Strings.Left) & " rides)") else "")
            & LF
            & (if New_Record then "  <b><span foreground='#7fe08a'>New record!</span></b>" & LF
               else "")
