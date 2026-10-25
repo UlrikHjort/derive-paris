@@ -1,0 +1,53 @@
+# Dérive: open-world Paris in Ada
+# Copyright (c) 2026 Ulrik Hørlyk Hjort
+# SPDX-License-Identifier: MIT
+#
+# The prebuilt download.  When a version is tagged (v0.6.0...): build on
+# Ubuntu 22.04 (so that it runs on older systems too), run the test, pack
+# it with scripts/make_dist.sh and attach the tarball to the tag's
+# release.  Started by hand (Actions, "Run workflow"), it only builds the
+# tarball and keeps it as an artifact of the run, to try it out.
+
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the compiler and the libraries
+        run: |
+          sudo apt-get update
+          GTKADA=$(apt-cache search --names-only '^libgtkada[0-9.]*-dev$' | awk '{print $1}' | sort -V | tail -1)
+          sudo apt-get install -y gnat gprbuild "${GTKADA:-libgtkada-dev}" libgtk-3-dev \
+            libepoxy-dev zlib1g-dev libpulse-dev pkg-config curl
+
+      - name: Build and test
+        run: |
+          make tools game
+          make test
+
+      - name: Pack
+        run: scripts/make_dist.sh
+
+      - name: Keep it (run by hand)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: derive-linux-x86_64
+          path: dist/*.tar.gz
+
+      - name: Attach it to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.tar.gz

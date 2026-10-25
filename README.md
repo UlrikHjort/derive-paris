@@ -16,7 +16,16 @@ and pedestrians, day and night, and rain.
 
 ## Quick start
 
-On Linux, with the packages listed under [Building](#building):
+**The prebuilt download** (Linux, x86_64): from the newest
+[release](https://github.com/UlrikHjort/derive-paris/releases) take
+`derive-<version>-linux-x86_64.tar.gz`, unpack it and read
+`README-FIRST.txt`; in short:
+
+    sudo apt install libgtk-3-0 libepoxy0 libpulse0 zlib1g curl
+    ./city small     # the centre of Paris, a few minutes (./city all: all of it)
+    ./derive
+
+**From the source**, with the packages listed under [Building](#building):
 
     git clone https://github.com/UlrikHjort/derive-paris.git
     cd derive-paris
@@ -115,12 +124,13 @@ while; the tiles take about 800 MB.
 
 The OSM data (`data/osm/`), the ground heights (`data/elevation/`) and
 the generated tiles are not in the repository; `make tiles` recreates
-them.  The map area (`BBOX` in the
-Makefile) is split into 2 x 2 km chunks which are downloaded one after the
+them.  The map area (in
+`scripts/city.sh`) is split into 2 x 2 km chunks which are downloaded one after the
 other from the Overpass API (`scripts/build_city.sh`, query in
 `data/query.overpassql`) and converted in parallel.  An interrupted
 download simply continues where it stopped when run again; `make download`
-fetches everything fresh.  Change `BBOX` to build a smaller or larger area.
+fetches everything fresh.  Change the areas in `scripts/city.sh` to build a
+smaller or larger one.
 
 ### When something goes wrong
 

@@ -19,12 +19,7 @@
 # 50 chunks of 2 x 2 km (several hundred MB, takes a while; an interrupted
 # run continues where it stopped) and converts them in parallel.
 
-# All of Paris inside the Peripherique, plus the Bois de Boulogne and
-# Vincennes and a bit of La Defense: south west north east
-BBOX  := 48.8150 2.2240 48.9030 2.4700
-# The centre only, where the game starts: four of the 2 x 2 km chunks of
-# BBOX exactly, so that a later "make tiles" keeps what it downloaded
-SMALL := 48.8322 2.3047 48.8675 2.3587
+# The areas (all of Paris, and the centre only) are in scripts/city.sh
 
 all: check tools game
 
@@ -40,10 +35,10 @@ game: check
 	gprbuild -p -P derive.gpr -j0
 
 tiles: check tools
-	./scripts/build_city.sh $(BBOX)
+	./scripts/city.sh all
 
 tiles-small: check tools
-	./scripts/build_city.sh $(SMALL)
+	./scripts/city.sh small
 
 run: game
 	@ls tiles/t_*.bin >/dev/null 2>&1 || { \
@@ -56,7 +51,7 @@ test: tools
 
 download: tools
 	rm -rf data/osm/chunks data/elevation
-	./scripts/build_city.sh $(BBOX)
+	./scripts/city.sh all
 
 clean:
 	gprclean -P tools.gpr

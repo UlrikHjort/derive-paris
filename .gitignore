@@ -19,3 +19,4 @@ IDEAS.md
 tiles/addresses_*.txt
 tiles/metro_*.txt
 data/rooms.txt
+dist/
