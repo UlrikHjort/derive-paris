@@ -17,6 +17,7 @@ with Meshes;
 with Road_Network;
 with Shaders;
 with Terrain;
+with Notes;
 
 package body Closures is
 
@@ -197,7 +198,7 @@ package body Closures is
                Lat, Lon : Long_Float;
             begin
                Geo.To_Lat_Lon (Long_Float (E.A.X), Long_Float (E.A.Z), Lat, Lon);
-               Ada.Text_IO.Put_Line ("Closed for " & (case K is when Works => "roadworks",
+               Notes.Say ("Closed for " & (case K is when Works => "roadworks",
                                                       when Accident => "an accident",
                                                       when Demo => "a demonstration")
                                      & ": " & Ada.Strings.Unbounded.To_String (Ways (W).Name)

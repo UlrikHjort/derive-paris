@@ -10,6 +10,7 @@ with Ada.Numerics.Elementary_Functions;
 with Ada.Streams.Stream_IO;
 with Ada.Text_IO;
 with Interfaces;
+with Notes;
 
 package body Road_Network is
 
@@ -239,7 +240,7 @@ package body Road_Network is
          end loop;
       end loop;
 
-      Ada.Text_IO.Put_Line ("Road network:" & Nodes'Length'Image & " nodes,"
+      Notes.Say ("Road network:" & Nodes'Length'Image & " nodes,"
                             & Ways'Length'Image & " ways from" & Files'Image
                             & " files");
    end Load;

@@ -58,6 +58,7 @@ with Museum;
 with Motorboat;
 with Hud_Layer;
 with Navigation;
+with Notes;
 with Night_Bus;
 with Pedestrians;
 with Photo;
@@ -817,7 +818,7 @@ package body Game is
          end;
       end loop;
       End_Search (Search);
-      Ada.Text_IO.Put_Line ("Skyline landmarks:" & Count'Image);
+      Notes.Say ("Skyline landmarks:" & Count'Image);
    end Load_Skyline;
 
    procedure Realize (Widget, Data : System.Address) with Convention => C;

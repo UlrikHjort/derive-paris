@@ -20,7 +20,8 @@ Please say:
 - the date and time in the game (bottom line),
 - your Linux, graphics card, and the version (`./bin/derive` prints it
   first; it is also at the bottom of F1),
-- anything in `~/.derive.log`, where the game writes its errors.
+- anything in `~/.derive.log`, where the game writes its errors, and
+  what it prints when started with `PARIS_VERBOSE=1 ./bin/derive`.
 
 ## Trying things out: the test switches
 
@@ -44,6 +45,7 @@ change here is checked.  The most useful:
 | `PARIS_TRIAL=n`, `PARIS_ROUND=n`, `PARIS_BUS=n` | start that time trial, morning round, bus line |
 | `PARIS_RECORD=8` | record 8 seconds of video |
 | `PARIS_PROFILE=cpu` | print where the frame's time goes |
+| `PARIS_VERBOSE=1` | print what the game does as it goes (tiles loaded, streets closed...) |
 | `PARIS_NOWHEEL=1` | ignore a racing wheel |
 
 Run with your own `HOME` (say `HOME=/tmp/derive-test`) to keep your own

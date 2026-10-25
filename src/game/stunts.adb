@@ -13,6 +13,7 @@ with River;
 with Road_Network;
 with Sound;
 with Terrain;
+with Notes;
 
 package body Stunts is
 
@@ -84,7 +85,7 @@ package body Stunts is
    procedure Tell (S : String) is
    begin
       Fresh := To_Unbounded_String (S);
-      Ada.Text_IO.Put_Line ("Stunt: " & S);
+      Notes.Say ("Stunt: " & S);
       Sound.Effect (Sound.Go_Beep, 0.7, 0.0);
    end Tell;
 

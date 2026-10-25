@@ -20,6 +20,7 @@ with Shaders;
 with Sound;
 with Tyre_Effects;
 with Terrain;
+with Notes;
 
 package body Race is
 
@@ -433,7 +434,7 @@ package body Race is
          begin
             Find_Route (FX, FZ, Heading, XS (J), ZS (J), Leg, Found, Any_Way => True);
             if not Found or else Leg.Is_Empty then
-               Ada.Text_IO.Put_Line ("race: no way from point" & Integer'Image (I) & " to" & Integer'Image (J));
+               Notes.Say ("race: no way from point" & Integer'Image (I) & " to" & Integer'Image (J));
                return;
             end if;
             for P of Leg loop
@@ -1316,7 +1317,7 @@ package body Race is
    procedure Stop is
    begin
       if Current /= Idle then
-         Ada.Text_IO.Put_Line ("race: " & To_String (Course_Name) & Integer'Image (Integer (Total)) & " m,"
+         Notes.Say ("race: " & To_String (Course_Name) & Integer'Image (Integer (Total)) & " m,"
                                & Natural'Image (Natural (Gates.Length)) & " gates,"
                                & Natural'Image (Natural (Barriers.Length)) & " barriers, you"
                                & Integer'Image (Integer (Me_S)) & " m, the others"

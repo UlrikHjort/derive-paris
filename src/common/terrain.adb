@@ -8,6 +8,7 @@ with Ada.Text_IO;
 with Ada.Unchecked_Deallocation;
 
 with Geo;
+with Notes;
 
 package body Terrain is
 
@@ -159,7 +160,7 @@ package body Terrain is
       for V of H.all loop
          V := V - Bank_Level;
       end loop;
-      Ada.Text_IO.Put_Line ("Terrain:" & W'Image & " x" & Ht'Image & " heights");
+      Notes.Say ("Terrain:" & W'Image & " x" & Ht'Image & " heights");
    exception
       when others =>
          Ada.Text_IO.Put_Line ("Terrain: could not read " & Data & ", the ground stays flat");

@@ -18,6 +18,7 @@ with River;
 with Road_Network;
 with Shaders;
 with Terrain;
+with Notes;
 
 package body Seasons is
 
@@ -148,7 +149,7 @@ package body Seasons is
                N := N + 1;
             end if;
          end loop;
-         Ada.Text_IO.Put_Line ((if Summer_Closing then "Closed for the summer:" else "Closed for the flood:")
+         Notes.Say ((if Summer_Closing then "Closed for the summer:" else "Closed for the flood:")
                                & Natural'Image (N) & " ways,"
                                & Natural'Image (Natural (Barriers.Length)) & " barriers");
       end;
