@@ -172,6 +172,7 @@ package body Game is
    --  window's pixels the world is drawn at (then scaled up)
    Shadow_Size   : GLsizei := 4096;
    Render_Scale  : Float := 1.0;
+   Graphics_Changed : Boolean := False;   --  (the shadow map and buffers made again)
    Shadow_Extent : constant := 260.0;   --  half-size of the shadow box (m)
    Samples       : GLsizei := 4;
 
@@ -1839,10 +1840,10 @@ package body Game is
 
 
    --  The games menu: the games at the top, each with its own menu below
-   type Menu_Level is (Games, Racing, Tracks, Taxi_Menu, Trials_Menu, Rounds_Menu, Bus_Menu);
+   type Menu_Level is (Games, Racing, Tracks, Taxi_Menu, Trials_Menu, Rounds_Menu, Bus_Menu, Settings_Menu);
    Level : Menu_Level := Games;
    type Menu_Item is
-     (Go_Racing, Go_Taxi, Go_Trials, Go_Rounds, Go_Bus, Go_Free, Race_Again, Leave_Race, Street_Race, Random_Race,
+     (Go_Racing, Go_Taxi, Go_Trials, Go_Rounds, Go_Bus, Go_Settings, Go_Free, Race_Again, Leave_Race, Street_Race, Random_Race,
       Make_Track, Save_Track, Drop_Track, Start_Shift, Stop_Shift, Up);
    type Item_Array is array (1 .. 8) of Menu_Item;
 
@@ -1863,6 +1864,7 @@ package body Game is
             Add (Go_Rounds);
             Add (Go_Bus);
             Add (Go_Free);
+            Add (Go_Settings);
          when Taxi_Menu =>
             if Taxi.Active then
                Add (Stop_Shift);
@@ -1884,10 +1886,26 @@ package body Game is
                Add (Make_Track);
             end if;
             Add (Up);
-         when Tracks | Trials_Menu | Rounds_Menu | Bus_Menu =>
+         when Tracks | Trials_Menu | Rounds_Menu | Bus_Menu | Settings_Menu =>
             null;   --  the tracks, runs or bakeries themselves (see Menu_Items)
       end case;
    end List_Items;
+
+   type Settings_Kind is
+     (S_Volume, S_Traffic, S_People, S_Graphics, S_Car, S_Time_Speed, S_Limits,
+      S_Gearbox, S_Compass, S_Names);
+
+   --  F2, Settings: what can be changed while playing (game-setting_*.adb)
+   function Traffic_Factor (H : Float) return Float;
+   function Setting_Count return Natural;
+   function Setting_Line (I : Positive) return String;
+   procedure Setting_Change (I : Positive; Step : Integer);
+   --  One step to the left (-1) or right (+1); applied at once and kept
+   --  in ~/.deriverc
+
+   function Setting_Count return Natural is separate;
+   function Setting_Line (I : Positive) return String is separate;
+   procedure Setting_Change (I : Positive; Step : Integer) is separate;
 
    function Menu_Items return Natural is
       L : Item_Array;
@@ -1901,6 +1919,8 @@ package body Game is
          return Rounds.Count + 1;
       elsif Level = Bus_Menu then
          return Night_Bus.Count + 1;
+      elsif Level = Settings_Menu then
+         return Setting_Count + 1;
       end if;
       List_Items (L, N);
       return N;
@@ -1950,6 +1970,7 @@ package body Game is
          when Trials_Menu => Level := Games;
          when Rounds_Menu => Level := Games;
          when Bus_Menu => Level := Games;
+         when Settings_Menu => Level := Games;
       end case;
       Menu_Sel := 1;
       if Menu_Open then
@@ -2206,14 +2227,18 @@ package body Game is
             Menu_Back;
             return True;
          when 16#FF51# | 16#61# =>                            --  left, a
-            if Level = Tracks then
+            if Level = Settings_Menu and then Menu_Sel <= Setting_Count then
+               Setting_Change (Menu_Sel, -1);
+            elsif Level = Tracks then
                Race.Set_Laps (if Race.Laps_Setting = 0 then 5 else Race.Laps_Setting - 1);
             else
                Menu_Back;
                return True;
             end if;
          when 16#FF53# | 16#64# =>                            --  right, d
-            if Level = Tracks then
+            if Level = Settings_Menu and then Menu_Sel <= Setting_Count then
+               Setting_Change (Menu_Sel, 1);
+            elsif Level = Tracks then
                Race.Set_Laps (if Race.Laps_Setting = 5 then 0 else Race.Laps_Setting + 1);
             else
                return True;

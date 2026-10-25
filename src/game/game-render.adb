@@ -20,6 +20,16 @@ begin
    glGetIntegerv (GL_VIEWPORT, Viewport'Address);
    W := Integer (Viewport (2));
    H := Integer (Viewport (3));
+   --  the graphics level changed (F2, Settings): the shadow map and the
+   --  buffers made again at their new sizes
+   if Graphics_Changed then
+      Graphics_Changed := False;
+      glDeleteFramebuffers (1, Shadow_FBO'Address);
+      glDeleteTextures (1, Shadow_Tex'Address);
+      Create_Shadow_Map;
+      MSAA_W := 0;
+      Mid_W := 0;
+   end if;
    RW := Integer'Max (1, Integer (Float (W) * Render_Scale));
    RH := Integer'Max (1, Integer (Float (H) * Render_Scale));
    if W <= 0 or else H <= 0 then

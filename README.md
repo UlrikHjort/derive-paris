@@ -493,7 +493,12 @@ time.
 
 ## Settings
 
-`~/.deriverc` holds settings as `name = value` lines (`#` starts a
+The most used ones can be changed while you play: **F2**, **Settings**
+(volume, traffic, people, graphics level, your car, how fast time
+passes, speed limits, the wheel's gearbox, compass and street names);
+left and right change them, and they are kept.
+
+`~/.deriverc` holds all the settings as `name = value` lines (`#` starts a
 comment); the game writes a commented starter file on its first run.
 So far: `traffic`, `pedestrians` (1.0 = normal), `volume` (0 .. 1),
 `start_hour`, `time_speed` (game minutes per real second), `compass`,

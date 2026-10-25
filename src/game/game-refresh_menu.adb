@@ -16,7 +16,8 @@ procedure Refresh_Menu is
                                when Taxi_Menu => "Taxi",
                                when Trials_Menu => "Time trials: through Paris against the clock",
                                when Rounds_Menu => "The morning round: bread before the cafés open",
-                               when Bus_Menu => "The night bus: a line after midnight")
+                               when Bus_Menu => "The night bus: a line after midnight",
+                               when Settings_Menu => "Settings")
                           & "</span></b>" & LF & LF
                           & (if Level = Tracks then
                                "  Laps:  &lt; " & (if Race.Laps_Setting = 0 then "as the track suits"
@@ -61,6 +62,11 @@ begin
                   else ""));
       end loop;
       Line (Rounds.Count + 1, "back");
+   elsif Level = Settings_Menu then
+      for I in 1 .. Setting_Count loop
+         Line (I, Setting_Line (I));
+      end loop;
+      Line (Setting_Count + 1, "back");
    elsif Level = Bus_Menu then
       for I in 1 .. Night_Bus.Count loop
          Line (I, Escape (Night_Bus.Name (I))
@@ -77,6 +83,7 @@ begin
                      when Go_Trials    => "Time trials  &gt;",
                      when Go_Rounds    => "The morning round  &gt;",
                      when Go_Bus       => "The night bus  &gt;",
+                     when Go_Settings  => "Settings  &gt;",
                      when Start_Shift  => "Start a shift",
                      when Stop_Shift   => "End the shift",
                      when Go_Free      =>
@@ -102,7 +109,8 @@ begin
       end loop;
    end if;
    Append (T, LF & "<span foreground='#aab'>"
-           & "  up/down  choose    Enter  select" & LF
+           & (if Level = Settings_Menu then "  up/down  choose    left/right  change (kept for next time)"
+              else "  up/down  choose    Enter  select") & LF
            & "  Backspace  back    F2 / Esc  close"
            & (if Wheel.Present then LF & "  wheel: d-pad choose, X select, circle close" else "")
            & "</span></span>");

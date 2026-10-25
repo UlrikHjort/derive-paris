@@ -5,6 +5,15 @@
 separate (Game)
 procedure Menu_Choose is
 begin
+   if Level = Settings_Menu then
+      if Menu_Sel > Setting_Count then
+         Menu_Back;
+      else
+         Setting_Change (Menu_Sel, 1);   --  (Enter: the next value)
+         Refresh_Menu;
+      end if;
+      return;
+   end if;
    if Level = Bus_Menu then
       if Menu_Sel > Night_Bus.Count then
          Menu_Back;
@@ -56,6 +65,10 @@ begin
          Refresh_Menu;
       when Go_Rounds =>
          Level := Rounds_Menu;
+         Menu_Sel := 1;
+         Refresh_Menu;
+      when Go_Settings =>
+         Level := Settings_Menu;
          Menu_Sel := 1;
          Refresh_Menu;
       when Go_Bus =>

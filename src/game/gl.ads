@@ -354,6 +354,8 @@ package GL is
      with Import, Convention => C, External_Name => "epoxy_glGenFramebuffers";
    glDeleteFramebuffers : P_Gen
      with Import, Convention => C, External_Name => "epoxy_glDeleteFramebuffers";
+   glDeleteTextures : P_Gen
+     with Import, Convention => C, External_Name => "epoxy_glDeleteTextures";
    glBindFramebuffer : P_Enum_Uint
      with Import, Convention => C, External_Name => "epoxy_glBindFramebuffer";
    glGenRenderbuffers : P_Gen

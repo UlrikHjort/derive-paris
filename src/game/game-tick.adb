@@ -152,7 +152,9 @@ begin
       end;
    end if;
    --  PARIS_MENU=1|racing|tracks: the games menu open (testing)
-   if Ready and then Frame_Number = 20 and then Env ("PARIS_MENU") /= "" then
+   if Ready and then Frame_Number = 20 and then Env ("PARIS_MENU") /= ""
+     and then Env ("PARIS_MENU") /= "settings"
+   then
       Set_Key (16#FFBF#, True);
       if Env ("PARIS_MENU") /= "1" then
          Set_Key (16#FF0D#, True);   --  Street racing
@@ -160,6 +162,21 @@ begin
       if Env ("PARIS_MENU") = "tracks" then
          Set_Key (16#FF0D#, True);   --  Race on a track
       end if;
+   end if;
+   --  PARIS_MENU=settings: F2, Settings, then the graphics a step lower
+   --  and the car a step on (testing)
+   if Ready and then Frame_Number = 20 and then Env ("PARIS_MENU") = "settings" then
+      Set_Key (16#FFBF#, True);
+      for I in 1 .. 7 loop
+         Set_Key (16#FF54#, True);   --  down to Settings
+      end loop;
+      Set_Key (16#FF0D#, True);
+      for I in 1 .. 3 loop
+         Set_Key (16#FF54#, True);   --  to Graphics
+      end loop;
+      Set_Key (16#FF51#, True);
+      Set_Key (16#FF54#, True);
+      Set_Key (16#FF53#, True);      --  the car
    end if;
    --  PARIS_METRO=1: down the nearest metro entrance; PARIS_METRO_GO=n:
    --  then n stations down the list and aboard (testing)
