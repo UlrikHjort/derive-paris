@@ -30,10 +30,12 @@ all: check tools game
 check:
 	@./scripts/check_deps.sh
 
-tools:
+# (every target checks first what is needed: a missing library is then
+# named, with the command to install it, rather than a compiler error)
+tools: check
 	gprbuild -p -P tools.gpr -j0
 
-game:
+game: check
 	gprbuild -p -P derive.gpr -j0
 
 tiles: check tools
@@ -56,4 +58,4 @@ clean:
 	gprclean -P tools.gpr
 	gprclean -P derive.gpr
 
-.PHONY: all tools game tiles tiles-small run download clean
+.PHONY: all check tools game tiles tiles-small run download clean

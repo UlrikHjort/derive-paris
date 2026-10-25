@@ -88,7 +88,8 @@ Dérive runs on Linux.  It needs:
 - a graphics card with **OpenGL 3.3**
 - **ffmpeg** (optional), to record videos with F9
 
-`make` first checks that all of these are there.  If something is missing
+Every `make` target (`make`, `make game`, `make run`, `make tiles`...)
+first checks that all of these are there.  If something is missing
 it says what, gives the command to install it, and offers to run it.
 `make check` does only the check.  The packages:
 
