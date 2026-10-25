@@ -24,6 +24,25 @@ begin
    then
       return;
    end if;
+   --  the yellow mark by the landing: a motorboat of your own
+   if not In_Museum and then not In_Hall_B and then not In_Room and then not On_Tower
+     and then not On_Arc and then Mode = Driving and then Motorboat.At_Hire (Walk_X, Walk_Z)
+   then
+      Parked := Player;
+      Motorboat.Launch (Player);
+      Car.Set_Player_Model (Car.Vedette);
+      Boating := True;
+      Walking := False;
+      Capture_Mouse (False);
+      Traffic.Set_Walker (False, 0.0, 0.0);
+      Cam_Pos := (Player.X, 4.0 + Player.Ground, Player.Z) - 9.0 * Car.Forward (Player);
+      Cam_Look := (Player.X, 1.0 + Player.Ground, Player.Z);
+      Announce := Ada.Strings.Unbounded.To_Unbounded_String
+        ("A motorboat of your own: the Seine is yours.  Back here and Q to tie up");
+      Announce_Timer := 5.0;
+      Street_Timer := 1.0;
+      return;
+   end if;
    --  the bateaux-mouches' landing: aboard
    if not In_Museum and then not In_Hall_B and then not In_Room and then not On_Tower
      and then not On_Arc and then Boats.At_Landing (Walk_X, Walk_Z)

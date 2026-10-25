@@ -51,6 +51,7 @@ with GL;
 with GL_Area;
 with Math3D;
 with Museum;
+with Motorboat;
 with Navigation;
 with Night_Bus;
 with Pedestrians;
@@ -233,6 +234,7 @@ package body Game is
    Round_Goal   : Natural := Natural'Last;   --  the morning round's, likewise
    Bus_Goal     : Natural := Natural'Last;   --  and the night bus's
    Riding_Velib : Boolean := False;          --  on a Vélib', the car parked
+   Boating      : Boolean := False;          --  in the hired motorboat, the car parked
    Parked       : Car.State;                 --  where the car was left meanwhile
 
    --  Has the city been built (make tiles)?  A fresh checkout has none
@@ -1849,7 +1851,7 @@ package body Game is
 
    procedure Begin_Taxi is
    begin
-      if Visiting or else Walking or else Riding_Velib or else Mode /= Driving then
+      if Visiting or else Walking or else Riding_Velib or else Boating or else Mode /= Driving then
          Say ("Get back in the car first");
          return;
       end if;
@@ -1868,7 +1870,7 @@ package body Game is
    procedure Begin_Race (Track : Natural) is
       Ok : Boolean;
    begin
-      if Visiting or else Walking or else Riding_Velib or else Mode /= Driving then
+      if Visiting or else Walking or else Riding_Velib or else Boating or else Mode /= Driving then
          Say ("Get back in the car first");
          return;
       end if;
@@ -1903,7 +1905,7 @@ package body Game is
    procedure Begin_Again is
       Ok : Boolean;
    begin
-      if Visiting or else Walking or else Riding_Velib or else Mode /= Driving then
+      if Visiting or else Walking or else Riding_Velib or else Boating or else Mode /= Driving then
          Say ("Get back in the car first");
          return;
       end if;
@@ -1926,7 +1928,7 @@ package body Game is
 
    procedure Begin_Trial (I : Natural) is
    begin
-      if Visiting or else Walking or else Riding_Velib or else Mode /= Driving then
+      if Visiting or else Walking or else Riding_Velib or else Boating or else Mode /= Driving then
          Say ("Get back in the car first");
          return;
       end if;
@@ -1952,7 +1954,7 @@ package body Game is
    --  The morning round: on the baker's scooter at the bakery's door
    procedure Begin_Round (I : Natural) is
    begin
-      if Visiting or else Walking or else Riding_Velib or else Mode /= Driving then
+      if Visiting or else Walking or else Riding_Velib or else Boating or else Mode /= Driving then
          Say ("Get back in the car first");
          return;
       end if;
@@ -1982,7 +1984,7 @@ package body Game is
    --  The night bus: at the wheel of a twelve-metre bus, after midnight
    procedure Begin_Bus (I : Natural) is
    begin
-      if Visiting or else Walking or else Riding_Velib or else Mode /= Driving then
+      if Visiting or else Walking or else Riding_Velib or else Boating or else Mode /= Driving then
          Say ("Get back in the car first");
          return;
       end if;
@@ -2644,7 +2646,7 @@ package body Game is
           Horn     => Keys.B or else Wheel.Held (Wheel.Enter)
                       or else (Env ("PARIS_BELL") /= "" and then Frame_Number mod 150 < 5),   --  (testing)
           Engine_Off => Mode = Driving and then not Visiting and then (Race.Wrecked or else Riding_Velib),
-          Two_Stroke => Car."=" (Car.Player_Model, Car.Scooter),
+          Two_Stroke => Car."=" (Car.Player_Model, Car.Scooter) or else Boating,
           Bike     => Riding_Velib,
           Church   => Church_Near,
           Jingle   => Sleigh.Jingle,

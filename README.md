@@ -263,6 +263,12 @@ on the blue mark at the bateaux-mouches' landing by the Pont de l'Alma
 down to the Eiffel Tower and back up the river.  Q takes you ashore on
 the quay beside the boat.
 
+Beside it a yellow mark: step on it for a little motorboat of your own.
+Drive it up and down the Seine (it turns slowly, carries on when you
+let go, and keeps between the quay walls), under the bridges and past
+the bateaux-mouches and péniches; bring it back to the landing and press
+**Q** to tie it up.
+
 ### Time trials
 
 F2, **Time trials**: runs through Paris against the clock, in the

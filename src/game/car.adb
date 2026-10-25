@@ -622,6 +622,28 @@ package body Car is
       end loop;
       Box (-1.27, 1.27, 0.25, 0.45, -6.06, 6.06, Mat_Tyre);              --  the skirt
       Finish (Models (Bus));
+
+      --  The motorboat: a white hull with a pointed bow, a varnished deck,
+      --  the windscreen, you at the wheel (jacket in the paint), the
+      --  outboard at the stern; the waterline at Y = 0
+      Start;
+      Box (-1.05, 1.05, -0.35, 0.55, -1.6, 2.6, 80.0);                     --  hull
+      Box (-1.0, 1.0, -0.3, 0.55, -2.9, -1.6, 80.0, Top_Inset_X => 0.85,
+           Top_Inset_Back => 0.0);                                         --  the bow
+      Box (-0.95, 0.95, 0.55, 0.62, -2.2, 2.55, 60.0);                    --  the deck
+      Box (-0.85, 0.85, 0.62, 1.05, -1.2, -1.1, Mat_Glass);               --  windscreen
+      Box (-0.4, 0.4, 0.62, 0.95, 0.3, 0.9, Mat_Tyre);                    --  the seat
+      Box (-0.2, 0.2, 0.95, 1.55, 0.3, 0.7, Mat_Cloth, Top_Inset_X => 0.03);   --  you
+      Box (-0.12, 0.12, 1.55, 1.8, 0.35, 0.6, Mat_Skin);
+      Box (-0.13, 0.13, 1.75, 1.85, 0.33, 0.62, Mat_Tyre);
+      for Side of Float_Array'(-1.0, 1.0) loop
+         Box (Side * 0.25 - 0.05, Side * 0.25 + 0.05, 1.1, 1.4, -0.4, 0.4, Mat_Cloth);   --  arms
+      end loop;
+      Box (-0.04, 0.04, 0.62, 1.1, -0.45, -0.38, Mat_Tyre);              --  the wheel
+      Box (-0.2, 0.2, 0.6, 1.2, 2.55, 2.95, Mat_Tyre);                    --  the outboard
+      Box (-0.06, 0.06, -0.5, 0.6, 2.7, 2.85, Mat_Tyre);
+      Box (-0.06, 0.06, 0.62, 0.72, -2.9, -2.8, Mat_Headlight);
+      Finish (Models (Vedette));
    end Create_Mesh;
 
    procedure Set_Player_Model (M : Model_Kind) is

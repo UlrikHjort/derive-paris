@@ -323,6 +323,10 @@ package body Boats is
          Shaders.Set (Paint, Vec3'(0.1, 0.25, 0.6));
          Shaders.Set (Model, Translation ((Land_X, Terrain.Height (Land_X, Land_Z), Land_Z)));
          Meshes.Draw (Sign_M);
+         --  and the motorboats' mark beside it, in yellow
+         Shaders.Set (Paint, Vec3'(0.95, 0.75, 0.1));
+         Shaders.Set (Model, Translation ((Land_X + 6.0, Terrain.Height (Land_X + 6.0, Land_Z), Land_Z)));
+         Meshes.Draw (Sign_M);
       end if;
       Shaders.Set (Model, Identity);
    end Draw;
@@ -356,6 +360,13 @@ package body Boats is
 
    ---------------------------------------------------------------------------
    --  Riding
+
+   procedure Hire_Point (X, Z : out Float) is
+   begin
+      Find_Landing;
+      X := Land_X + 6.0;
+      Z := Land_Z;
+   end Hire_Point;
 
    function At_Landing (X, Z : Float) return Boolean is
    begin

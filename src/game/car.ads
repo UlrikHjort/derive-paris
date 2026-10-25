@@ -78,11 +78,12 @@ package Car is
    procedure Create_Mesh;
    --  Build the GPU mesh (GL context must be current)
 
-   type Model_Kind is (Modern, Deux_Chevaux, DS, R4, Scooter, Velib, Bus);
+   type Model_Kind is (Modern, Deux_Chevaux, DS, R4, Scooter, Velib, Bus, Vedette);
    --  A plain modern car, the Citroën 2CV, the Citroën DS, the Renault 4,
    --  and the baker's delivery scooter with its crate of bread (narrow:
    --  it slips through where a car would not), a Vélib' with you on it,
-   --  and the twelve-metre night bus (long: it turns wide)
+   --  the twelve-metre night bus (long: it turns wide), and a little
+   --  motorboat for the Seine (see Motorboat)
 
    procedure Set_Player_Model (M : Model_Kind);
    function Player_Model return Model_Kind;

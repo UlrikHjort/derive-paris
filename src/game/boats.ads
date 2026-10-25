@@ -27,6 +27,9 @@ package Boats is
 
    procedure Landing (X, Z : out Float);   --  where it is (the blue mark)
 
+   procedure Hire_Point (X, Z : out Float);
+   --  Beside it the yellow mark: a motorboat to hire (see Motorboat)
+
    procedure Board;
    function Riding return Boolean;
    procedure Ride_Eye (X, Z, Deck_Y, Heading : out Float);

@@ -13,6 +13,28 @@ procedure Toggle_Walk is
       Street_Timer := 1.0;
    end Say;
 begin
+   if not Walking and then Boating then
+      --  out of the boat: only at the landing, where it is tied up
+      if not Motorboat.Near_Landing (Player) then
+         Say ("Bring the boat back to the landing by the Pont de l'Alma (Q there)", 3.0);
+         return;
+      end if;
+      if abs Player.Speed > 1.5 then
+         Say ("Slow down first", 1.5);
+         return;
+      end if;
+      Motorboat.Hire_Point (Walk_X, Walk_Z);
+      Walk_Z := Walk_Z - 1.6;   --  (beside the mark, not on it)
+      Walk_Yaw := Player.Heading;
+      Walk_Pitch := 0.0;
+      Walking := True;
+      Capture_Mouse (True);
+      Boating := False;
+      Player := Parked;
+      Car.Set_Player_Model (Usual_Model);
+      Say ("The boat is tied up.  Q: back to the car", 3.0);
+      return;
+   end if;
    if not Walking and then Riding_Velib then
       --  off the Vélib': only at a station, where it locks into a dock
       declare

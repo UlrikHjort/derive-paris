@@ -249,6 +249,15 @@ begin
       Snap_Frames := 4;
       Hall_B.Snapping := True;
    end if;
+   --  PARIS_MOTORBOAT=1: on foot to the yellow mark by the landing: the
+   --  motorboat (testing)
+   if Ready and then Frame_Number = 40 and then Env ("PARIS_MOTORBOAT") /= "" then
+      Player.Speed := 0.0;
+      if not Walking then
+         Toggle_Walk;
+      end if;
+      Motorboat.Hire_Point (Walk_X, Walk_Z);
+   end if;
    --  PARIS_RADIO=1: the radio on (testing)
    if Ready and then Frame_Number = 30 and then Env ("PARIS_RADIO") /= "" then
       Radio.Toggle (Radio_Facts);
@@ -475,12 +484,16 @@ begin
                      Before : constant Float := abs Player.Speed;
                      Loss   : Float;
                   begin
-                     Car.Update (Player, (if Race.Frozen then Held else Input), Dt / Float (Steps));
-                     Traffic.Collide_Player (Player);
-                     Street_Life.Collide (Player);
-                     Scenes.Collide (Player);
-                     Closures.Collide (Player);
-                     Seasons.Collide (Player);
+                     if Boating then
+                        Motorboat.Step (Player, Input, Dt / Float (Steps));
+                     else
+                        Car.Update (Player, (if Race.Frozen then Held else Input), Dt / Float (Steps));
+                        Traffic.Collide_Player (Player);
+                        Street_Life.Collide (Player);
+                        Scenes.Collide (Player);
+                        Closures.Collide (Player);
+                        Seasons.Collide (Player);
+                     end if;
                      Loss := Before - abs Player.Speed;
                      if Player.Bumped and then Loss > 0.0 then
                         Race.Impact (Loss);   --  damage, in a race
