@@ -118,7 +118,7 @@ begin
           & "  d-pad right/left save place / saved places" & LF
         else "")
      & LF & "  F1 or Esc        close" & LF
-     & "  Esc otherwise    quit the game" & LF & LF
+     & "  Esc otherwise    quit the game (asks first)" & LF & LF
      & "<span foreground='#8890a0'>  Dérive " & Version.Number & "</span>"
      & "</span>";
 end Help_Text;

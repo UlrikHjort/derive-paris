@@ -284,6 +284,11 @@ begin
       end if;
       Funicular.Lower_Mark (Walk_X, Walk_Z);
    end if;
+   --  PARIS_ESC=1: Escape pressed once (testing the quit box)
+   if Ready and then Frame_Number = 40 and then Env ("PARIS_ESC") /= "" then
+      Set_Key (16#FF1B#, True);
+      Set_Key (16#FF1B#, False);
+   end if;
    --  PARIS_RADIO=1: the radio on (testing)
    if Ready and then Frame_Number = 30 and then Env ("PARIS_RADIO") /= "" then
       Radio.Toggle (Radio_Facts);

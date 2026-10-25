@@ -345,6 +345,7 @@ package body Game is
    Caption    : Gtk.Label.Gtk_Label;   --  the label of the work you look at
    Confirm    : Gtk.Label.Gtk_Label;   --  "Go home?"
    Confirm_Open : Boolean := False;
+   Confirm_Quit : Boolean := False;   --  the box asks "quit?", not "go home?"
    Search_Box  : Gtk.Label.Gtk_Label;   --  F3: find an address
    Search_Open : Boolean := False;
    Search_Text : Ada.Strings.Unbounded.Unbounded_String;

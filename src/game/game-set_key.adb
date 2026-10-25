@@ -12,7 +12,12 @@ begin
    if Confirm_Open and then Down then
       Confirm_Open := False;
       Confirm.Hide;
-      if K = 16#FF0D# or else K = 16#FF8D# or else K = 16#68# or else K = 16#79# then
+      if Confirm_Quit then
+         Confirm_Quit := False;
+         if K = 16#FF0D# or else K = 16#FF8D# or else K = 16#79# then   --  Enter, y
+            Gtk.Main.Main_Quit;
+         end if;
+      elsif K = 16#FF0D# or else K = 16#FF8D# or else K = 16#68# or else K = 16#79# then
          Go_Home_Now;
       end if;
       return;
@@ -327,7 +332,15 @@ begin
             elsif Help.Get_Visible then
                Help.Hide;
             else
-               Gtk.Main.Main_Quit;
+               --  not out of the game by one press too many: ask
+               Confirm_Open := True;
+               Confirm_Quit := True;
+               Confirm.Set_Markup
+                 ("<span font_family='sans' size='large'><b>Quit Dérive?</b></span>" & ASCII.LF
+                  & "<span foreground='#aab'>Enter or Y: quit      Esc or N: go on playing"
+                  & (if Wheel.Present then ASCII.LF & "wheel: X quit, circle go on" else "")
+                  & "</span>");
+               Confirm.Show;
             end if;
          end if;
       when others => null;
