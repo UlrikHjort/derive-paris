@@ -1,5 +1,21 @@
 # Changes
 
+## 0.7.0 (October 2026)
+
+- **Rain at night:** wet streets mirror every lamp as a long golden
+  streak.
+- **Montmartre:** painters at their easels on the Place du Tertre, and
+  the vines of the Clos Montmartre.
+- **The balloon** over the Parc André-Citroën, to ride up to 150 m.
+- **Settings on F5**, out of the games menu.
+- **Stadiums** in bare concrete, no longer blocks of flats.
+- **Roads under construction** are drawn as what they will become; the
+  Place Denfert-Rochereau has its avenues back.
+- **Confirm boxes:** Esc asks before quitting, Shift+H before making a
+  place your home.
+- **A quiet terminal** (`PARIS_VERBOSE=1` for the details), and a few
+  surprises in season.
+
 ## 0.6.0 (October 2026)
 
 - **A prebuilt download for Linux** on the release page: unpack it, then

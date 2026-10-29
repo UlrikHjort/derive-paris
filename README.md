@@ -1,7 +1,7 @@
 # Dérive
 
 [![build](https://github.com/UlrikHjort/derive-paris/actions/workflows/build.yml/badge.svg)](https://github.com/UlrikHjort/derive-paris/actions/workflows/build.yml)
-Version 0.6.0 ([what's in it](CHANGELOG.md))
+Version 0.7.0 ([what's in it](CHANGELOG.md))
 
 *La dérive* is the Parisian art of drifting through a city, letting the
 streets lead you.  Dérive is an open-world driving (and flying, and
