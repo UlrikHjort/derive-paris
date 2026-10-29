@@ -41,36 +41,51 @@ package body Era is
       Shaders.Set (Grade, (if On_Now then 1.0 else 0.0));
    end Set_Uniforms;
 
+   Cut_On : Boolean := False;
+   Cut    : Place;
+   Cut_Y  : Float := 0.0;
+
+   procedure Set_Cut (On : Boolean; CX, CZ, Angle, HU, HV, Y : Float := 0.0) is
+   begin
+      Cut_On := On;
+      Cut := (CX, CZ, Angle, HU, HV);
+      Cut_Y := Y;
+   end Set_Cut;
+
    procedure Set_Shadow_Uniforms (Erase, Erase_B, Erase_N : GL.GLint) is
       use type GL.GLint;
-      A, B : array (0 .. 4 * Places'Length - 1) of GL.GLfloat;
+      A, B : array (0 .. 4 * (Places'Length + 1) - 1) of GL.GLfloat := (others => 0.0);
+      N : Natural := 0;
+      procedure Add (P : Place; Y : Float) is
+         R : constant Float := P.Angle * Ada.Numerics.Pi / 180.0;
+         K : constant Natural := 4 * N;
+      begin
+         A (K) := GL.GLfloat (P.CX);
+         A (K + 1) := GL.GLfloat (P.CZ);
+         A (K + 2) := GL.GLfloat (P.HU);
+         A (K + 3) := GL.GLfloat (P.HV);
+         B (K) := GL.GLfloat (Cos (R));
+         B (K + 1) := GL.GLfloat (Sin (R));
+         B (K + 2) := GL.GLfloat (Y);
+         N := N + 1;
+      end Add;
    begin
       if Erase_N < 0 then
          return;
       end if;
-      if not On_Now then
-         Shaders.Set (Erase_N, Integer'(0));
-         return;
+      if On_Now then
+         for P of Places loop
+            Add (P, Terrain.Height (P.CX, P.CZ) + 0.3);   --  above the ground
+         end loop;
       end if;
-      for I in Places'Range loop
-         declare
-            P : Place renames Places (I);
-            R : constant Float := P.Angle * Ada.Numerics.Pi / 180.0;
-            K : constant Natural := 4 * (I - 1);
-         begin
-            A (K) := GL.GLfloat (P.CX);
-            A (K + 1) := GL.GLfloat (P.CZ);
-            A (K + 2) := GL.GLfloat (P.HU);
-            A (K + 3) := GL.GLfloat (P.HV);
-            B (K) := GL.GLfloat (Cos (R));
-            B (K + 1) := GL.GLfloat (Sin (R));
-            B (K + 2) := GL.GLfloat (Terrain.Height (P.CX, P.CZ) + 0.3);   --  above the ground
-            B (K + 3) := 0.0;
-         end;
-      end loop;
-      GL.glUniform4fv (Erase, Places'Length, A'Address);
-      GL.glUniform4fv (Erase_B, Places'Length, B'Address);
-      Shaders.Set (Erase_N, Integer'(Places'Length));
+      if Cut_On then
+         Add (Cut, Cut_Y);
+      end if;
+      if N > 0 then
+         GL.glUniform4fv (Erase, GL.GLsizei (N), A'Address);
+         GL.glUniform4fv (Erase_B, GL.GLsizei (N), B'Address);
+      end if;
+      Shaders.Set (Erase_N, Integer'(N));
    end Set_Shadow_Uniforms;
 
    ---------------------------------------------------------------------------

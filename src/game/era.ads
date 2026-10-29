@@ -22,6 +22,11 @@ package Era is
 
    procedure Set_Shadow_Uniforms (Erase, Erase_B, Erase_N : GL.GLint);
 
+   procedure Set_Cut (On : Boolean; CX, CZ, Angle, HU, HV, Y : Float := 0.0);
+   --  One more box to leave out of the city's tiles, whatever the year:
+   --  a window cut in a facade, to look out through (middle, turn in
+   --  degrees, half sizes, from this height up)
+
    procedure Draw (Model, Paint : GL.GLint; Cam : Math3D.Vec3);
    --  The works at Les Halles (in 1973)
 

@@ -13,6 +13,8 @@ with Interfaces;
 with Figures;
 with Geo;
 with Math3D;
+with Hall_E;
+with Hall_F;
 with Metro;
 with Meshes;
 with Shaders;
@@ -115,7 +117,7 @@ package body Rooms is
          begin
             if Raw'Length > 0 and then Raw (Raw'First) = '[' then
                Cur := Cur + 1;
-            elsif Raw'Length > 1 and then Cur in 0 .. 3 then
+            elsif Raw'Length > 1 and then Cur in 0 .. 5 then
                declare
                   L : constant String := Plain (Raw);
                   W : constant String := Word (L, 1);
@@ -189,16 +191,21 @@ package body Rooms is
       X := Float (LX);
       Z := Float (LZ);
    end Mark;
-   function Floor_Y return Float is (if Kind = Room_Metro then Metro.Floor_Y else Origin.Y);
+   function Floor_Y return Float is
+     (case Kind is
+         when Room_Metro => Metro.Floor_Y,
+         when Room_E => Hall_E.Floor_Y,
+         when Room_F => Hall_F.Floor_Y,
+         when others => Origin.Y);
    function G (X, Y, Z : Float) return Vec3 is (Origin + Vec3'(X, Y, Z));
 
    --  the size of each room: along X from the door, across Z
    function Length_Of return Float is
      (case Kind is when Room_A => 64.0, when Room_B => 24.0, when Room_C => 14.0, when Room_D => 33.0,
-                   when Room_Metro => 76.0);
+                   when Room_E | Room_F | Room_Metro => 76.0);
    function Half_W return Float is
      (case Kind is when Room_A => 14.0, when Room_B => 10.0, when Room_C => 7.0, when Room_D => 16.5,
-                   when Room_Metro => 5.0);
+                   when Room_E | Room_F | Room_Metro => 5.0);
 
    ---------------------------------------------------------------------------
    --  Shapes
@@ -629,6 +636,13 @@ package body Rooms is
       Back_Yaw := From_Yaw;
       Geo.To_Local (Data (K).At_Lat, Data (K).At_Lon, X, Z);
       Origin := (Float (X), Terrain.Height (Float (X), Float (Z)) - (if K = Room_D then 70.0 else 50.0), Float (Z));
+      if K = Room_E then
+         Hall_E.Enter (Origin);
+         return;
+      elsif K = Room_F then
+         Hall_F.Enter (Origin);
+         return;
+      end if;
       Need_Build := True;
       Carve;
       Inside_Time := 0.0;
@@ -643,6 +657,12 @@ package body Rooms is
    begin
       if Kind = Room_Metro then
          Metro.Entrance (X, Z, Yaw);
+         return;
+      elsif Kind = Room_E then
+         Hall_E.Entrance (X, Z, Yaw);
+         return;
+      elsif Kind = Room_F then
+         Hall_F.Entrance (X, Z, Yaw);
          return;
       end if;
       case Kind is
@@ -667,6 +687,9 @@ package body Rooms is
          Metro.Way_Out (X, Z, Yaw);
          return;
       end if;
+      if Kind = Room_F then
+         Hall_F.Leave;
+      end if;
       if D.Has_Out then
          Geo.To_Local (D.Out_Lat, D.Out_Lon, LX, LZ);
          X := Float (LX);
@@ -679,6 +702,15 @@ package body Rooms is
       end if;
    end Way_Out;
 
+   procedure Keep_Inside (X, Z, Yaw : in out Float) is
+   begin
+      if Kind = Room_F then
+         Hall_F.Keep_Inside (X, Z, Yaw);
+      else
+         Keep_Inside (X, Z);
+      end if;
+   end Keep_Inside;
+
    procedure Keep_Inside (X, Z : in out Float) is
       LX : Float := X - Origin.X;
       LZ : Float := Z - Origin.Z;
@@ -686,6 +718,16 @@ package body Rooms is
    begin
       if Kind = Room_Metro then
          Metro.Keep_Inside (X, Z);
+         return;
+      elsif Kind = Room_E then
+         Hall_E.Keep_Inside (X, Z);
+         return;
+      elsif Kind = Room_F then
+         declare
+            Yaw : Float := 0.0;
+         begin
+            Hall_F.Keep_Inside (X, Z, Yaw);
+         end;
          return;
       end if;
       case Kind is
@@ -735,6 +777,10 @@ package body Rooms is
    begin
       if Kind = Room_Metro then
          return Metro.At_Exit (X, Z);
+      elsif Kind = Room_E then
+         return Hall_E.At_Exit (X, Z);
+      elsif Kind = Room_F then
+         return Hall_F.At_Exit (X, Z);
       end if;
       case Kind is
          when Room_C =>
@@ -750,10 +796,29 @@ package body Rooms is
    function Light return Float is
      (case Kind is when Room_C => 2.0, when Room_D => 3.0, when Room_Metro => 1.0, when others => 1.0);
 
+   Hour_Now : Float := 12.0;
+
+   procedure Set_Hour (Hour : Float) is
+   begin
+      Hour_Now := Hour;
+   end Set_Hour;
+
+   function Caption (X, Z, Yaw : Float) return String is
+     (case Kind is
+         when Room_E => Hall_E.Caption (X, Z, Yaw),
+         when Room_F => Hall_F.Caption (X, Z, Yaw),
+         when others => "");
+
    procedure Update (Dt : Float; X, Z : Float) is
    begin
       if Kind = Room_Metro then
          Metro.Update (Dt, X, Z);
+         return;
+      elsif Kind = Room_E then
+         Hall_E.Update (Dt);
+         return;
+      elsif Kind = Room_F then
+         Hall_F.Update (Dt, Hour_Now);
          return;
       end if;
       Clock := Clock + Dt;
@@ -804,7 +869,7 @@ package body Rooms is
                return "<span font_family='serif' size='large'><i>" & To_String (Data (Kind).Note) & "</i></span>";
             end if;
             return "";
-         when Room_C | Room_Metro =>
+         when Room_C | Room_E | Room_F | Room_Metro =>
             return "";
       end case;
    end Status;
@@ -828,6 +893,12 @@ package body Rooms is
       if Kind = Room_Metro then
          Metro.Draw (Model, Paint, Skin, Gallery);
          return;
+      elsif Kind = Room_E then
+         Hall_E.Draw (Model, Paint, Skin, Legs, Gallery);
+         return;
+      elsif Kind = Room_F then
+         Hall_F.Draw (Model, Paint, Skin, Legs, Gallery);
+         return;
       end if;
       if Need_Build then
          Need_Build := False;
@@ -843,7 +914,7 @@ package body Rooms is
             when Room_B => Build_B;
             when Room_C => Build_C;
             when Room_D => Build_D;
-            when Room_Metro => null;
+            when Room_E | Room_F | Room_Metro => null;
          end case;
          Meshes.Finish (Hall);
          Built := True;
@@ -924,7 +995,7 @@ package body Rooms is
                   end if;
                end loop;
             end if;
-         when Room_Metro =>
+         when Room_E | Room_F | Room_Metro =>
             null;
       end case;
       Shaders.Set (Gallery, 0.0);

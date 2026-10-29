@@ -619,7 +619,10 @@ begin
             use Ada.Strings.Unbounded;
             T : constant String :=
               (if In_Hall_B and then Walking then Hall_B.Caption (Walk_X, Walk_Z, Walk_Yaw)
-               elsif In_Room and then Walking then Rooms.Status else "");
+               elsif In_Room and then Walking then
+                 (if Rooms.Caption (Walk_X, Walk_Z, Walk_Yaw) /= "" then Rooms.Caption (Walk_X, Walk_Z, Walk_Yaw)
+                  else Rooms.Status)
+               else "");
          begin
             if T /= To_String (Caption_Shown) then
                Caption_Shown := To_Unbounded_String (T);

@@ -32,8 +32,8 @@ uniform float uGallery;      // 1 while drawing the inside of the Louvre
 uniform float uAutumn;       // 0 .. 1: the leaves turning yellow, orange and brown
 uniform float uBare;         // 0 .. 1: the trees losing their leaves (winter)
 uniform float uLitter;       // 0 .. 1: fallen leaves on the ground
-uniform vec4 uErase[4];      // Paris in 1973: buildings not there yet (centre xz, half sizes)
-uniform vec4 uEraseB[4];     //   their turn (cos, sin) and the ground under them (y)
+uniform vec4 uErase[5];      // Paris in 1973: buildings not there yet (centre xz, half sizes)
+uniform vec4 uEraseB[5];     //   their turn (cos, sin) and the ground under them (y)
 uniform int uEraseN;
 uniform float uEra;          // 1: the colours of a Kodachrome of 1973
 
@@ -613,6 +613,143 @@ vec3 drawing(vec2 uv, float seed)
     return mix(vec3(0.08), c, step(0.02, edge));      // a thin black frame
 }
 
+// Water lilies, after Monet: a panel of the pond seen from close, in
+// metres (uv.x along the wall, uv.y up, 0 .. 2), and which of the eight
+// panels it is (the hour and the weather of each)
+vec3 nympheas(vec2 uv, float k)
+{
+    int panel = int(mod(k, 8.0));
+    // the water: each panel its own hour
+    vec3 deep, light;
+    if (panel == 0 || panel == 7) { deep = vec3(0.20, 0.30, 0.42); light = vec3(0.62, 0.70, 0.80); }   // morning
+    else if (panel == 1)          { deep = vec3(0.18, 0.32, 0.50); light = vec3(0.90, 0.92, 0.95); }   // the clouds
+    else if (panel == 2)          { deep = vec3(0.10, 0.24, 0.20); light = vec3(0.45, 0.60, 0.48); }   // green reflections
+    else if (panel == 3)          { deep = vec3(0.35, 0.25, 0.30); light = vec3(0.98, 0.72, 0.30); }   // setting sun
+    else                          { deep = vec3(0.16, 0.28, 0.36); light = vec3(0.60, 0.72, 0.70); }   // with the willows
+    float sky = fbm(vec2(uv.x * 0.18 + k, uv.y * 0.9)) ;                // reflected sky and clouds
+    vec3 c = mix(deep, light, smoothstep(0.35, 0.75, sky) * (0.55 + 0.25 * uv.y));
+    // brushwork: short horizontal strokes everywhere
+    float stroke = noise(vec2(uv.x * 7.0, uv.y * 38.0) + k * 3.1);
+    c *= 0.82 + 0.3 * stroke;
+    // willows: their trunks and hanging strands in dark vertical strokes
+    if (panel >= 4 && panel <= 6) {
+        float tx = fract(uv.x / 9.0 + k * 0.17);
+        float trunk = smoothstep(0.035, 0.0, abs(tx - 0.5) - 0.01 * sin(uv.y * 3.0));
+        float strands = step(0.62, noise(vec2(uv.x * 3.0, uv.y * 0.4) + k)) * smoothstep(0.6, 2.0, uv.y)
+                      * step(0.5, noise(vec2(uv.x * 22.0, uv.y * 1.5)));
+        c = mix(c, vec3(0.12, 0.16, 0.10), max(trunk, 0.7 * strands));
+    }
+    // the pads: clusters lying flat, in rows, more towards the bottom
+    vec2 g = vec2(uv.x * 1.4, uv.y * 4.0 + 0.3 * sin(uv.x * 0.7 + k));
+    vec2 id = floor(g);
+    vec2 f = fract(g) - 0.5;
+    float h = hash(id + k * 7.0);
+    float pad = step(h, 0.55 - 0.18 * uv.y) * step(length(f * vec2(1.0, 2.2)), 0.36 + 0.08 * h);
+    vec3 green = mix(vec3(0.20, 0.36, 0.18), vec3(0.45, 0.58, 0.28), hash(id + 3.0));
+    c = mix(c, green * (0.85 + 0.3 * stroke), pad);
+    // the flowers: a dab of pink, white or yellow on some of the pads
+    float flower = pad * step(0.62, hash(id + 11.0)) * step(length((f - vec2(0.05, 0.02)) * vec2(1.0, 1.6)), 0.12);
+    vec3 fc = hash(id + 5.0) < 0.5 ? vec3(0.95, 0.62, 0.70) : hash(id + 6.0) < 0.6 ? vec3(0.97, 0.95, 0.88)
+            : vec3(0.96, 0.85, 0.35);
+    c = mix(c, fc, flower);
+    return c;
+}
+
+// A painting in the manner of a painter of the collection: uv 0 .. 1 over
+// the canvas; painter 0 .. 9 (Monet, Cézanne, Matisse, Modigliani,
+// Picasso, Renoir, Rousseau, Sisley, Soutine, Utrillo), variant 0 .. 7
+vec3 manner(vec2 uv, float painter, float variant)
+{
+    int p = int(painter + 0.5);
+    float s = variant * 3.71 + painter * 1.3;
+    float n = noise(uv * 18.0 + s);
+    float dab = noise(uv * vec2(55.0, 30.0) + s);          // visible brushwork
+    vec3 c;
+    if (p == 0) {           // Monet: a field by the river in broken dabs
+        c = uv.y > 0.55 ? mix(vec3(0.62, 0.72, 0.88), vec3(0.95, 0.92, 0.85), fbm(uv * 4.0 + s))
+                        : mix(vec3(0.35, 0.55, 0.30), vec3(0.85, 0.75, 0.35), fbm(uv * 6.0 + s));
+        c = mix(c, vec3(0.90, 0.35, 0.25), step(0.82, dab) * step(uv.y, 0.4));   // poppies
+        c *= 0.85 + 0.3 * dab;
+    } else if (p == 1) {    // Cézanne: apples on a cloth, the planes built in blocks
+        vec2 b = floor(uv * vec2(9.0, 7.0));
+        c = mix(vec3(0.55, 0.45, 0.32), vec3(0.42, 0.52, 0.58), step(0.55, uv.y)) * (0.8 + 0.35 * hash(b + s));
+        c = mix(c, vec3(0.92, 0.90, 0.85), step(uv.y, 0.42) * step(0.15, uv.y));   // the white cloth
+        for (int i = 0; i < 5; i++) {
+            vec2 a = vec2(0.22 + 0.14 * float(i), 0.30 + 0.06 * sin(float(i) * 2.0 + s));
+            float r = length((uv - a) * vec2(1.0, 1.15));
+            vec3 ac = mod(float(i), 2.0) < 1.0 ? vec3(0.85, 0.25, 0.12) : vec3(0.85, 0.65, 0.15);
+            c = mix(c, ac * (1.1 - 2.0 * r), step(r, 0.06));
+        }
+    } else if (p == 2) {    // Matisse: a reclining figure on flat bright patterns
+        c = mix(vec3(0.85, 0.30, 0.20), vec3(0.20, 0.45, 0.65), step(0.5, fract(uv.x * 4.0 + 0.3 * sin(uv.y * 12.0))));
+        c = mix(c, vec3(0.95, 0.85, 0.50), step(0.75, fract(uv.y * 6.0 + 0.2 * sin(uv.x * 9.0))));
+        float body = step(length((uv - vec2(0.5, 0.4)) * vec2(1.0, 3.0)), 0.32);
+        c = mix(c, vec3(0.92, 0.72, 0.58), body);
+        c = mix(c, vec3(0.80, 0.12, 0.12), body * step(uv.x, 0.45) * step(0.36, uv.y));  // the red culotte
+    } else if (p == 3) {    // Modigliani: a long face, a long neck, almond eyes
+        c = mix(vec3(0.50, 0.32, 0.20), vec3(0.32, 0.22, 0.18), uv.y);
+        float face = step(length((uv - vec2(0.5, 0.66)) * vec2(1.0, 0.55)), 0.13);
+        float neck = step(abs(uv.x - 0.5), 0.05) * step(0.32, uv.y) * step(uv.y, 0.55);
+        float coat = step(uv.y, 0.36) * step(abs(uv.x - 0.5), 0.35 - uv.y * 0.3);
+        c = mix(c, vec3(0.12, 0.12, 0.18), coat);
+        c = mix(c, vec3(0.85, 0.62, 0.45), max(face, neck));
+        float eyes = step(length((vec2(abs(uv.x - 0.5), uv.y) - vec2(0.045, 0.68)) * vec2(1.0, 2.5)), 0.022);
+        c = mix(c, vec3(0.30, 0.35, 0.45), eyes);
+        c = mix(c, vec3(0.15, 0.10, 0.08), step(length((uv - vec2(0.5, 0.80)) * vec2(1.0, 1.6)), 0.12) * step(0.78, uv.y));  // hair
+    } else if (p == 4) {    // Picasso: a big figure in broad rounded planes, warm on grey
+        vec2 q = uv - vec2(0.5, 0.45);
+        float fig = step(length(q * vec2(1.2, 0.8)), 0.36);
+        c = mix(vec3(0.55, 0.58, 0.60), vec3(0.88, 0.70, 0.55) * (0.8 + 0.3 * step(0.0, q.x)), fig);
+        c = mix(c, vec3(0.92, 0.92, 0.88), step(0.7, fract(atan(q.y, q.x) * 2.0 / 3.1416 + 0.1)) * fig * 0.6);  // the drapery
+        c = mix(c, vec3(0.15), step(abs(length(q * vec2(1.2, 0.8)) - 0.36), 0.006));      // a dark contour
+    } else if (p == 5) {    // Renoir: two girls at the piano, soft and rosy
+        c = mix(vec3(0.70, 0.55, 0.40), vec3(0.85, 0.75, 0.55), fbm(uv * 3.0 + s));
+        float g1 = step(length((uv - vec2(0.40, 0.55)) * vec2(1.6, 1.0)), 0.22);
+        float g2 = step(length((uv - vec2(0.62, 0.50)) * vec2(1.6, 1.0)), 0.20);
+        c = mix(c, vec3(0.95, 0.88, 0.82), g1);
+        c = mix(c, vec3(0.90, 0.45, 0.45), g2);
+        c = mix(c, vec3(0.95, 0.80, 0.30), step(length(uv - vec2(0.40, 0.76)), 0.07));   // the blonde hair
+        c = mix(c, vec3(0.20, 0.15, 0.12), step(uv.y, 0.25) * step(0.55, uv.x));          // the piano
+        c = mix(c, c * 1.1, 0.5 * dab);
+    } else if (p == 6) {    // Rousseau: the jungle, leaf over leaf, a pale sun
+        c = vec3(0.70, 0.75, 0.62);
+        c = mix(c, vec3(0.98, 0.88, 0.60), step(length(uv - vec2(0.7, 0.82)), 0.07));
+        for (int i = 0; i < 4; i++) {
+            float fi = float(i);
+            vec2 q = uv * (3.0 + fi * 1.7) + vec2(s + fi * 4.0, 0.0);
+            vec2 id = floor(q);
+            vec2 f = fract(q) - 0.5;
+            float leaf = step(length(f * vec2(2.2, 1.0)), 0.42) * step(uv.y, 0.95 - fi * 0.13);
+            c = mix(c, mix(vec3(0.08, 0.25, 0.10), vec3(0.30, 0.50, 0.18), hash(id + fi)), leaf);
+        }
+    } else if (p == 7) {    // Sisley: a road by the river, poplars, a big sky
+        c = mix(vec3(0.55, 0.68, 0.85), vec3(0.95, 0.95, 0.92), fbm(uv * vec2(3.0, 6.0) + s) * uv.y);
+        c = mix(c, vec3(0.45, 0.55, 0.35), step(uv.y, 0.38));
+        c = mix(c, vec3(0.80, 0.72, 0.55), step(abs(uv.x - 0.5 - (0.38 - uv.y) * 0.8), (0.38 - uv.y) * 0.5) * step(uv.y, 0.38));
+        float pop = step(fract(uv.x * 7.0 + s), 0.12) * step(0.30, uv.y) * step(uv.y, 0.75);
+        c = mix(c, vec3(0.25, 0.35, 0.20), pop);
+        c *= 0.88 + 0.24 * dab;
+    } else if (p == 8) {    // Soutine: the little pastry cook, white on red, all twisting
+        vec2 q = uv + 0.05 * vec2(sin(uv.y * 12.0 + s), sin(uv.x * 10.0));
+        c = mix(vec3(0.55, 0.10, 0.10), vec3(0.20, 0.25, 0.55), smoothstep(0.3, 0.8, q.x + 0.3 * n));
+        float fig = step(length((q - vec2(0.5, 0.45)) * vec2(1.8, 1.0)), 0.30);
+        c = mix(c, vec3(0.92, 0.92, 0.88), fig);
+        c = mix(c, vec3(0.85, 0.55, 0.45), step(length(q - vec2(0.5, 0.76)), 0.08));
+        c *= 0.8 + 0.4 * noise(q * 25.0);
+    } else {                // Utrillo: a white street up the hill, a church at the top
+        c = mix(vec3(0.75, 0.80, 0.85), vec3(0.92, 0.92, 0.90), uv.y);
+        float street = step(abs(uv.x - 0.5), 0.05 + (0.6 - uv.y) * 0.4) * step(uv.y, 0.6);
+        float walls = step(0.2, uv.y) * step(uv.y, 0.7 - abs(uv.x - 0.5) * 0.3) * (1.0 - street);
+        c = mix(c, vec3(0.93, 0.91, 0.86) * (0.85 + 0.2 * n), walls);
+        c = mix(c, vec3(0.60, 0.58, 0.55), street);
+        c = mix(c, vec3(0.95, 0.94, 0.90), step(abs(uv.x - 0.5), 0.05) * step(0.6, uv.y) * step(uv.y, 0.82));   // the church
+        c = mix(c, vec3(0.30, 0.30, 0.32), step(fract(uv.x * 14.0), 0.25) * walls * step(fract(uv.y * 9.0), 0.3));  // windows
+    }
+    // a gilt frame
+    float edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+    return mix(vec3(0.62, 0.48, 0.20), c, step(0.04, edge));
+}
+
 struct Surface { vec3 albedo; float spec; float gloss; vec3 emissive; float wrap; };
 
 vec3 glass(vec3 N, vec3 V, float variation)
@@ -1155,6 +1292,10 @@ void main()
         s = Surface(toLinear(seeded(clamp(vUV, 0.0, 1.0), vSeed)), 0.1, 24.0, vec3(0), 0.0);
     } else if (m == 92) {          // a drawing on paper, framed
         s = Surface(toLinear(drawing(clamp(vUV, 0.0, 1.0), vSeed)), 0.05, 12.0, vec3(0), 0.0);
+    } else if (m == 94) {          // water lilies, after Monet (uv in metres, the seed: which panel)
+        s = Surface(toLinear(nympheas(vUV, vSeed)), 0.05, 10.0, vec3(0), 0.0);
+    } else if (m == 95) {          // a painting in a painter's manner (seed: painter * 8 + variant)
+        s = Surface(toLinear(manner(clamp(vUV, 0.0, 1.0), floor(vSeed / 8.0), mod(vSeed, 8.0))), 0.08, 18.0, vec3(0), 0.0);
     } else if (m == 52) {          // polished concrete
         float n = noise(vWorld.xz * 1.7) * 0.6 + noise(vWorld.xz * 9.0) * 0.4;
         s = Surface(toLinear(vec3(0.58, 0.58, 0.56) * (0.9 + 0.12 * n)), 0.5, 60.0, vec3(0), 0.0);

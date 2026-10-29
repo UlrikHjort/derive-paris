@@ -141,8 +141,8 @@ begin
          Decals.Set (Decals.Decal_D, X, Z);
          declare
             Found : Boolean;
-            Marks : constant array (Rooms.Room_A .. Rooms.Room_D) of Decals.Decal_Kind :=
-              (Decals.Decal_F, Decals.Decal_G, Decals.Decal_E, Decals.Decal_H);
+            Marks : constant array (Rooms.Room_A .. Rooms.Room_F) of Decals.Decal_Kind :=
+              (Decals.Decal_F, Decals.Decal_G, Decals.Decal_E, Decals.Decal_H, Decals.Decal_I, Decals.Decal_J);
          begin
             for K in Marks'Range loop
                Rooms.Mark (K, X, Z, Found);

@@ -1553,6 +1553,8 @@ package body Game is
          when Decals.Decal_F => Enter_Room (Rooms.Room_A);
          when Decals.Decal_G => Enter_Room (Rooms.Room_B);
          when Decals.Decal_H => Enter_Room (Rooms.Room_D);
+         when Decals.Decal_I => Enter_Room (Rooms.Room_E);
+         when Decals.Decal_J => Enter_Room (Rooms.Room_F);
          when Decals.Decal_E =>
             Walking := False;
             Capture_Mouse (False);

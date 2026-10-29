@@ -120,8 +120,9 @@ begin
       return;
    end if;
    if In_Room then
+      Rooms.Set_Hour (Hour);
       Rooms.Update (Dt, Walk_X, Walk_Z);
-      Rooms.Keep_Inside (Walk_X, Walk_Z);   --  (the metro: into the car when it leaves)
+      Rooms.Keep_Inside (Walk_X, Walk_Z, Walk_Yaw);   --  (the metro: into the car when it leaves)
       if Rooms.At_Exit (Walk_X, Walk_Z) then
          Leave_Room;
          return;
@@ -181,7 +182,7 @@ begin
             return;
          end if;
          if In_Room then
-            Rooms.Keep_Inside (Walk_X, Walk_Z);
+            Rooms.Keep_Inside (Walk_X, Walk_Z, Walk_Yaw);
             Walk_Step := Walk_Step + Dt * Speed * 4.2;
             return;
          end if;

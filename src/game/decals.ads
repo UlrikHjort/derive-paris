@@ -8,7 +8,7 @@ with GL;
 
 package Decals is
 
-   type Decal_Kind is (Decal_A, Decal_B, Decal_C, Decal_D, Decal_E, Decal_F, Decal_G, Decal_H);
+   type Decal_Kind is (Decal_A, Decal_B, Decal_C, Decal_D, Decal_E, Decal_F, Decal_G, Decal_H, Decal_I, Decal_J);
 
    procedure Set (K : Decal_Kind; X, Z : Float);
    --  Where one is (not set: none)

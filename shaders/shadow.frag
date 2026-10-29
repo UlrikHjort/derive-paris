@@ -6,8 +6,8 @@
 
 in vec3 vWorld;
 
-uniform vec4 uErase[4];      // Paris in 1973: what casts no shadow yet (see world.frag)
-uniform vec4 uEraseB[4];
+uniform vec4 uErase[5];      // Paris in 1973: what casts no shadow yet (see world.frag)
+uniform vec4 uEraseB[5];
 uniform int uEraseN;
 
 void main()
