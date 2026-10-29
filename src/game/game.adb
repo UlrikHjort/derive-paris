@@ -102,6 +102,7 @@ with Sleigh;
 with Sound;
 with Storm;
 with Terrain;
+with Tertre;
 with Surprises;
 with Tower;
 with Traffic;

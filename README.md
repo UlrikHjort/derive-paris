@@ -265,7 +265,9 @@ The Funiculaire de Montmartre runs up the hill from the Place
 Suzanne-Valadon to the Sacré-Cœur: two green cabins, one going up as the
 other comes down.  On foot, stand at the bottom (or the top) of its
 track when a cabin is waiting there, and ride; you step out at the
-other end.
+other end.  Up there, the painters sit at their easels round the Place
+du Tertre by day (not in the rain), and the vines of the Clos Montmartre
+grow in rows down their slope.
 
 ### On a Vélib'
 
