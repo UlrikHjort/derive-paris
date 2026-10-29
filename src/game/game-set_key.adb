@@ -17,6 +17,11 @@ begin
          if K = 16#FF0D# or else K = 16#FF8D# or else K = 16#79# then   --  Enter, y
             Gtk.Main.Main_Quit;
          end if;
+      elsif Confirm_Set_Home then
+         Confirm_Set_Home := False;
+         if K = 16#FF0D# or else K = 16#FF8D# or else K = 16#79# then   --  Enter, y
+            Save_Home_Here;
+         end if;
       elsif K = 16#FF0D# or else K = 16#FF8D# or else K = 16#68# or else K = 16#79# then
          Go_Home_Now;
       end if;

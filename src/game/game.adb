@@ -351,6 +351,7 @@ package body Game is
    Confirm    : Gtk.Label.Gtk_Label;   --  "Go home?"
    Confirm_Open : Boolean := False;
    Confirm_Quit : Boolean := False;   --  the box asks "quit?", not "go home?"
+   Confirm_Set_Home : Boolean := False;   --  ... or "make this home?"
    Search_Box  : Gtk.Label.Gtk_Label;   --  F3: find an address
    Search_Open : Boolean := False;
    Search_Text : Ada.Strings.Unbounded.Unbounded_String;
@@ -3165,11 +3166,21 @@ package body Game is
          Say (Almanac.Image & Integer'Image (Almanac.Year), 1.5);
          return True;
       end if;
-      --  Shift + H: home is here
+      --  Shift + H: home is here (asks first)
       if (Event.State and Gdk.Types.Shift_Mask) /= 0
         and then (Event.Keyval = 16#48# or else Event.Keyval = 16#68#)
       then
-         Save_Home_Here;
+         if not Confirm_Open and then not Visiting then
+            Confirm_Open := True;
+            Confirm_Set_Home := True;
+            Confirm.Set_Markup
+              ("<span font_family='sans' size='large'><b>Make this your home?</b></span>" & ASCII.LF
+               & "<span foreground='#aab'>H will bring you back here, and the game starts here"
+               & ASCII.LF & "Enter or Y: yes      Esc or N: no"
+               & (if Wheel.Present then ASCII.LF & "wheel: X yes, circle no" else "")
+               & "</span>");
+            Confirm.Show;
+         end if;
          return True;
       end if;
       Set_Key (Event.Keyval, True);

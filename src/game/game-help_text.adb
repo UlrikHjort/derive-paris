@@ -83,7 +83,7 @@ begin
      & "                   Tour Eiffel, Arc de Triomphe, Sacré-Cœur," & LF
      & "                   Panthéon, Concorde, Opéra, Bastille" & LF
      & "  H                home (asks first)" & LF
-     & "  Shift+H          make this your home" & LF
+     & "  Shift+H          make this your home (asks first)" & LF
      & "  Shift + 1 .. 0   navigate there (GPS)" & LF
      & "  X                stop navigating" & LF
      & "  L                save this place" & LF
