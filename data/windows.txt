@@ -1,0 +1,7 @@
+# Along the Boulevard Haussmann: the ground-floor fronts of two big
+# stores, from OpenStreetMap (© OpenStreetMap contributors, ODbL).
+# One run per line:  lat lon  lat lon
+48.873329 2.331422 48.873119 2.332952
+48.873484 2.330239 48.873384 2.330986
+48.873864 2.327406 48.873759 2.328196
+48.873717 2.328504 48.873579 2.329508

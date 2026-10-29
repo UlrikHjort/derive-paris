@@ -106,6 +106,7 @@ with Tower;
 with Traffic;
 with Tyre_Effects;
 with Ufo;
+with Vitrines;
 with Wheel;
 with World;
 with Xmas;
