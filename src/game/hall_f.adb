@@ -51,7 +51,13 @@ package body Hall_F is
    Origin : Vec3 := (0.0, 0.0, 0.0);
    Hour   : Float := 12.0;
    Last_X, Last_Z : Float := 0.0;
-   Nave_M, Room_M, Hand_M, Statue_M : Meshes.Mesh;
+   Nave_M, Room_M, Hand_M, Statue_M, Bear_M : Meshes.Mesh;
+
+   --  Pompon's polar bear, walking towards the door (hall coordinates of
+   --  its plinth, near the clock end, beside the middle aisle)
+   Bear_X : constant := 88.0;
+   Bear_Z : constant := 6.0;
+   Mat_Marble : constant := 45.0;
    Built, Room_Built : Boolean := False;
    Need  : Boolean := False;
 
@@ -129,6 +135,7 @@ package body Hall_F is
                   return;
                end if;
                if LX > 0.4 and then LX < Len - 0.4 and then abs LZ < Half - 3.5
+                 and then not (abs (LX - Bear_X) < 2.3 and then abs (LZ - Bear_Z) < 1.3)
                  and then not (abs LZ < 1.2 and then abs ((LX - 15.0) - 10.0 * Float'Rounding ((LX - 15.0) / 10.0)) < 1.0
                                and then LX > 14.0 and then LX < 96.0)   --  the statues' plinths
                then
@@ -181,6 +188,61 @@ package body Hall_F is
    begin
       Meshes.Quad_UV (A, B, C, D, N, Mat, 0.0);
    end Face;
+
+   --  A smooth ellipsoid: middle C, radii R, turned by Tilt about Z (nose
+   --  down or up), in the mesh being made
+   procedure Ellipsoid (C, R : Vec3; Tilt : Float := 0.0) is
+      Segs  : constant := 28;
+      Rings : constant := 16;
+      function P (I, J : Integer; Normal : Boolean := False) return Vec3 is
+         A : constant Float := 2.0 * Pi * Float (I) / Float (Segs);
+         E : constant Float := Pi * (Float (J) / Float (Rings) - 0.5);
+         --  on the unit sphere, then scaled (a normal: divided)
+         U : constant Vec3 := (Cos (E) * Cos (A), Sin (E), Cos (E) * Sin (A));
+         V : constant Vec3 := (if Normal then Vec3'(U.X / R.X, U.Y / R.Y, U.Z / R.Z)
+                               else Vec3'(U.X * R.X, U.Y * R.Y, U.Z * R.Z));
+         W : constant Vec3 := (V.X * Cos (Tilt) - V.Y * Sin (Tilt), V.X * Sin (Tilt) + V.Y * Cos (Tilt), V.Z);
+      begin
+         return (if Normal then W else C + W);
+      end P;
+   begin
+      for I in 0 .. Segs - 1 loop
+         for J in 0 .. Rings - 1 loop
+            Meshes.Quad_UV (P (I, J), P (I, J + 1), P (I + 1, J + 1), P (I + 1, J),
+                            Normalize (P (I, J, True) + P (I + 1, J + 1, True)), Mat_Marble, 0.0);
+         end loop;
+      end loop;
+   end Ellipsoid;
+
+   --  The bear, 2.5 m long, nose at +X, feet at Y 0: all rounded volumes,
+   --  in mid-stride, the head low and forward on its long neck
+   procedure Build_Bear is
+   begin
+      Meshes.Start;
+      Ellipsoid ((-0.05, 1.10, 0.0), (0.98, 0.44, 0.40));            --  the body
+      Ellipsoid ((0.45, 1.18, 0.0), (0.45, 0.45, 0.38));             --  the shoulders' hump
+      Ellipsoid ((-0.74, 1.09, 0.0), (0.42, 0.42, 0.39));            --  the rump
+      Ellipsoid ((1.04, 1.02, 0.0), (0.44, 0.25, 0.24), -0.35);      --  the neck, going down
+      Ellipsoid ((1.45, 0.86, 0.0), (0.30, 0.19, 0.18), -0.2);       --  the head
+      Ellipsoid ((1.73, 0.78, 0.0), (0.15, 0.10, 0.10), -0.2);       --  the muzzle
+      for S of Float_Array'(-1.0, 1.0) loop
+         Ellipsoid ((1.39, 1.04, S * 0.12), (0.05, 0.06, 0.04));     --  the ears
+      end loop;
+      --  the legs: front left and rear right forward, the others back
+      for K in 0 .. 3 loop
+         declare
+            Front : constant Boolean := K < 2;
+            S     : constant Float := (if K mod 2 = 0 then -1.0 else 1.0);
+            Fwd   : constant Boolean := (Front and then S < 0.0) or else (not Front and then S > 0.0);
+            X     : constant Float := (if Front then 0.62 else -0.70) + (if Fwd then 0.14 else -0.14);
+            T     : constant Float := (if Fwd then -0.22 else 0.22);
+         begin
+            Ellipsoid ((X, 0.55, S * 0.22), (0.16, 0.56, 0.15), T);
+            Ellipsoid ((X + (if Fwd then 0.18 else -0.05), 0.07, S * 0.22), (0.22, 0.08, 0.15));   --  the paw
+         end;
+      end loop;
+      Meshes.Finish (Bear_M);
+   end Build_Bear;
 
    procedure Build_Nave is
       Up : constant Vec3 := (0.0, 1.0, 0.0);
@@ -277,6 +339,7 @@ package body Hall_F is
       Meshes.Start;
       Meshes.Box (-0.8, 0.8, 0.0, 1.3, -0.8, 0.8, Mat_White);
       Meshes.Finish (Statue_M);
+      Build_Bear;
       Built := True;
    end Build_Nave;
 
@@ -346,6 +409,17 @@ package body Hall_F is
    begin
       case Part is
          when Nave =>
+            declare
+               DX : constant Float := Origin.X + Bear_X - X;
+               DZ : constant Float := Origin.Z + Bear_Z - Z;
+               D  : constant Float := Sqrt (DX * DX + DZ * DZ);
+            begin
+               if D < 7.0 and then D > 0.5 and then (DX * FX + DZ * FZ) / D > 0.75 then
+                  return "<span font_family='serif' size='large'><i>" & Collection.Word ("orsay", 6)
+                    & "</i></span>" & ASCII.LF & "<span font_family='sans'>" & Collection.Word ("orsay", 5)
+                    & "</span>";
+               end if;
+            end;
             if X - Origin.X > Len - 30.0 and then FX > 0.7 then
                return "<span font_family='serif' size='large'><i>" & Collection.Word ("orsay", 1)
                  & "</i></span>" & ASCII.LF & "<span font_family='sans'>" & Collection.Word ("orsay", 4)
@@ -375,6 +449,7 @@ package body Hall_F is
             Meshes.Free (Nave_M);
             Meshes.Free (Hand_M);
             Meshes.Free (Statue_M);
+            Meshes.Free (Bear_M);
          end if;
          Build_Nave;
          if Room_Built then
@@ -412,11 +487,18 @@ package body Hall_F is
                                   Skins, Skins, Skins, Arm_Up => (if K mod 3 = 0 then -1.8 else 0.0));
                end;
             end loop;
+            --  the bear, on its low plinth, walking towards the door
+            Shaders.Set (Model, Translation (G (Bear_X, 0.0, Bear_Z)) * Scale_XYZ (1.9, 0.35, 1.0));
+            Meshes.Draw (Statue_M);
+            Shaders.Set (Model, Translation (G (Bear_X, 0.46, Bear_Z)) * Rotation_Y (Pi));
+            Meshes.Draw (Bear_M);
+            Shaders.Set (Model, Identity);
             --  visitors walking slowly
             for K in 0 .. 9 loop
                declare
                   X : constant Float := 8.0 + 9.0 * Float (K);
-                  Z : constant Float := (if K mod 2 = 0 then -4.0 else 4.5);
+                  Z : constant Float :=
+                    (if K mod 2 = 0 or else abs (X - Bear_X) < 4.0 then -4.0 else 4.5);   --  (not on the bear's plinth)
                begin
                   Figures.Person (Translation (G (X, 0.0, Z)) * Rotation_Y (Float (K) * 0.9),
                                   (case K mod 4 is when 0 => (0.15, 0.15, 0.2), when 1 => (0.6, 0.2, 0.2),
