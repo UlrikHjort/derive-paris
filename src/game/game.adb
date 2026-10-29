@@ -41,6 +41,7 @@ with Gtk.Style_Provider;
 with Gtk.Widget;
 with Gtk.Window;
 
+with Balloon;
 with Beacon;
 with Almanac;
 with Car;
@@ -361,6 +362,7 @@ package body Game is
    On_Arc     : Boolean := False;  --  on the roof of the Arc de Triomphe
    On_Boat    : Boolean := False;  --  on a bateau-mouche's upper deck
    On_Funicular : Boolean := False;  --  in a cabin of the Funiculaire de Montmartre
+   In_Balloon   : Boolean := False;  --  in the balloon's gondola over the Parc André-Citroën
    Cabin_Floor  : Float := 0.0;
    Boat_Deck  : Float := 0.0;
 
@@ -855,7 +857,7 @@ package body Game is
                 elsif On_Tower then Tower.Top_Floor_Y
                 elsif On_Arc then Arc_Top.Roof_Y
                 elsif On_Boat then Boat_Deck
-                elsif On_Funicular then Cabin_Floor
+                elsif On_Funicular or else In_Balloon then Cabin_Floor
                 else Terrain.Height (Walk_X, Walk_Z))
                + 1.65 + 0.03 * abs Sin (Walk_Step), Walk_Z));
 

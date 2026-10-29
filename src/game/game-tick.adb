@@ -285,6 +285,14 @@ begin
       Set_Key (16#FF1B#, True);
       Set_Key (16#FF1B#, False);
    end if;
+   --  PARIS_BALLOON=1: on foot at the balloon's mark (testing)
+   if Ready and then Frame_Number = 40 and then Env ("PARIS_BALLOON") /= "" then
+      Player.Speed := 0.0;
+      if not Walking then
+         Toggle_Walk;
+      end if;
+      Balloon.Mark (Walk_X, Walk_Z);
+   end if;
    --  PARIS_RADIO=1: the radio on (testing)
    if Ready and then Frame_Number = 30 and then Env ("PARIS_RADIO") /= "" then
       Radio.Toggle (Radio_Facts);
@@ -647,6 +655,7 @@ begin
          Stravinsky.Update (Dt);
          Boats.Update (Dt, Cam_Pos);
          Funicular.Update (Dt);
+         Balloon.Update (Dt);
          Match.Update (Dt, Hour, Cam_Pos);
          declare
             N : constant String := Match.News;

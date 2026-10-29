@@ -10,6 +10,32 @@ procedure Update_Walk (Dt : Float) is
    DX, DZ : Float := 0.0;
    Turn  : constant Float := 1.8 * Dt;
 begin
+   --  in the balloon: up on its cable and down again
+   if In_Balloon then
+      if Balloon.Landed then
+         In_Balloon := False;
+         Balloon.Alight (Walk_X, Walk_Z);
+         Announce := Ada.Strings.Unbounded.To_Unbounded_String ("Back on the ground, in the Parc André-Citroën");
+         Announce_Timer := 3.0;
+         Street_Timer := 1.0;
+      else
+         Balloon.Ride_Eye (Walk_X, Walk_Z, Cabin_Floor);
+         return;
+      end if;
+   end if;
+   if not In_Museum and then not In_Hall_B and then not In_Room and then not On_Tower
+     and then not On_Arc and then not On_Boat and then Balloon.At_Mark (Walk_X, Walk_Z)
+   then
+      Balloon.Board;
+      In_Balloon := True;
+      Balloon.Ride_Eye (Walk_X, Walk_Z, Cabin_Floor);
+      Traffic.Set_Walker (False, 0.0, 0.0);
+      Announce := Ada.Strings.Unbounded.To_Unbounded_String
+        ("Aboard the balloon: up to 150 m over Paris, and down again");
+      Announce_Timer := 4.0;
+      Street_Timer := 1.0;
+      return;
+   end if;
    --  in the funicular: carried up (or down), off at the other end
    if On_Funicular then
       if Funicular.Arrived then

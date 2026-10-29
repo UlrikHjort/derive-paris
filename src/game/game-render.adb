@@ -219,6 +219,8 @@ begin
          Extras.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos);
          Boats.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos, Night);
          Funicular.Draw (WU.Model, WU.Car_Color, Cam_Pos);
+         Balloon.Draw (WU.Model, WU.Car_Color, Cam_Pos);
+         Set (WU.Car_Color, Car_Color);
          Vitrines.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos, Hour, Time);
          Match.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos, Time);
          Tertre.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos, Hour, Rain_Amount, Time);

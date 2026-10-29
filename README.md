@@ -259,6 +259,13 @@ their lines, in `data/metro_stations.txt`) and Enter: you ride in the car
 while the tunnel lights rush by, and come up the stairs of the entrance
 nearest that station.  Q takes you back up where you came down.
 
+### Up in the balloon
+
+Over the Parc André-Citroën the tethered balloon goes up on its cable to
+150 m, hangs there for the view across Paris, and comes down again.  On
+foot, stand at its mark on the lawn while it is down, and go up with
+it; you step out when it lands.
+
 ### Up to Montmartre
 
 The Funiculaire de Montmartre runs up the hill from the Place
