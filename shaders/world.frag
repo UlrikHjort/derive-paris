@@ -664,6 +664,14 @@ Surface wall(vec2 uv, float seed, vec3 N, vec3 V)
         style = floor(seed);
         h = fract(seed);
     }
+    if (style > 4.5) {
+        // a stadium: bare concrete in tall ribs with dark gaps, no windows
+        float rib = fpulse(0.0, 0.7, fract(uv.x * 0.5), fwidth(uv.x * 0.5));
+        vec3 conc = (coloured ? custom : vec3(0.68, 0.67, 0.63)) * (0.9 + 0.1 * noise(vWorld.xy * 0.7 + vWorld.zy * 0.7));
+        s.albedo = toLinear(mix(conc * 0.35, conc, rib));
+        s.spec = 0.05;
+        return s;
+    }
     if (style > 3.5)
         return glassWall(uv, h, coloured ? custom : vec3(0.45, 0.5, 0.55), N, V);
     vec3 stone = coloured ? custom

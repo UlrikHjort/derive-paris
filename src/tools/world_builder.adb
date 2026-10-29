@@ -110,6 +110,7 @@ package body World_Builder is
    Style_Small     : constant := 2.0;
    Style_Boat      : constant := 3.0;
    Style_Glass     : constant := 4.0;   --  glass or metal curtain wall
+   Style_Stadium   : constant := 5.0;   --  bare concrete in ribs, no windows
 
    ---------------------------------------------------------------------------
    --  State
@@ -2481,6 +2482,7 @@ package body World_Builder is
         Tag (Tags, "building:facade:material", Tag (Tags, "building:material"));
       Style : constant Long_Float :=
         (if Boat then Style_Boat elsif Religious then Style_Monument
+         elsif One_Of (BT, "stadium|grandstand") then Style_Stadium
          elsif One_Of (Material, "glass|metal") then Style_Glass
          elsif Small then Style_Small else Style_Haussmann);
       --  Facade colour from OSM (or the material), 0 = Parisian limestone
@@ -2496,7 +2498,7 @@ package body World_Builder is
       --  The seed is a flat vertex attribute: style + variation, or for
       --  coloured and glass buildings 100 + style * 40000 + packed colour
       Seed  : constant Long_Float :=
-        (if Wall_Colour > 0.0 or else Style = Style_Glass
+        (if Wall_Colour > 0.0 or else Style >= Style_Glass
          then 100.0 + Style * 40000.0 + Wall_Colour
          else Style + 0.999 * Hash01 (B.Id));
       TX    : constant Integer :=

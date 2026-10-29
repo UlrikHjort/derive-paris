@@ -8,6 +8,7 @@ with Ada.Strings.Unbounded;
 with Almanac;
 with Closures;
 with Era;
+with Match;
 with Scenes;
 with Seasons;
 with Sound;
@@ -159,6 +160,15 @@ package body Radio is
       if Almanac.Saturday and then F.Hour >= 12.0 and then F.Hour < 18.0 then
          Line ("Manifestation cet après-midi sur les boulevards.", "A demonstration this afternoon on the boulevards.");
       end if;
+
+      --  the match
+      declare
+         Fr : constant String := Match.Radio_Line (French => True);
+      begin
+         if Fr /= "" then
+            Line (Fr, Match.Radio_Line (French => False));
+         end if;
+      end;
 
       --  what is on today
       declare

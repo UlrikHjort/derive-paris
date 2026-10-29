@@ -55,6 +55,7 @@ with GL;
 with GL_Area;
 with Math3D;
 with Museum;
+with Match;
 with Motorboat;
 with Hud_Layer;
 with Navigation;
@@ -2870,7 +2871,7 @@ package body Game is
           Jets     => Surprises.Jets,
           Crowd    => (if In_Museum or else In_Hall_B or else In_Room then 0.1
                        else Float'Max (Float'Max (Float'Max (Surprises.Crowd, Race.Crowd),
-                                                  Sky_Life.Crowd (Where)),
+                                                  Float'Max (Sky_Life.Crowd (Where), Match.Crowd (Where))),
                                        Scenes.Crowd (Where.X, Where.Z))),   --  the murmur of visitors
           Busker   => Surprises.Busker,
           Busker_Level => Surprises.Busker_Level,

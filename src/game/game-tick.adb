@@ -647,6 +647,14 @@ begin
          Stravinsky.Update (Dt);
          Boats.Update (Dt, Cam_Pos);
          Funicular.Update (Dt);
+         Match.Update (Dt, Hour, Cam_Pos);
+         declare
+            N : constant String := Match.News;
+         begin
+            if N /= "" then
+               Say (N, 5.0);
+            end if;
+         end;
          Moulin.Update (Dt);
          Extras.Update (Dt, Hour, Night,
                         (if Walking then Vec3'(Walk_X, 0.0, Walk_Z) else Vec3'(Player.X, 0.0, Player.Z)));
