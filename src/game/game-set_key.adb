@@ -133,6 +133,7 @@ begin
       when 16#20#   => Keys.Space := Down;
       when 16#62#   => Keys.B := Down;                     --  b: horn
       when 16#FFE1# | 16#FFE2# => Keys.Shift := Down;      --  shift: run
+      when 16#FFE3# => Keys.Ctrl := Down;                    --  left ctrl
       when 16#71# =>                                       --  q: on foot
          if Down then
             Toggle_Walk;

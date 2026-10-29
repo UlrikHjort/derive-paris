@@ -81,6 +81,16 @@ begin
       Walk_Yaw := Walk_Yaw + Float'Value (Env ("PARIS_WALK")) * Ada.Numerics.Pi / 180.0;
       Walk_Pitch := -Float'Value (Env ("PARIS_WALK_PITCH", "0")) * Ada.Numerics.Pi / 180.0;
    end if;
+   --  PARIS_FLOAT=h: on foot, float h metres up (and PARIS_FLOAT_LAND: down on the roof)
+   if Ready and then Frame_Number = 40 and then Env ("PARIS_FLOAT") /= "" then
+      Toggle_Float;
+      Feet_Y := Feet_Y + Float'Value (Env ("PARIS_FLOAT"));
+   end if;
+   if Ready and then Frame_Number = 50 and then Env ("PARIS_FLOAT_LAND") /= "" then
+      Walk_X := Walk_X + Sin (Walk_Yaw) * Float'Value (Env ("PARIS_FLOAT_LAND"));
+      Walk_Z := Walk_Z - Cos (Walk_Yaw) * Float'Value (Env ("PARIS_FLOAT_LAND"));
+      Toggle_Float;
+   end if;
    --  PARIS_ARC=yaw: on the roof of the Arc de Triomphe (testing)
    if Ready and then Frame_Number = 30 and then Env ("PARIS_ARC") /= "" then
       if not Walking then
@@ -473,6 +483,10 @@ begin
          T0 : Ada.Real_Time.Time := Clock_Now;
       begin
          Steps := Positive'Max (1, Integer (Float'Ceiling (Dt / 0.008)));
+         if not Walking then
+            Floating := False;
+            On_Roof := False;
+         end if;
          if Visiting or else Walking then
             if Visiting then
                Update_Visit (Dt);

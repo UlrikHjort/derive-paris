@@ -54,6 +54,11 @@ package World is
    procedure For_Walls_Near (X, Z, Radius : Float);
    --  Every wall edge of the loaded tiles near (X, Z), each once
 
+   function Roof_Below (X, Z, Below_Y : Float) return Float;
+   --  The top of the walls of the building (X, Z) stands in, the highest
+   --  no higher than Below_Y (+ a little): a flat roof to stand on.
+   --  -1.0E9 when there is none.
+
    function Ray_Free (From, To : Math3D.Vec3) return Float;
    --  How far (0 .. 1) along the line From -> To the view is clear of
    --  walls (1: all the way); small things like trunks and posts don't

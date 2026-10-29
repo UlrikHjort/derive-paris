@@ -570,6 +570,47 @@ package body World is
       return Result or else not Any;   --  outside the map: treat as road
    end On_Road;
 
+   function Roof_Below (X, Z, Below_Y : Float) return Float is
+      Max_Heights : constant := 24;
+      Heights : array (1 .. Max_Heights) of Float := (others => 0.0);
+      Crossings : array (1 .. Max_Heights) of Natural := (others => 0);
+      N : Natural := 0;
+      procedure Visit (AX, AZ, BX, BZ, Bottom, Top : Float) is
+         K : Natural := 0;
+      begin
+         if Top - Bottom < 2.0 or else Top > Below_Y + 0.3 then
+            return;   --  a parapet, a kerb; or above you
+         end if;
+         for I in 1 .. N loop
+            if abs (Heights (I) - Top) < 0.3 then
+               K := I;
+            end if;
+         end loop;
+         if K = 0 then
+            if N = Max_Heights then
+               return;
+            end if;
+            N := N + 1;
+            Heights (N) := Top;
+            K := N;
+         end if;
+         --  a ray from (X, Z) towards +X: does this wall cross it?
+         if (AZ > Z) /= (BZ > Z) and then AX + (Z - AZ) / (BZ - AZ) * (BX - AX) > X then
+            Crossings (K) := Crossings (K) + 1;
+         end if;
+      end Visit;
+      procedure Each is new For_Walls_Near (Visit);
+      Best : Float := -1.0E9;
+   begin
+      Each (X, Z, 90.0);
+      for I in 1 .. N loop
+         if Crossings (I) mod 2 = 1 and then Heights (I) > Best then
+            Best := Heights (I);
+         end if;
+      end loop;
+      return Best;
+   end Roof_Below;
+
    function Obstacle_At (X, Y, Z, Radius : Float; Up_Down : Float := -1.0) return Boolean is
       Result : Boolean := False;
       V : constant Float := (if Up_Down < 0.0 then Radius else Up_Down);   --  (how far up and down)

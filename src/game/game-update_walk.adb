@@ -163,11 +163,33 @@ begin
       DX := DX - Fwd_Z;
       DZ := DZ + Fwd_X;
    end if;
+   --  floating: through everything, up and down too
+   if Floating then
+      declare
+         Rate : constant Float := (if Keys.Shift then 24.0 else 7.0);
+         L : constant Float := Sqrt (DX * DX + DZ * DZ);
+      begin
+         if L > 0.0 then
+            Walk_X := Walk_X + DX / L * Rate * Dt;
+            Walk_Z := Walk_Z + DZ / L * Rate * Dt;
+         end if;
+         if Keys.Space then
+            Feet_Y := Feet_Y + Rate * Dt;
+         elsif Keys.Ctrl then
+            Feet_Y := Feet_Y - Rate * Dt;
+         end if;
+         Feet_Y := Float'Max (Terrain.Height (Walk_X, Walk_Z), Float'Min (Feet_Y, Terrain.Height (Walk_X, Walk_Z) + 400.0));
+      end;
+      Traffic.Set_Walker (False, 0.0, 0.0);
+      return;
+   end if;
    if DX /= 0.0 or else DZ /= 0.0 then
       declare
          L : constant Float := Sqrt (DX * DX + DZ * DZ);
          Hit : Boolean;
          NX, NZ : Float;
+         Was_X : constant Float := Walk_X;
+         Was_Z : constant Float := Walk_Z;
       begin
          Walk_X := Walk_X + DX / L * Speed * Dt;
          Walk_Z := Walk_Z + DZ / L * Speed * Dt;
@@ -200,6 +222,15 @@ begin
             if Museum.At_Exit (Walk_X, Walk_Z) then
                Leave_Museum;
             end if;
+            return;
+         end if;
+         --  on a roof: walk about on it, but not off its edge
+         if On_Roof then
+            if abs (World.Roof_Below (Walk_X, Walk_Z, Feet_Y) - Feet_Y) > 0.4 then
+               Walk_X := Was_X;
+               Walk_Z := Was_Z;
+            end if;
+            Walk_Step := Walk_Step + Dt * Speed * 4.2;
             return;
          end if;
          --  walls, and the parked car

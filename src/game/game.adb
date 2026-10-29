@@ -363,6 +363,12 @@ package body Game is
    On_Arc     : Boolean := False;  --  on the roof of the Arc de Triomphe
    On_Boat    : Boolean := False;  --  on a bateau-mouche's upper deck
    On_Funicular : Boolean := False;  --  in a cabin of the Funiculaire de Montmartre
+   --  On foot, floating free (Ctrl+Shift+F): up with Space, down with
+   --  Ctrl, through walls; off again, you stand on the roof below, or the
+   --  ground.  Feet_Y is where your feet are, floating or on a roof.
+   Floating : Boolean := False;
+   On_Roof  : Boolean := False;
+   Feet_Y   : Float := 0.0;
    In_Balloon   : Boolean := False;  --  in the balloon's gondola over the Parc André-Citroën
    Cabin_Floor  : Float := 0.0;
    Boat_Deck  : Float := 0.0;
@@ -405,6 +411,7 @@ package body Game is
       Page_Up, Page_Down : Boolean := False;
       B : Boolean := False;   --  horn
       Shift : Boolean := False;   --  run (on foot)
+      Ctrl  : Boolean := False;   --  (down, when floating)
    end record;
    Keys : Key_State;
    Cam_Pos  : Vec3 := (0.0, 0.0, 0.0);
@@ -859,6 +866,7 @@ package body Game is
                 elsif On_Arc then Arc_Top.Roof_Y
                 elsif On_Boat then Boat_Deck
                 elsif On_Funicular or else In_Balloon then Cabin_Floor
+                elsif Floating or else On_Roof then Feet_Y
                 else Terrain.Height (Walk_X, Walk_Z))
                + 1.65 + 0.03 * abs Sin (Walk_Step), Walk_Z));
 
@@ -1208,6 +1216,7 @@ package body Game is
 
    procedure Go_Home_Now;
    procedure Save_Home_Here;
+   procedure Toggle_Float;
    --  (below, after Teleport)
 
    procedure Teleport (P : Place) is
@@ -3134,6 +3143,38 @@ package body Game is
       Refresh_Search;
    end Search_Key;
 
+   procedure Toggle_Float is
+   begin
+      if not Walking or else In_Museum or else In_Hall_B or else In_Room or else On_Tower
+        or else On_Arc or else On_Boat or else On_Funicular or else In_Balloon
+      then
+         return;
+      end if;
+      if not Floating then
+         Floating := True;
+         if not On_Roof then
+            Feet_Y := Terrain.Height (Walk_X, Walk_Z);
+         end if;
+         On_Roof := False;
+         Say ("Floating: Space up, Ctrl down (Ctrl+Shift+F to come down)");
+      else
+         Floating := False;
+         declare
+            G : constant Float := Terrain.Height (Walk_X, Walk_Z);
+            R : constant Float := World.Roof_Below (Walk_X, Walk_Z, Feet_Y);
+         begin
+            if R > G + 2.0 then
+               On_Roof := True;
+               Feet_Y := R;
+               Say ("On the roof");
+            else
+               On_Roof := False;
+               Say ("Down on the ground");
+            end if;
+         end;
+      end if;
+   end Toggle_Float;
+
    function Key_Press
      (Self : access Gtk.Widget.Gtk_Widget_Record'Class;
       Event : Gdk.Event.Gdk_Event_Key) return Boolean
@@ -3166,6 +3207,13 @@ package body Game is
       then
          Almanac.Previous_Day;
          Say (Almanac.Image & Integer'Image (Almanac.Year), 1.5);
+         return True;
+      end if;
+      --  Ctrl + Shift + F: on foot, float free (or come down again)
+      if (Event.State and Gdk.Types.Shift_Mask) /= 0 and then (Event.State and Gdk.Types.Control_Mask) /= 0
+        and then (Event.Keyval = 16#46# or else Event.Keyval = 16#66#)
+      then
+         Toggle_Float;
          return True;
       end if;
       --  Shift + H: home is here (asks first)
