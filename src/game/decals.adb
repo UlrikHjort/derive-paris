@@ -23,7 +23,7 @@ package body Decals is
    end record;
    Spots : array (Decal_Kind) of Spot;
 
-   Shape : Meshes.Mesh;
+   Shape, Spark : Meshes.Mesh;
    Built : Boolean := False;
 
    procedure Set (K : Decal_Kind; X, Z : Float) is
@@ -49,8 +49,11 @@ package body Decals is
       Z := Spots (K).Z;
    end Position;
 
+   Clock : Float := 0.0;
+
    procedure Draw (Model, Extra : GL.GLint; Eye_X, Eye_Z : Float) is
    begin
+      Clock := Clock + 1.0 / 60.0;
       if not Built then
          --  two strokes, a little uneven
          Meshes.Start;
@@ -60,26 +63,49 @@ package body Decals is
                                       + 0.08 * Float (Stroke);
                D  : constant Vec3 := (Cos (A), 0.0, Sin (A));
                W  : constant Vec3 := (-Sin (A), 0.0, Cos (A));
-               L  : constant Float := 0.36 - 0.04 * Float (Stroke);
-               T  : constant Float := 0.05;
+               L  : constant Float := 0.62 - 0.06 * Float (Stroke);   --  a big cross, a metre and more
+               T  : constant Float := 0.08;
             begin
                Meshes.Quad ((-L) * D - T * W, L * D - 0.7 * T * W, L * D + 0.7 * T * W, (-L) * D + T * W,
                             Mat_Decal);
             end;
          end loop;
          Meshes.Finish (Shape);
+         --  a spark: a tiny glowing speck (a lamp, in uExtraColor)
+         Meshes.Start;
+         Meshes.Box (-0.04, 0.04, -0.04, 0.04, -0.04, 0.04, 50.0);
+         Meshes.Finish (Spark);
          Built := True;
       end if;
       for S of Spots loop
          if S.On then
             declare
                D    : constant Float := Sqrt ((S.X - Eye_X) ** 2 + (S.Z - Eye_Z) ** 2);
-               Fade : constant Float := 0.62 * Float'Max (0.0, Float'Min (1.0, (12.0 - D) / 7.0));
+               --  seen from 30 m on foot, clearer as you come, and now
+               --  and then it seems to catch the light
+               Glint : constant Float := 0.15 * Float'Max (0.0, Sin (Clock * 1.3 + S.X));
+               Fade : constant Float := (0.8 + Glint) * Float'Max (0.0, Float'Min (1.0, (30.0 - D) / 18.0));
             begin
                if Fade > 0.0 then
                   Shaders.Set (Extra, Vec3'(Fade, 0.0, 0.0));
                   Shaders.Set (Model, Translation ((S.X, Terrain.Height (S.X, S.Z) + 0.04, S.Z)));
                   Meshes.Draw (Shape);
+               end if;
+               --  a few blue sparks drifting over it, seen from further
+               --  (out to 45 m), to make you look closer
+               if D < 45.0 then
+                  Shaders.Set (Extra, Vec3'(0.25, 0.5, 1.0));
+                  for K in 0 .. 4 loop
+                     declare
+                        Ph : constant Float := Clock * (0.35 + 0.07 * Float (K)) + Float (K) * 1.7 + S.Z;
+                        Up : constant Float := 0.25 + 1.1 * (Ph / 2.0 - Float'Floor (Ph / 2.0));   --  rising, again and again
+                        R  : constant Float := 0.35 + 0.1 * Float (K mod 3);
+                     begin
+                        Shaders.Set (Model, Translation ((S.X + R * Cos (Ph * 2.0), Terrain.Height (S.X, S.Z) + Up,
+                                                          S.Z + R * Sin (Ph * 2.0))));
+                        Meshes.Draw (Spark);
+                     end;
+                  end loop;
                end if;
             end;
          end if;

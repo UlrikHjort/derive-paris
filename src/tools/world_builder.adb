@@ -4078,6 +4078,32 @@ package body World_Builder is
      (S'Length >= Prefix'Length
       and then S (S'First .. S'First + Prefix'Length - 1) = Prefix);
 
+   --  Is P under a street at street level (a road on the quay above an
+   --  underpass)?  Then the way under it is not a lower quay to open up
+   function Under_A_Street (P : P2) return Boolean is
+   begin
+      for O of Lines loop
+         if O.Layer >= 0 and then O.Drive and then not O.Bridge then
+            for K in 0 .. Natural (O.Pts.Length) - 2 loop
+               declare
+                  A : constant P2 := O.Pts (K);
+                  B : constant P2 := O.Pts (K + 1);
+                  DX : constant Long_Float := B.X - A.X;
+                  DZ : constant Long_Float := B.Z - A.Z;
+                  L2 : constant Long_Float := Long_Float'Max (1.0E-6, DX * DX + DZ * DZ);
+                  U  : constant Long_Float := Long_Float'Max (0.0, Long_Float'Min (1.0,
+                         ((P.X - A.X) * DX + (P.Z - A.Z) * DZ) / L2));
+               begin
+                  if (A.X + U * DX - P.X) ** 2 + (A.Z + U * DZ - P.Z) ** 2 < (O.Width / 2.0 + 2.0) ** 2 then
+                     return True;
+                  end if;
+               end;
+            end loop;
+         end if;
+      end loop;
+      return False;
+   end Under_A_Street;
+
    procedure Find_Low_Quays is
       Count : Natural := 0;
    begin
@@ -4122,6 +4148,7 @@ package body World_Builder is
                   for I in 0 .. N - 1 loop
                      Nearest_Bank (L.Pts (I), D, Q);
                      Near (I) := not In_River (L.Pts (I))
+                       and then not (L.Layer < 0 and then Under_A_Street (L.Pts (I)))
                        and then (if Named or else L.Layer < 0 or else In_Port (L.Pts (I))
                                  then D <= Reach
                                  else Name = "" and then Path_Like and then D <= 9.0);
