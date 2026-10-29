@@ -916,6 +916,40 @@ vec3 localLightSpec(vec3 N, vec3 V, float gloss, out vec3 specular)
     return sum * uNight;
 }
 
+// Wet streets at night: each lamp mirrored in the water as a long streak
+// running towards you, narrow across and long along the view, as on real
+// wet tarmac (and longer where it is a puddle).  The player's headlights
+// likewise.
+vec3 wetStreaks(float wet, float puddle)
+{
+    if (uNight < 0.01 || wet < 0.02) return vec3(0.0);
+    vec3 F = vWorld - uCamPos;
+    float fd = length(F);
+    if (fd > 140.0 || F.y > -0.5) return vec3(0.0);   // (far off, or a roof: no streaks to see)
+    F /= fd;
+    vec2 hF = normalize(F.xz);
+    vec3 lampColor = vec3(1.0, 0.62, 0.30);
+    float len = mix(0.05, 0.14, puddle);       // how far the streak runs
+    vec3 sum = vec3(0.0);
+    for (int i = 0; i < uLightCount; i++) {
+        vec3 Lp = uLights[i].xyz;
+        vec3 C = Lp - uCamPos;
+        float cd2 = dot(C.xz, C.xz);
+        if (cd2 > 160.0 * 160.0 || cd2 < fd * fd * 0.5) continue;   // (the streak lies short of the lamp)
+        //  across, radians: cheaply first (the mirror image has the lamp's
+        //  bearing), and nothing more for the lamps off to the side
+        float a = abs(hF.x * C.z - hF.y * C.x) * inversesqrt(cd2);
+        if (a > 0.02) continue;
+        Lp.y = 2.0 * vWorld.y - Lp.y;          // the lamp mirrored in the ground
+        vec3 D = normalize(Lp - uCamPos);
+        float e = F.y - D.y;                           // along, towards you
+        float wA = exp(-pow(a / 0.006, 2.0));
+        float wE = exp(-pow(e / len, 2.0)) * smoothstep(-0.01, 0.0, e + 0.01);
+        sum += lampColor * uLights[i].w * wA * wE / (1.0 + 0.0008 * cd2);
+    }
+    return sum * uNight * wet;
+}
+
 vec3 localLight(vec3 N)
 {
     vec3 unused;
@@ -1510,6 +1544,7 @@ void main()
     vec3 lamps = localLightSpec(N, V, wetGloss, lampSpec);
     vec3 col = s.albedo * (uSunColor * diffuse * shadow + ambient * ao + lamps)
              + uSunColor * spec + s.emissive + lampSpec;
+    if (wetGloss > 0.0) col += wetStreaks(uWet * smoothstep(0.7, 0.95, N.y), puddle) * 4.0;
     // Hall B is underground: no sun, no city shadows, but an even light
     // from the ceiling, the same by day and by night
     if (uGallery > 2.5) {          // (no floodlights down here: only flames and signs glow)

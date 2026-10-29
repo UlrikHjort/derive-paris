@@ -473,6 +473,8 @@ The weather follows the seasons too:
   chestnuts flower pink and white, and their petals end up on the paths.
 - **Heat:** on hot July and August afternoons, the haze thickens and the
   far end of a long avenue turns into a shimmering mirage of sky.
+- **Rain at night:** the wet streets mirror every street lamp as a long
+  golden streak running towards you, longer still in the puddles.
 - **Snow:** when snow lies on the streets, orange snowploughs with their
   blades and salt hoppers come out on the big roads, their amber beacons
   turning.
