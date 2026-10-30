@@ -192,6 +192,9 @@ smaller or larger one.
 
 ### Racing wheel
 
+You can leave the wheel plugged in and drive on the keys: whichever you
+touched last drives. On the keys the gearbox is automatic.
+
 A Logitech G29 (with its pedals and the Driving Force H-shifter) is found
 by itself when it is plugged in, also while the game runs.  It is read
 straight from the Linux event device, no extra libraries.  You drive with

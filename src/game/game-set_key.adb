@@ -152,9 +152,11 @@ begin
          end if;
       when 16#65# =>                                       --  e: gearbox
          if Down then
-            Manual_Gearbox := not Manual_Gearbox;
+            if Wheel_Drives then
+               Manual_Gearbox := not Manual_Gearbox;
+            end if;
             Announce := Ada.Strings.Unbounded.To_Unbounded_String
-              ((if not Wheel.Present then "Gearbox: automatic (manual needs the wheel)"
+              ((if not Wheel_Drives then "Gearbox: automatic (manual needs the wheel)"
                 elsif Manual_Gearbox then "Gearbox: manual" else "Gearbox: automatic"));
             Announce_Timer := 1.5;
             Street_Timer := 1.0;

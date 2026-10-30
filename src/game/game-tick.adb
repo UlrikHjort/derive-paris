@@ -476,6 +476,34 @@ begin
    Compute_Lighting;
 
    Wheel.Poll;
+   --  PARIS_KEYS="up left": hold those keys from the start (testing)
+   if Frame_Number = 2 and then Env ("PARIS_KEYS") /= "" then
+      Keys.Up := Ada.Strings.Fixed.Index (Env ("PARIS_KEYS"), "up") > 0;
+      Keys.Left := Ada.Strings.Fixed.Index (Env ("PARIS_KEYS"), "left") > 0;
+   end if;
+   --  keys or wheel: whichever was touched last
+   if Wheel.Present then
+      declare
+         W : constant Wheel.Input := Wheel.State;
+      begin
+         if Keys.Up or else Keys.Down or else Keys.Left or else Keys.Right
+           or else Keys.W or else Keys.S or else Keys.A or else Keys.D
+         then
+            if not On_The_Keys then
+               Player.Steer := 0.0;   --  the front wheels no longer follow the rim
+            end if;
+            On_The_Keys := True;
+            Rim_Left := W.Steering;
+         elsif On_The_Keys
+           and then (abs (W.Steering - Rim_Left) > 0.03 or else W.Throttle > 0.1
+                     or else W.Brake > 0.1 or else W.Clutch > 0.1)
+         then
+            On_The_Keys := False;
+         end if;
+      end;
+   else
+      On_The_Keys := False;
+   end if;
    Wheel_Buttons;
 
    if Ready then
@@ -499,7 +527,7 @@ begin
          elsif Mode = Driving then
             declare
                W     : constant Wheel.Input := Wheel.State;
-               Analog : constant Boolean := Wheel.Present;
+               Analog : constant Boolean := Wheel_Drives;
                Input : constant Car.Controls :=
                  (Throttle  => Keys.Up or else Keys.W,
                   Brake     => Keys.Down or else Keys.S,
@@ -725,7 +753,7 @@ begin
               & (case Player.Gear is
                    when -1 => "R ", when 0 => "N ",
                    when others =>
-                     (if Wheel.Present and then Manual_Gearbox then " " else "D")
+                     (if Wheel_Drives and then Manual_Gearbox then " " else "D")
                      & Integer'Image (Player.Gear) (2 .. 2))
               & Integer'Image (Integer (Player.Rpm / 100.0) * 100) & " rpm   "
             elsif Aircraft.Crashed > 0.0 then
@@ -785,12 +813,12 @@ begin
       if Want then
          Instruments.Update
            ((Gear     => Player.Gear,
-             Manual   => Wheel.Present and then Manual_Gearbox,
+             Manual   => Wheel_Drives and then Manual_Gearbox,
              Grinding => Player.Grinding,
              Lever    => Integer (Wheel.State.Shifter),
              Rpm      => Player.Rpm,
              Kmh      => abs Player.Speed * 3.6,
-             Pedals   => Wheel.Present,
+             Pedals   => Wheel_Drives,
              Clutch   => Wheel.State.Clutch,
              Brake    => Wheel.State.Brake,
              Throttle => Wheel.State.Throttle));

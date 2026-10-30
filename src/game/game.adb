@@ -296,6 +296,13 @@ package body Game is
    Need_Clutch    : Boolean := True;
    Steer_Gain     : Float := 1.0;       --  wheel sensitivity
    Steer_Centre   : Float := 0.0;       --  degrees, if the wheel is off centre
+   --  A wheel can stay plugged in while you drive on the keys: the last
+   --  one touched is the one that drives.  Rim_Left is where the rim was
+   --  when the keys took over; moving it from there hands back to the wheel.
+   On_The_Keys    : Boolean := False;
+   Rim_Left       : Float := 0.0;
+
+   function Wheel_Drives return Boolean is (Wheel.Present and then not On_The_Keys);
    Force_Time     : Float := 0.0;       --  for the force feedback
    Last_Steering  : Float := 0.0;
    Jolt           : Float := 0.0;       --  kerb or crash kick, decays
@@ -2741,6 +2748,10 @@ package body Game is
    begin
       Last_Steering := Steer;
       Force_Time := Force_Time + Dt;
+      if On_The_Keys then
+         Wheel.Set_Force (0.0);   --  (a pull would move the rim, and take over)
+         return;
+      end if;
       if not In_Car then
          --  A light spring, so the wheel stays put in the air
          Wheel.Set_Force (-0.25 * Steer);
@@ -2868,7 +2879,7 @@ package body Game is
           Load     => (if Mode = Flying then Aircraft.Throttle
                        elsif Race.Misfiring then 0.0
                        elsif Keys.Up or else Keys.W then 1.0
-                       elsif Wheel.Present then Float'Max (0.15, Wheel.State.Throttle)
+                       elsif Wheel_Drives then Float'Max (0.15, Wheel.State.Throttle)
                        else 0.15),
           Speed    => (if Mode = Flying then Aircraft.Speed else abs Player.Speed),
           Altitude => (if In_Museum or else In_Hall_B or else In_Room then 400.0 elsif On_Tower then 280.0
