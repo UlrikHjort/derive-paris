@@ -16,6 +16,7 @@ uniform float uTime;
 uniform float uAmount;
 uniform int uSnow;
 uniform float uPointScale;
+uniform float uGround;     // leaves: the ground under the camera
 
 out float vAlpha;
 out vec3 vLeaf;      // leaves: colour
@@ -40,7 +41,8 @@ void main()
         base.y = uCamPos.y - 0.45 * HEIGHT + mod(r.y * HEIGHT - t * 0.9, HEIGHT);
         float d = length(base - uCamPos);
         vAlpha = step(fract(r.x * 57.31 + r.z * 13.7), uAmount)
-               * (1.0 - smoothstep(12.0, 18.0, d));
+               * (1.0 - smoothstep(12.0, 18.0, d))
+               * (1.0 - smoothstep(16.0, 20.0, base.y - uGround));   // they stay low
         float k = fract(r.z * 91.7);
         vLeaf = k < 0.35 ? vec3(0.85, 0.55, 0.12) : k < 0.65 ? vec3(0.70, 0.30, 0.08)
               : k < 0.85 ? vec3(0.80, 0.68, 0.18) : vec3(0.45, 0.28, 0.12);

@@ -7,6 +7,7 @@ with System.Storage_Elements;
 
 with GL;
 with Shaders;
+with Terrain;
 
 package body Rain is
 
@@ -16,7 +17,7 @@ package body Rain is
 
    Program : GLuint := 0;
    VAO, VBO : aliased GLuint := 0;
-   U_View_Proj, U_Cam, U_Time, U_Amount, U_Color, U_Snow, U_Scale : GLint;
+   U_View_Proj, U_Cam, U_Time, U_Amount, U_Color, U_Snow, U_Scale, U_Ground : GLint;
 
    procedure Create is
       Gen  : Ada.Numerics.Float_Random.Generator;
@@ -25,6 +26,7 @@ package body Rain is
       Program := Shaders.Load_Program ("shaders/rain.vert", "shaders/rain.frag");
       U_View_Proj := Shaders.Location (Program, "uViewProj");
       U_Cam := Shaders.Location (Program, "uCamPos");
+      U_Ground := Shaders.Location (Program, "uGround");
       U_Time := Shaders.Location (Program, "uTime");
       U_Amount := Shaders.Location (Program, "uAmount");
       U_Color := Shaders.Location (Program, "uColor");
@@ -100,6 +102,7 @@ package body Rain is
       Shaders.Set (U_Amount, Amount);
       Shaders.Set (U_Color, Math3D.Vec3'(Light, Light, Light));
       Shaders.Set (U_Snow, 2);
+      Shaders.Set (U_Ground, Terrain.Height (Cam.X, Cam.Z));
       Shaders.Set (U_Scale, Pixels_Per_Metre);
       glEnable (GL_BLEND);
       glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
