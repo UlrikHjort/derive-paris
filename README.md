@@ -270,8 +270,9 @@ The tracks are on the map too: the fans of rails running into the big stations
 and out across the city, the tram lines in their boulevards, and the platforms.
 They come from OpenStreetMap, like everything else (`data/osm/rail.osm`,
 downloaded once by `make tiles`).  If your tiles are older than this, run
-`make tiles` to see them.  For now they all lie at street level, also where the
-real line runs on a viaduct or in a cutting.
+`make tiles` to see them.  North of the Gare du Nord the line runs down in a
+cutting, under the streets' bridges; elsewhere the tracks still lie at street
+level, also where the real line runs on a viaduct or in a cutting.
 
 ### Up in the balloon
 
