@@ -302,9 +302,9 @@ package body World is
    procedure Draw_Ground_Depth is
       Push : constant GLfloat := GLfloat (4.0);
    begin
-      --  Depth only, a little further back than the ground really is, so
-      --  that the coplanar layers of Draw_Ground all pass, but ground
-      --  further off, hidden behind a hill, does not.  Only the river's
+      --  Depth only, a little further back than the ground really is (see
+      --  where it is called, too), so that the coplanar layers of Draw_Ground
+      --  all pass, but ground further off, hidden behind a hill, does not.  Only the river's
       --  surface claims its pixels, as in Draw_Ground.
       glColorMask (GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
       glEnable (GL_POLYGON_OFFSET_FILL);

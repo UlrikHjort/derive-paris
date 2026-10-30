@@ -282,7 +282,9 @@ begin
       Set (WU.Flood, 0.0);   --  (the river's hole at street level stays put)
       glUseProgram (Shadow_Prog);
       Set (Sh_Light_VP, VP);
-      Set (Sh_Model, Identity);
+      --  (a little lower: the layers can lie some centimetres apart, and all
+      --  must pass in Draw_Ground, also when seen from straight above)
+      Set (Sh_Model, Translation ((0.0, -0.3, 0.0)));
       Set (Sh_Erase_N, Integer'(0));
       World.Draw_Ground_Depth;
       glUseProgram (World_Prog);
