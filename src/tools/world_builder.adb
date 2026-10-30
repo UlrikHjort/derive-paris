@@ -1333,6 +1333,23 @@ package body World_Builder is
       return False;
    end In_Cut;
 
+   --  A street's bridge over the cutting has its pavements with it: what
+   --  stands by the road has something to stand on
+   Cut_Pavement : constant := 3.5;
+
+   function Line_In_Cut (L : Line_Feature) return Boolean is
+   begin
+      if not L.Bridge or else L.Group /= Road then
+         return False;
+      end if;
+      for I in L.Pts.First_Index .. L.Pts.Last_Index - 1 loop
+         if In_Cut (((L.Pts (I).X + L.Pts (I + 1).X) / 2.0, (L.Pts (I).Z + L.Pts (I + 1).Z) / 2.0)) then
+            return True;
+         end if;
+      end loop;
+      return False;
+   end Line_In_Cut;
+
    function In_River (P : P2) return Boolean is
    begin
       for I in River_Polys.First_Index .. River_Polys.Last_Index loop
@@ -4601,7 +4618,8 @@ package body World_Builder is
          if L.Bridge then
             declare
                In_Area : Boolean := False;
-               Half    : constant Long_Float := L.Width / 2.0 + (if L.Curb then 0.3 else 0.0);
+               Half    : constant Long_Float := L.Width / 2.0 + (if L.Curb then 0.3 else 0.0)
+                 + (if Line_In_Cut (L) then Cut_Pavement else 0.0);
             begin
                for B of Bridge_Polys loop
                   if Point_In_Poly (0.5 * (L.Pts (0) + L.Pts (1)), B) then
@@ -4654,7 +4672,7 @@ package body World_Builder is
       for T of Tracks loop
          declare
             S : Long_Float := 0.0;
-            G0 : constant Group_Id := (if T.Tram then Mark elsif T.Bridge then Deck else Curb);
+            G1 : constant Group_Id := (if T.Tram then Mark elsif T.Bridge then Deck else Curb);
             H : constant Long_Float := (if T.Tram then 1.0 else Half);
             M : constant Long_Float := (if T.Tram then Mat_Tram_Rails else Mat_Ballast);
          begin
@@ -4675,6 +4693,12 @@ package body World_Builder is
                         --  (seed: not 0, and no vertex shared with the next piece)
                         Seed : constant Long_Float := 1.0 + Long_Float (Count mod 1000);
                         --  in the cutting (a little apart, where the tracks overlap)
+                        Wet : constant Boolean :=
+                          not T.Tram and then
+                          (In_River (0.75 * A + 0.25 * B) or else In_River (0.5 * (A + B))
+                           or else In_River (0.25 * A + 0.75 * B));
+                        --  (over water it needs a bridge, tagged so or not)
+                        G0 : constant Group_Id := (if Wet then Deck else G1);
                         Down : constant Boolean :=
                           G0 = Curb and then In_Cut (0.5 * (A + B))
                           and then Cut_Here ((A.X + B.X) / 2.0, (A.Z + B.Z) / 2.0) > 0.0;
@@ -4693,6 +4717,14 @@ package body World_Builder is
                                     (AX - DZ * H, AZ + DX * H), Y);
                         Along_Track := False;
                         Sunk := False;
+                        if Wet then
+                           declare
+                              Left : constant P2 := (-1.0) * Edge_Out (A, B);
+                           begin
+                              Bridge_Side (A + H * Left, B + H * Left, Left);
+                              Bridge_Side (A - H * Left, B - H * Left, (-1.0) * Left);
+                           end;
+                        end if;
                         Count := Count + 1;
                         S := S + L;
                      end;
@@ -5599,6 +5631,9 @@ package body World_Builder is
             if L.Low then
                Ribbon (L.Pts, L.Width, Solid, L.Mat, Low_Level + 0.03);
             else
+               if Line_In_Cut (L) then
+                  Ribbon (L.Pts, L.Width + 2.0 * Cut_Pavement + 0.6, Deck, Mat_Pavement);
+               end if;
                if L.Curb then
                   Ribbon (L.Pts, L.Width + 0.6, (if L.Bridge then Deck else Curb), Mat_Curb);
                end if;

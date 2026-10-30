@@ -66,7 +66,9 @@ begin
          elsif Keys.Ctrl then
             Feet_Y := Feet_Y - Rate * Dt;
          end if;
-         Feet_Y := Float'Max (Terrain.Height (Walk_X, Walk_Z), Float'Min (Feet_Y, Terrain.Height (Walk_X, Walk_Z) + 400.0));
+         --  (down into the railway's cutting, too)
+         Feet_Y := Float'Max (Terrain.Height (Walk_X, Walk_Z) - 6.0,
+                              Float'Min (Feet_Y, Terrain.Height (Walk_X, Walk_Z) + 400.0));
       end;
       Traffic.Set_Walker (False, 0.0, 0.0);
       return;
