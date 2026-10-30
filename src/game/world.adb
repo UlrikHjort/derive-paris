@@ -299,6 +299,38 @@ package body World is
       end loop;
    end Draw_Group;
 
+   procedure Draw_Ground_Depth is
+      Push : constant GLfloat := GLfloat (4.0);
+   begin
+      --  Depth only, a little further back than the ground really is, so
+      --  that the coplanar layers of Draw_Ground all pass, but ground
+      --  further off, hidden behind a hill, does not.  Only the river's
+      --  surface claims its pixels, as in Draw_Ground.
+      glColorMask (GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+      glEnable (GL_POLYGON_OFFSET_FILL);
+      glPolygonOffset (Push, Push);
+      glEnable (GL_STENCIL_TEST);
+      glStencilFunc (GL_NOTEQUAL, 1, 16#FF#);
+      glStencilOp (GL_KEEP, GL_KEEP, GL_KEEP);
+      for G in reverse Ground_Group loop
+         if G = Hole then
+            glStencilOp (GL_KEEP, GL_KEEP, GL_REPLACE);
+            glDepthMask (GL_FALSE);
+            Draw_Group (G);
+            glDepthMask (GL_TRUE);
+            glStencilOp (GL_KEEP, GL_KEEP, GL_KEEP);
+         else
+            Draw_Group (G);
+         end if;
+      end loop;
+      glDisable (GL_STENCIL_TEST);
+      glClear (GL_STENCIL_BUFFER_BIT);
+      glPolygonOffset (GLfloat (0.0), GLfloat (0.0));
+      glDisable (GL_POLYGON_OFFSET_FILL);
+      glColorMask (GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+      glBindVertexArray (0);
+   end Draw_Ground_Depth;
+
    procedure Draw_Ground is
    begin
       --  The ground layers are coplanar.  They are drawn top layer first
@@ -306,6 +338,9 @@ package body World is
       --  the stencil lets only the first fragment per pixel through: the
       --  same result as painting bottom-up, but every ground pixel is
       --  shaded once, and not at all where a building already covers it.
+      --  On a hill the ground also stands in front of itself: the depth
+      --  from Draw_Ground_Depth keeps what is behind it from claiming a pixel.
+      glDepthFunc (GL_LEQUAL);
       glEnable (GL_STENCIL_TEST);
       glStencilFunc (GL_NOTEQUAL, 1, 16#FF#);
       glStencilOp (GL_KEEP, GL_KEEP, GL_REPLACE);
@@ -323,6 +358,7 @@ package body World is
          end if;
       end loop;
       glDisable (GL_STENCIL_TEST);
+      glDepthFunc (GL_LESS);
       glBindVertexArray (0);
    end Draw_Ground;
 

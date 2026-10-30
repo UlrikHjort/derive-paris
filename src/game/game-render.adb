@@ -279,6 +279,12 @@ begin
       End_Pass (P_Solid);
       Begin_Pass (P_Ground);
       Set (WU.Flood, 0.0);   --  (the river's hole at street level stays put)
+      glUseProgram (Shadow_Prog);
+      Set (Sh_Light_VP, VP);
+      Set (Sh_Model, Identity);
+      Set (Sh_Erase_N, Integer'(0));
+      World.Draw_Ground_Depth;
+      glUseProgram (World_Prog);
       World.Draw_Ground;
       Tyre_Effects.Draw_Marks (VP, Cam_Pos);
       Beacon.Draw (VP, Cam_Pos, Time, Hour, Night, Rain_Amount);

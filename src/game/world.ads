@@ -21,6 +21,9 @@ package World is
    procedure Cull_To (VP : Math3D.Mat4);
    --  Following draws skip tiles outside this view-projection's frustum
 
+   procedure Draw_Ground_Depth;
+   --  Before Draw_Ground, with a depth-only program
+
    procedure Draw_Ground;
    --  Ground layers, after the solids, with depth test LESS and a cleared
    --  stencil buffer
