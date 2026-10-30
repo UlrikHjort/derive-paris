@@ -978,6 +978,12 @@ package body Sound is
                when Thud =>
                   Add ((Kind => Snowball, Dur => 0.3, Volume => 0.5 * Loud, Pan => 0.5 * Where,
                         others => <>));
+               when Canopy =>
+                  --  the cloth cracks open, then flaps as it fills
+                  Add ((Kind => Snowball, Dur => 0.45, Volume => 0.7 * Loud, Pan => 0.5 * Where,
+                        others => <>));
+                  Add ((Kind => Wings, Dur => 1.0, Volume => 0.3 * Loud, Pan => 0.5 * Where,
+                        others => <>));
                when Beep =>
                   Add ((Kind => Tone, Dur => 0.22, Volume => 0.18 * Loud, Freq => 660.0,
                         Pan => 0.5 * Where, others => <>));

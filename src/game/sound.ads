@@ -79,10 +79,10 @@ package Sound is
    procedure Ho_Ho (Loudness, Pan : Float);
    --  Father Christmas laughs
 
-   type Effect_Kind is (Meow, Flutter, Thud, Organ, Beep, Go_Beep, Chime, Foghorn);
+   type Effect_Kind is (Meow, Flutter, Thud, Organ, Beep, Go_Beep, Chime, Foghorn, Canopy);
    procedure Effect (Kind : Effect_Kind; Loudness, Pan : Float);
    --  Little one-off sounds: a cat, pigeons taking off, a snowball on the
-   --  car, the Phantom's organ
+   --  car, the Phantom's organ, a parachute snapping open
 
    procedure Shutter;
    --  A camera click (a photo was taken)

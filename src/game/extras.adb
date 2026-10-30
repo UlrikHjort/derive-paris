@@ -11,6 +11,7 @@ with Figures;
 with Geo;
 with Meshes;
 with Shaders;
+with Sound;
 with Terrain;
 with Tower;
 
@@ -68,7 +69,7 @@ package body Extras is
    ---------------------------------------------------------------------------
    --  The parachutist
 
-   type Jump_Phase is (None, Falling, Floating);
+   type Jump_Phase is (None, Falling, Floating, Landed, Walking_Off);
    type Jumper is record
       Phase : Jump_Phase := None;
       P, V  : Vec3 := (0.0, 0.0, 0.0);
@@ -78,7 +79,10 @@ package body Extras is
    end record;
    Para : Jumper;
    Next_Jump : Float := 20.0;
-   Canopy_M : Meshes.Mesh;
+   Canopy_M, Bundle_M : Meshes.Mesh;
+   Canopy_Size : constant := 1.7;   --  (a little big: to be seen from afar)
+   Harness_Y   : constant := 1.7;   --  where the lines meet, in the mesh
+   Folding     : constant := 6.0;   --  seconds on the ground, gathering it in
 
    procedure Build is
    begin
@@ -118,10 +122,15 @@ package body Extras is
          end if;
       end loop;
       Meshes.Finish (Canopy_M);
+      --  the canopy gathered up, carried under the arm
+      Meshes.Start;
+      Meshes.Box (-0.2, 0.2, 0.95, 1.3, 0.1, 0.42, Mat_Cloth);
+      Meshes.Finish (Bundle_M);
       Built := True;
    end Build;
 
-   function Heading (D : Vec3) return Float is (Arctan (D.X, -D.Z));
+   function Heading (D : Vec3) return Float is
+     (if D.X = 0.0 and then D.Z = 0.0 then 0.0 else Arctan (D.X, -D.Z));
 
    procedure Set_Up_Pond is
       X, Z : Long_Float;
@@ -204,7 +213,7 @@ package body Extras is
                when None =>
                   Next_Jump := Next_Jump - Dt;
                   if Next_Jump <= 0.0 then
-                     Next_Jump := (if Ada.Environment_Variables.Exists ("PARIS_JUMP") then 8.0 else 180.0 + 240.0 * Rnd);
+                     Next_Jump := (if Ada.Environment_Variables.Exists ("PARIS_JUMP") then 8.0 else 60.0 + 120.0 * Rnd);
                      if (Day or else Ada.Environment_Variables.Exists ("PARIS_JUMP"))
                        and then (Near.X - TX) ** 2 + (Near.Z - TZ) ** 2 < 900.0 ** 2
                      then
@@ -214,11 +223,16 @@ package body Extras is
                            Para := (Phase => Falling, T => 0.0,
                                     P => (TX + 4.0 * Cos (A), Tower.Top_Floor_Y + 1.5, TZ + 4.0 * Sin (A)),
                                     V => (9.0 * Cos (A), 1.5, 9.0 * Sin (A)),   --  a run and a leap
-                                    Canopy => (if Rnd < 0.33 then Vec3'(0.95, 0.2, 0.1)
-                                               elsif Rnd < 0.5 then Vec3'(0.1, 0.35, 0.9)
-                                               else Vec3'(0.98, 0.75, 0.1)),
-                                    --  a landing on the Champ-de-Mars, south-east of the tower
-                                    Target => (TX + 180.0 + 60.0 * Rnd, 0.0, TZ + 120.0 + 60.0 * Rnd));
+                                    Canopy => (if Rnd < 0.33 then Vec3'(1.0, 0.12, 0.05)
+                                               elsif Rnd < 0.5 then Vec3'(0.08, 0.35, 1.0)
+                                               else Vec3'(1.0, 0.8, 0.0)),
+                                    --  a landing on the lawn of the Champ-de-Mars, south-east of the tower
+                                    Target => (TX + 315.0 + 30.0 * Rnd, 0.0, TZ + 305.0 + 30.0 * Rnd));
+                           --  PARIS_JUMP=low: from just above the landing (testing)
+                           if Ada.Environment_Variables.Value ("PARIS_JUMP", "") = "low" then
+                              Para.P := Para.Target + Vec3'(0.0, Terrain.Height (Para.Target.X, Para.Target.Z) + 110.0, 0.0);
+                              Para.V := (0.0, 0.0, 0.0);
+                           end if;
                         end;
                      end if;
                   end if;
@@ -230,6 +244,14 @@ package body Extras is
                   if Para.T > 3.5 then
                      Para.Phase := Floating;
                      Para.T := 0.0;
+                     declare
+                        D : constant Float := Sqrt ((Near.X - Para.P.X) ** 2 + (Near.Z - Para.P.Z) ** 2
+                                                    + (Para.P.Y - Terrain.Height (Near.X, Near.Z)) ** 2);
+                     begin
+                        if D < 500.0 then
+                           Sound.Effect (Sound.Canopy, Float'Min (1.0, 100.0 / (D + 30.0)), 0.0);
+                        end if;
+                     end;
                   end if;
                when Floating =>
                   Para.T := Para.T + Dt;
@@ -237,15 +259,38 @@ package body Extras is
                      To : constant Vec3 := Para.Target - Para.P;
                      H  : constant Float := Sqrt (To.X ** 2 + To.Z ** 2);
                      G  : constant Float := Terrain.Height (Para.P.X, Para.P.Z);
-                     Sink : constant Float := Float'Max (4.5, -Para.V.Y * (1.0 - 2.0 * Dt));   --  slowing to a glide
+                     --  slowing to a glide, and a flare just above the ground
+                     Sink : constant Float :=
+                       Float'Max ((if Para.P.Y - G < 8.0 then 1.2 else 4.5), -Para.V.Y * (1.0 - 2.0 * Dt));
                   begin
                      Para.V := (Para.V.X + Dt * (6.0 * To.X / Float'Max (H, 1.0) - Para.V.X) * 0.3, -Sink,
                                 Para.V.Z + Dt * (6.0 * To.Z / Float'Max (H, 1.0) - Para.V.Z) * 0.3);
                      Para.P := Para.P + Dt * Para.V;
                      if Para.P.Y <= G then
-                        Para.Phase := None;
+                        Para.P.Y := G;
+                        Para.Phase := Landed;
+                        Para.T := 0.0;
                      end if;
                   end;
+               when Landed =>
+                  Para.T := Para.T + Dt;
+                  Para.P.Y := Terrain.Height (Para.P.X, Para.P.Z);
+                  if Para.T > Folding then
+                     Para.Phase := Walking_Off;
+                     Para.T := 0.0;
+                     --  away from the tower, down the Champ-de-Mars
+                     Para.V := (1.4 * 0.8, 0.0, 1.4 * 0.6);
+                  end if;
+               when Walking_Off =>
+                  --  until nobody is looking any more
+                  Para.T := Para.T + Dt;
+                  Para.P := Para.P + Dt * Para.V;
+                  Para.P.Y := Terrain.Height (Para.P.X, Para.P.Z);
+                  if (Near.X - Para.P.X) ** 2 + (Near.Z - Para.P.Z) ** 2 > 150.0 ** 2
+                    or else Para.T > 120.0
+                  then
+                     Para.Phase := None;
+                  end if;
             end case;
          end;
       end if;
@@ -297,13 +342,43 @@ package body Extras is
               (Translation (Para.P) * Rotation_Y (-Yaw)
                * (if Para.Phase = Falling then Rotation_X (-1.3) else Identity),
                (0.1, 0.1, 0.12), (0.8, 0.62, 0.5), (0.1, 0.1, 0.12),
-               Arm_Up => (if Para.Phase = Falling then -2.6 else -2.9));
-            if Para.Phase = Floating then
-               Shaders.Set (Paint, Para.Canopy);
-               Shaders.Set (Model, Translation (Para.P) * Rotation_Y (-Yaw + Pi / 2.0)
-                                   * Scale (Float'Min (1.0, 0.2 + Para.T * 1.5)));
-               Meshes.Draw (Canopy_M);
-            end if;
+               Stride => (if Para.Phase = Walking_Off then 0.45 * Sin (Para.T * 5.5) else 0.0),
+               Arm_Up => (case Para.Phase is
+                             when Falling => -2.6,
+                             when Floating => -2.9,
+                             when Landed => -0.9 + 0.3 * Sin (Para.T * 4.0),
+                             when others => 0.0));
+            Shaders.Set (Paint, Para.Canopy);
+            case Para.Phase is
+               when Floating =>
+                  Shaders.Set (Model, Translation (Para.P) * Rotation_Y (-Yaw + Pi / 2.0)
+                                      * Translation ((0.0, Harness_Y, 0.0))
+                                      * Scale (Canopy_Size * Float'Min (1.0, 0.2 + Para.T * 1.5))
+                                      * Translation ((0.0, -Harness_Y, 0.0)));
+                  Meshes.Draw (Canopy_M);
+               when Landed =>
+                  --  it sinks down behind them, then is drawn in
+                  declare
+                     Sunk  : constant Float := Float'Min (1.0, Para.T / 1.5);
+                     Drawn : constant Float :=
+                       Float'Max (0.0, Float'Min (1.0, (Para.T - 1.5) / (Folding - 2.0)));
+                     Wide  : constant Float := Canopy_Size * (1.0 - 0.95 * Drawn);
+                     M     : Mat4 := Identity;
+                  begin
+                     M (0) := Wide;
+                     M (5) := Canopy_Size * Float'Max (0.012, 1.0 - Sunk);
+                     M (10) := Wide;
+                     Shaders.Set (Model, Translation (Para.P) * Rotation_Y (-Yaw)
+                                         * Translation ((0.0, 0.02, 1.0 + 7.0 * Sunk * (1.0 - Drawn)))
+                                         * Rotation_Y (Pi / 2.0) * M);
+                     Meshes.Draw (Canopy_M);
+                  end;
+               when Walking_Off =>
+                  Shaders.Set (Model, Translation (Para.P) * Rotation_Y (-Yaw));
+                  Meshes.Draw (Bundle_M);
+               when others =>
+                  null;
+            end case;
          end;
       end if;
    end Draw;
