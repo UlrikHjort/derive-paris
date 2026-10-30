@@ -70,6 +70,8 @@ keeping what the small build downloaded.
 | The rooftops, towards Montmartre | Drop the clutch: smoke and skid marks |
 | ![The Eiffel Tower sparkling](docs/screenshots/eiffel-sparkle.jpg) | ![The beacon sweeping over Paris](docs/screenshots/eiffel-night.jpg) |
 | On the hour after dark the Eiffel Tower sparkles for five minutes | The beacon on top sweeps its beams over Paris until 23:45 |
+| ![The green chairs round the Grand Bassin](docs/screenshots/luxembourg.jpg) | |
+| The green chairs and toy boats at the Grand Bassin of the Jardin du Luxembourg | |
 
 ## Written entirely by prompting
 
