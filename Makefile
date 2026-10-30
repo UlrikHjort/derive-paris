@@ -50,7 +50,7 @@ test: tools
 	./tests/convert.sh
 
 download: tools
-	rm -rf data/osm/chunks data/elevation
+	rm -rf data/osm/chunks data/osm/rail.osm data/elevation
 	./scripts/city.sh all
 
 clean:

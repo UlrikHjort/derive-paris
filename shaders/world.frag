@@ -1288,6 +1288,29 @@ void main()
         s = Surface(toLinear(vec3(0.75, 0.56, 0.22) * (0.8 + 0.3 * n)), 0.9, 50.0, vec3(0), 0.0);
     } else if (m == 49) {          // the green SORTIE sign
         s = Surface(toLinear(vec3(0.1, 0.7, 0.3)), 0.0, 8.0, toLinear(vec3(0.15, 1.0, 0.45)) * 2.0, 0.0);
+    } else if (m == 96 || m == 97) {   // a railway: uv = (across, along) in metres
+        float n = 0.6 * noise(vWorld.xz * 19.0) + 0.4 * noise(vWorld.xz * 5.0);
+        vec3 stones = vec3(0.25, 0.235, 0.215) * (0.65 + 0.7 * n);
+        vec3 c = stones;
+        float gloss = 8.0, spec = 0.03;
+        // the rails, a sleeper every 60 cm; far off they blur into the stones
+        float wu = max(fwidth(vUV.x), 0.001);
+        float wv = max(fwidth(vUV.y), 0.001);
+        float rail = 1.0 - smoothstep(0.035, 0.035 + wu, abs(abs(vUV.x) - 0.72));
+        if (vSeed < 0.5) rail = 0.0;
+        if (m == 96 && vSeed > 0.5) {
+            float inSleeper = 1.0 - smoothstep(1.25, 1.25 + wu, abs(vUV.x));
+            float along = 1.0 - smoothstep(0.11, 0.11 + wv, abs(fract(vUV.y / 0.6) - 0.5) * 0.6);
+            float clear = 1.0 - smoothstep(0.06, 0.25, wv);
+            c = mix(c, mix(c, vec3(0.42, 0.40, 0.37), 0.34),
+                    inSleeper * (1.0 - clear));
+            c = mix(c, vec3(0.37, 0.355, 0.33) * (0.85 + 0.25 * n), inSleeper * along * clear);
+        }
+        if (m == 97 && rail < 0.02) discard;
+        c = mix(c, vec3(0.62, 0.63, 0.66), rail);
+        spec = mix(spec, 0.5, rail);
+        gloss = mix(gloss, 40.0, rail);
+        s = Surface(toLinear(c), spec, gloss, vec3(0), 0.0);
     } else if (m == 51) {          // a canvas from its seed
         s = Surface(toLinear(seeded(clamp(vUV, 0.0, 1.0), vSeed)), 0.1, 24.0, vec3(0), 0.0);
     } else if (m == 92) {          // a drawing on paper, framed

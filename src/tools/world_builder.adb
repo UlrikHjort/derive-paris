@@ -69,6 +69,9 @@ package body World_Builder is
    ---------------------------------------------------------------------------
 
    Mat_Pavement   : constant := 0.0;
+   Mat_Ballast    : constant := 96.0;   --  a railway: uv = (across, along) in metres
+                                        --  (seed 0: just the stones)
+   Mat_Tram_Rails : constant := 97.0;   --  uv the same; only the rails are drawn
    Mat_Asphalt    : constant := 1.0;
    Mat_Curb       : constant := 2.0;
    Mat_Path       : constant := 3.0;
@@ -348,11 +351,20 @@ package body World_Builder is
       N_Out := NA;
    end Clip_Rect;
 
+   Along_Track : Boolean := False;
+   Track_From, Track_Dir : P2 := (0.0, 0.0);
+   Track_S : Long_Float := 0.0;
+
    --  Ground vertices lie on the hills, with the hills' normal
    function Ground_Vertex
      (T : in out Tile_Builder; X, Y, Z, Mat, Seed : Long_Float)
       return Interfaces.Unsigned_32
    is
+      --  (a track's uv run along it; everything else's lie on the map)
+      U : constant Long_Float :=
+        (if Along_Track then (X - Track_From.X) * Track_Dir.Z - (Z - Track_From.Z) * Track_Dir.X else X);
+      V : constant Long_Float :=
+        (if Along_Track then Track_S + (X - Track_From.X) * Track_Dir.X + (Z - Track_From.Z) * Track_Dir.Z else Z);
       K : constant Vertex_Key :=
         (Integer (X * 1000.0), Integer (Y * 1000.0), Integer (Z * 1000.0),
          Integer (Mat), Integer (Seed * 1.0E6));
@@ -366,7 +378,7 @@ package body World_Builder is
          return Vertex_Maps.Element (C);
       end if;
       I := Put_Vertex (T, (X, Y + Terrain.Height (X, Z), Z), Normalize ((-GX, 1.0, -GZ)),
-                       X, Z, Mat, Seed);
+                       U, V, Mat, Seed);
       T.Shared.Insert (K, I);
       return I;
    end Ground_Vertex;
@@ -762,6 +774,15 @@ package body World_Builder is
                   and then (I + S'Length - 1 = List'Last
                             or else List (I + S'Length) = '|')));
 
+   --  The railways: a ribbon a piece of track, painted by the shader
+   type Track_Rec is record
+      Pts    : Ring;
+      Tram   : Boolean := False;
+      Bridge : Boolean := False;
+   end record;
+   package Track_Vectors is new Ada.Containers.Vectors (Positive, Track_Rec);
+   Tracks : Track_Vectors.Vector;
+
    function Area_Material (Tags : Tag_Maps.Map) return Long_Float is
       Natural_V : constant String := Tag (Tags, "natural");
       Landuse   : constant String := Tag (Tags, "landuse");
@@ -782,6 +803,10 @@ package body World_Builder is
          return Mat_Wood;
       elsif Landuse = "flowerbed" then
          return Mat_Flowerbed;
+      elsif Landuse = "railway" then
+         return Mat_Ballast;
+      elsif Tag (Tags, "railway") = "platform" then
+         return Mat_Square;
       elsif One_Of (Landuse, "grass|meadow|village_green|recreation_ground|greenfield|orchard")
         or else Natural_V = "grassland" or else Leisure = "pitch"
       then
@@ -1137,7 +1162,22 @@ package body World_Builder is
       R     : Ring;
    begin
       for W of Model_Ref.Ways loop
-         if Has (W.Tags, "highway") and then Tag (W.Tags, "area") /= "yes"
+         if One_Of (Tag (W.Tags, "railway"), "rail|light_rail|tram") then
+            if not (Has (W.Tags, "tunnel") and then Tag (W.Tags, "tunnel") /= "no")
+              and then Ids_To_Ring (W.Refs, R)
+            then
+               Tracks.Append
+                 ((Pts => R, Tram => Tag (W.Tags, "railway") = "tram",
+                   Bridge => Has (W.Tags, "bridge") and then Tag (W.Tags, "bridge") /= "no"));
+            end if;
+         elsif Tag (W.Tags, "railway") = "platform" and then not Is_Closed (W.Refs) then
+            if Ids_To_Ring (W.Refs, R) then
+               Lines.Append
+                 ((Pts => R, Ids => Id_Lists.Empty_Vector, Width => 5.0, Group => Path, Mat => Mat_Square,
+                   Curb => False, Bridge => False, Drive => False, Oneway => 0, Lanes => 0,
+                   others => <>));
+            end if;
+         elsif Has (W.Tags, "highway") and then Tag (W.Tags, "area") /= "yes"
            and then not Has (W.Tags, "building")
          then
             Classify_Highway (W);
@@ -4494,6 +4534,56 @@ package body World_Builder is
       end loop;
    end Emit_Bridges;
 
+   --  Below the streets (a street crosses over), unless on a bridge; a
+   --  tram's rails lie on top of the street they run in
+   procedure Emit_Tracks is
+      Half : constant Long_Float := 1.7;   --  the bed
+      Over : constant Long_Float := 0.15;  --  so that bends don't leave a gap
+      Count : Natural := 0;
+   begin
+      for T of Tracks loop
+         declare
+            S : Long_Float := 0.0;
+            G : constant Group_Id := (if T.Tram then Mark elsif T.Bridge then Deck else Curb);
+            H : constant Long_Float := (if T.Tram then 1.0 else Half);
+            M : constant Long_Float := (if T.Tram then Mat_Tram_Rails else Mat_Ballast);
+         begin
+            for I in T.Pts.First_Index .. T.Pts.Last_Index - 1 loop
+               declare
+                  A : constant P2 := T.Pts (I);
+                  B : constant P2 := T.Pts (I + 1);
+                  L : constant Long_Float := Sqrt ((B.X - A.X) ** 2 + (B.Z - A.Z) ** 2);
+               begin
+                  if L > 0.01 then
+                     declare
+                        DX : constant Long_Float := (B.X - A.X) / L;
+                        DZ : constant Long_Float := (B.Z - A.Z) / L;
+                        AX : constant Long_Float := A.X - DX * Over;
+                        AZ : constant Long_Float := A.Z - DZ * Over;
+                        BX : constant Long_Float := B.X + DX * Over;
+                        BZ : constant Long_Float := B.Z + DZ * Over;
+                        --  (seed: not 0, and no vertex shared with the next piece)
+                        Seed : constant Long_Float := 1.0 + Long_Float (Count mod 1000);
+                     begin
+                        Track_From := A;
+                        Track_Dir := (DX, DZ);
+                        Track_S := S;
+                        Along_Track := True;
+                        Ground_Tri (G, M, Seed, (AX + DZ * H, AZ - DX * H), (BX + DZ * H, BZ - DX * H),
+                                    (BX - DZ * H, BZ + DX * H));
+                        Ground_Tri (G, M, Seed, (AX + DZ * H, AZ - DX * H), (BX - DZ * H, BZ + DX * H),
+                                    (AX - DZ * H, AZ + DX * H));
+                        Along_Track := False;
+                        Count := Count + 1;
+                        S := S + L;
+                     end;
+                  end if;
+               end;
+            end loop;
+         end;
+      end loop;
+   end Emit_Tracks;
+
    procedure Ribbon (Pts : Ring; Width : Long_Float; G : Group_Id;
                      Mat : Long_Float; Y : Long_Float := 0.0)
    is
@@ -5394,6 +5484,7 @@ package body World_Builder is
             end if;
          end;
       end loop;
+      Emit_Tracks;
       Emit_Bridges;
       for L of Lines loop
          Emit_Markings (L);

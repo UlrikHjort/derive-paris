@@ -58,6 +58,10 @@ procedure Osm2tiles is
    begin
       Ada.Text_IO.Put_Line ("Reading " & Name);
       Osm_Model.Load (Name, M);
+      --  the railways are a file of their own, for the whole city
+      if Ada.Directories.Exists ("data/osm/rail.osm") then
+         Osm_Model.Load ("data/osm/rail.osm", M);
+      end if;
       Ada.Text_IO.Put_Line
         ("Nodes:" & M.Nodes.Length'Image & "  ways:" & M.Ways.Length'Image
          & "  relations:" & M.Rels.Length'Image);

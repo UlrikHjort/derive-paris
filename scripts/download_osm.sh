@@ -22,7 +22,7 @@ fi
 OUT=$1
 BBOX="$2,$3,$4,$5"
 DIR=$(dirname "$0")/..
-QUERY_TEMPLATE=$DIR/data/query.overpassql
+QUERY_TEMPLATE=${QUERY_TEMPLATE:-$DIR/data/query.overpassql}
 SERVERS="https://overpass-api.de/api/interpreter https://overpass.kumi.systems/api/interpreter"
 AGENT="derive-game/$VERSION (OpenStreetMap city game)"
 

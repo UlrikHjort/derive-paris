@@ -55,7 +55,9 @@ missing () {
     done
 }
 
-# 1. Download, in two rounds
+# 1. Download, in two rounds; and the railways, once (the city is fine without)
+./scripts/download_rail.sh 48.8150 2.2240 48.9030 2.4700 \
+    || echo "The railways could not be downloaded; try again later."
 download_missing
 if [ -n "$(missing)" ]; then
     echo "Retrying failed chunks in a minute..."

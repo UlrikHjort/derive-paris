@@ -264,6 +264,15 @@ their lines, in `data/metro_stations.txt`) and Enter: you ride in the car
 while the tunnel lights rush by, and come up the stairs of the entrance
 nearest that station.  Q takes you back up where you came down.
 
+### The railways
+
+The tracks are on the map too: the fans of rails running into the big stations
+and out across the city, the tram lines in their boulevards, and the platforms.
+They come from OpenStreetMap, like everything else (`data/osm/rail.osm`,
+downloaded once by `make tiles`).  If your tiles are older than this, run
+`make tiles` to see them.  For now they all lie at street level, also where the
+real line runs on a viaduct or in a cutting.
+
 ### Up in the balloon
 
 Over the Parc André-Citroën the tethered balloon goes up on its cable to

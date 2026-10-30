@@ -171,8 +171,11 @@ package body Osm_Model is
                Refs.Clear;
                State := In_Way;
             elsif Starts (Line, "</way>") then
-               M.Ways.Append ((Id, Refs, Tags));
-               M.Way_Index.Include (Id, M.Ways.Last_Index);
+               --  (a second file can hold the same way again)
+               if not M.Way_Index.Contains (Id) then
+                  M.Ways.Append ((Id, Refs, Tags));
+                  M.Way_Index.Include (Id, M.Ways.Last_Index);
+               end if;
                State := None;
             elsif Starts (Line, "<relation ") then
                Id := Osm_Id'Value (Attr (Line, "id"));
