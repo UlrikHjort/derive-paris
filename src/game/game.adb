@@ -48,6 +48,7 @@ with Car;
 with Compass;
 with Config;
 with Funicular;
+with Garden_Chairs;
 with Geo;
 with Halloween;
 with Instruments;

@@ -30,6 +30,10 @@ package Figures is
    --  A standing or walking figure (Stride: leg swing angle); Arm_Up raises
    --  the right arm (throwing)
 
+   procedure Seated (M : Math3D.Mat4; Cloth, Skin, Legs : Math3D.Vec3; Seat, Lean : Float);
+   --  In a chair: the hips at height Seat, the back leaning by Lean, the
+   --  legs stretched out to the ground
+
    procedure Cyclist (M : Math3D.Mat4; Jersey, Skin : Math3D.Vec3; Pedal : Float);
    --  A racing cyclist on his bike, pedalling
 

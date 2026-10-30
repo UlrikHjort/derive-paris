@@ -2,6 +2,8 @@
 --  Copyright (c) 2026 Ulrik Hørlyk Hjort
 --  SPDX-License-Identifier: MIT
 --
+with Ada.Numerics.Elementary_Functions;
+
 with Meshes;
 with Shaders;
 
@@ -193,6 +195,23 @@ package body Figures is
          end case;
       end if;
    end Person;
+
+   procedure Seated (M : Mat4; Cloth, Skin, Legs : Vec3; Seat, Lean : Float) is
+      Out_To : constant Float :=
+        Ada.Numerics.Elementary_Functions.Arccos (Float'Min (1.0, Seat / Hip));
+      At_Hip : constant Mat4 := M * Translation ((0.0, Seat, 0.05));
+      Body_M : constant Mat4 := At_Hip * Rotation_X (Lean) * Translation ((0.0, -Hip, 0.0));
+   begin
+      Colours (Cloth, Skin, Legs);
+      Shaders.Set (L.Model, Body_M);
+      Meshes.Draw (Torso);
+      Shaders.Set (L.Model, Body_M * Translation ((0.0, 1.42, 0.0)) * Rotation_X (0.7));
+      Meshes.Draw (Arm_R);
+      Shaders.Set (L.Model, At_Hip * Rotation_X (Out_To) * Translation ((0.0, -Hip, 0.0)));
+      Meshes.Draw (Leg_L);
+      Shaders.Set (L.Model, At_Hip * Rotation_X (Out_To + 0.06) * Translation ((0.0, -Hip, 0.0)));
+      Meshes.Draw (Leg_R);
+   end Seated;
 
    procedure Cyclist (M : Mat4; Jersey, Skin : Vec3; Pedal : Float) is
    begin
