@@ -9,7 +9,68 @@ procedure Update_Walk (Dt : Float) is
    Fwd_Z : constant Float := -Cos (Walk_Yaw);
    DX, DZ : Float := 0.0;
    Turn  : constant Float := 1.8 * Dt;
+
+   procedure Read_Keys is
+   begin
+      --  the arrows turn too, for those without a mouse
+      if Keys.Left then
+         Walk_Yaw := Walk_Yaw - Turn;
+      elsif Keys.Right then
+         Walk_Yaw := Walk_Yaw + Turn;
+      end if;
+      if Keys.Page_Up then
+         Walk_Pitch := Float'Min (1.4, Walk_Pitch + Turn);
+      elsif Keys.Page_Down then
+         Walk_Pitch := Float'Max (-1.4, Walk_Pitch - Turn);
+      end if;
+      if Keys.W or else Keys.Up then
+         DX := DX + Fwd_X;
+         DZ := DZ + Fwd_Z;
+      elsif Keys.S or else Keys.Down then
+         DX := DX - Fwd_X;
+         DZ := DZ - Fwd_Z;
+      end if;
+      if Keys.A then
+         DX := DX + Fwd_Z;
+         DZ := DZ - Fwd_X;
+      elsif Keys.D then
+         DX := DX - Fwd_Z;
+         DZ := DZ + Fwd_X;
+      end if;
+   end Read_Keys;
 begin
+   --  in the air nothing on the ground takes you in
+   if Gliding then
+      Read_Keys;
+      if Keys.A then
+         Walk_Yaw := Walk_Yaw - Turn;
+      elsif Keys.D then
+         Walk_Yaw := Walk_Yaw + Turn;
+      end if;
+      Update_Glide (Dt);
+      Traffic.Set_Walker (False, 0.0, 0.0);
+      return;
+   end if;
+   if Floating then
+      Read_Keys;
+      declare
+         Rate : constant Float := (if Keys.Shift then 24.0 else 7.0);
+         L : constant Float := Sqrt (DX * DX + DZ * DZ);
+      begin
+         if L > 0.0 then
+            Walk_X := Walk_X + DX / L * Rate * Dt;
+            Walk_Z := Walk_Z + DZ / L * Rate * Dt;
+         end if;
+         if Keys.Space then
+            Feet_Y := Feet_Y + Rate * Dt;
+         elsif Keys.Ctrl then
+            Feet_Y := Feet_Y - Rate * Dt;
+         end if;
+         Feet_Y := Float'Max (Terrain.Height (Walk_X, Walk_Z), Float'Min (Feet_Y, Terrain.Height (Walk_X, Walk_Z) + 400.0));
+      end;
+      Traffic.Set_Walker (False, 0.0, 0.0);
+      return;
+   end if;
    --  in the balloon: up on its cable and down again
    if In_Balloon then
       if Balloon.Landed then
@@ -138,51 +199,7 @@ begin
       Enter_Room (Rooms.Room_Metro);   --  down into the metro
       return;
    end if;
-   --  the arrows turn too, for those without a mouse
-   if Keys.Left then
-      Walk_Yaw := Walk_Yaw - Turn;
-   elsif Keys.Right then
-      Walk_Yaw := Walk_Yaw + Turn;
-   end if;
-   if Keys.Page_Up then
-      Walk_Pitch := Float'Min (1.4, Walk_Pitch + Turn);
-   elsif Keys.Page_Down then
-      Walk_Pitch := Float'Max (-1.4, Walk_Pitch - Turn);
-   end if;
-   if Keys.W or else Keys.Up then
-      DX := DX + Fwd_X;
-      DZ := DZ + Fwd_Z;
-   elsif Keys.S or else Keys.Down then
-      DX := DX - Fwd_X;
-      DZ := DZ - Fwd_Z;
-   end if;
-   if Keys.A then
-      DX := DX + Fwd_Z;
-      DZ := DZ - Fwd_X;
-   elsif Keys.D then
-      DX := DX - Fwd_Z;
-      DZ := DZ + Fwd_X;
-   end if;
-   --  floating: through everything, up and down too
-   if Floating then
-      declare
-         Rate : constant Float := (if Keys.Shift then 24.0 else 7.0);
-         L : constant Float := Sqrt (DX * DX + DZ * DZ);
-      begin
-         if L > 0.0 then
-            Walk_X := Walk_X + DX / L * Rate * Dt;
-            Walk_Z := Walk_Z + DZ / L * Rate * Dt;
-         end if;
-         if Keys.Space then
-            Feet_Y := Feet_Y + Rate * Dt;
-         elsif Keys.Ctrl then
-            Feet_Y := Feet_Y - Rate * Dt;
-         end if;
-         Feet_Y := Float'Max (Terrain.Height (Walk_X, Walk_Z), Float'Min (Feet_Y, Terrain.Height (Walk_X, Walk_Z) + 400.0));
-      end;
-      Traffic.Set_Walker (False, 0.0, 0.0);
-      return;
-   end if;
+   Read_Keys;
    if DX /= 0.0 or else DZ /= 0.0 then
       declare
          L : constant Float := Sqrt (DX * DX + DZ * DZ);

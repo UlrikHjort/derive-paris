@@ -377,6 +377,11 @@ package body Game is
    Floating : Boolean := False;
    On_Roof  : Boolean := False;
    Feet_Y   : Float := 0.0;
+   --  Off the top of the tower: falling, then under a canopy
+   Gliding   : Boolean := False;
+   Glide_T   : Float := 0.0;
+   Glide_V   : Vec3 := (0.0, 0.0, 0.0);
+   Glide_Open : constant := 2.6;   --  seconds before it opens
    In_Balloon   : Boolean := False;  --  in the balloon's gondola over the Parc André-Citroën
    Cabin_Floor  : Float := 0.0;
    Boat_Deck  : Float := 0.0;
@@ -874,7 +879,7 @@ package body Game is
                 elsif On_Arc then Arc_Top.Roof_Y
                 elsif On_Boat then Boat_Deck
                 elsif On_Funicular or else In_Balloon then Cabin_Floor
-                elsif Floating or else On_Roof then Feet_Y
+                elsif Floating or else On_Roof or else Gliding then Feet_Y
                 else Terrain.Height (Walk_X, Walk_Z))
                + 1.65 + 0.03 * abs Sin (Walk_Step), Walk_Z));
 
@@ -957,7 +962,7 @@ package body Game is
             Amb_Sky := Amb_Sky + F * Vec3'(0.45, 0.47, 0.6);
          end if;
       end;
-      Fog_Density := Fog_Base * (if Visiting or else On_Tower or else On_Arc then 0.4 else 1.0) * (1.0 + 2.5 * Rain_Amount + 3.5 * Snow_Amount);
+      Fog_Density := Fog_Base * (if Visiting or else On_Tower or else On_Arc or else Gliding then 0.4 else 1.0) * (1.0 + 2.5 * Rain_Amount + 3.5 * Snow_Amount);
    end Compute_Lighting;
 
    function Light_View_Proj return Mat4 is
@@ -1225,6 +1230,8 @@ package body Game is
    procedure Go_Home_Now;
    procedure Save_Home_Here;
    procedure Toggle_Float;
+   procedure Off_The_Top;
+   procedure Update_Glide (Dt : Float);
    --  (below, after Teleport)
 
    procedure Teleport (P : Place) is
@@ -3155,9 +3162,99 @@ package body Game is
       Refresh_Search;
    end Search_Key;
 
+   procedure Off_The_Top is
+      TX, TZ : Float;
+   begin
+      Tower.Centre (TX, TZ);
+      declare
+         DX : constant Float := Walk_X - TX;
+         DZ : constant Float := Walk_Z - TZ;
+         D  : constant Float := Float'Max (0.1, Sqrt (DX * DX + DZ * DZ));
+      begin
+         --  a run and a leap, out from the tower
+         Glide_V := (8.0 * DX / D, 1.5, 8.0 * DZ / D);
+      end;
+      Feet_Y := Tower.Top_Floor_Y;
+      On_Tower := False;
+      Gliding := True;
+      Glide_T := 0.0;
+      Walk_Pitch := -0.7;
+      Say ("Bon vol !", 2.0);
+   end Off_The_Top;
+
+   procedure Update_Glide (Dt : Float) is
+      Was : constant Float := Glide_T;
+   begin
+      Glide_T := Glide_T + Dt;
+      if Was < Glide_Open and then Glide_T >= Glide_Open then
+         Sound.Effect (Sound.Canopy, 1.0, 0.0);
+      end if;
+      if Glide_T < Glide_Open then
+         Glide_V.Y := Float'Max (-45.0, Glide_V.Y - 9.81 * Dt);
+      else
+         --  under the canopy: where you look; W is faster and down, S brakes
+         declare
+            Fast : constant Boolean := Keys.W or else Keys.Up;
+            Slow : constant Boolean := Keys.S or else Keys.Down;
+            Run  : constant Float := (if Fast then 13.0 elsif Slow then 3.0 else 8.0);
+            Sink : constant Float := (if Fast then 6.5 elsif Slow then 2.5 else 4.0);
+            Rate : constant Float := Float'Min (1.0, 1.2 * Dt);
+         begin
+            Glide_V.X := Glide_V.X + (Run * Sin (Walk_Yaw) - Glide_V.X) * Rate;
+            Glide_V.Z := Glide_V.Z + (-Run * Cos (Walk_Yaw) - Glide_V.Z) * Rate;
+            Glide_V.Y := Glide_V.Y + (-Sink - Glide_V.Y) * Float'Min (1.0, 2.0 * Dt);
+         end;
+      end if;
+      Walk_X := Walk_X + Glide_V.X * Dt;
+      Walk_Z := Walk_Z + Glide_V.Z * Dt;
+      Feet_Y := Feet_Y + Glide_V.Y * Dt;
+      declare
+         G : constant Float := Terrain.Height (Walk_X, Walk_Z);
+         Wet : constant Boolean := River.In_Channel (Walk_X, Walk_Z);
+         R : constant Float :=
+           (if Feet_Y < G + 80.0 and then not Wet then World.Roof_Below (Walk_X, Walk_Z, Feet_Y) else -1.0E9);
+      begin
+         if Wet and then Feet_Y <= G - River.Depth then
+            --  in the Seine: out on the nearest quay, wet through
+            declare
+               Found : Boolean;
+               X, Z, H : Float;
+            begin
+               Road_Network.Nearest_Road (Walk_X, Walk_Z, Found, X, Z, H);
+               if Found then
+                  Walk_X := X;
+                  Walk_Z := Z;
+               end if;
+            end;
+            Sound.Effect (Sound.Thud, 1.0, 0.0);
+            Gliding := False;
+            On_Roof := False;
+            Walk_Pitch := 0.0;
+            World.Set_Radius (3);
+            Say ("Plouf !  Hauled out onto the quay", 4.0);
+         elsif not Wet and then R > G + 2.0 and then Feet_Y <= R then
+            Gliding := False;
+            On_Roof := True;
+            Feet_Y := R;
+            Walk_Pitch := 0.0;
+            World.Set_Radius (3);
+            Say ("On a roof!  Q: back to the car", 4.0);
+         elsif not Wet and then Feet_Y <= G then
+            Gliding := False;
+            On_Roof := False;
+            Walk_Pitch := 0.0;
+            World.Set_Radius (3);
+            Say ("Bien atterri !", 3.0);
+         end if;
+      end;
+      Extras.Set_Canopy
+        (Gliding and then Glide_T >= Glide_Open, (Walk_X, Feet_Y, Walk_Z), Walk_Yaw,
+         Float'Min (1.0, (Glide_T - Glide_Open) * 1.6));
+   end Update_Glide;
+
    procedure Toggle_Float is
    begin
-      if not Walking or else In_Museum or else In_Hall_B or else In_Room or else On_Tower
+      if not Walking or else Gliding or else In_Museum or else In_Hall_B or else In_Room or else On_Tower
         or else On_Arc or else On_Boat or else On_Funicular or else In_Balloon
       then
          return;

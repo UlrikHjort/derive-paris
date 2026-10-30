@@ -162,7 +162,9 @@ begin
             Street_Timer := 1.0;
          end if;
       when 16#66# =>                                       --  f
-         if Down and then not Visiting then
+         if Down and then Walking and then On_Tower then
+            Off_The_Top;
+         elsif Down and then not Visiting and then not Gliding then
             Toggle_Flight;
          end if;
       when 16#6B# =>                                       --  k

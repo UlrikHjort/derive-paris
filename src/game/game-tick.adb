@@ -91,6 +91,26 @@ begin
       Walk_Z := Walk_Z - Cos (Walk_Yaw) * Float'Value (Env ("PARIS_FLOAT_LAND"));
       Toggle_Float;
    end if;
+   --  PARIS_TOWER and PARIS_LEAP=pitch: off the top, looking up by that (testing)
+   if Ready and then Frame_Number = 60 and then Env ("PARIS_LEAP") /= "" then
+      Off_The_Top;
+      Walk_Pitch := Float'Value (Env ("PARIS_LEAP")) * Ada.Numerics.Pi / 180.0;
+      --  PARIS_LEAP_OVER="lat lon": over that place instead, from 70 m
+      if Env ("PARIS_LEAP_OVER") /= "" then
+         declare
+            T : constant String := Env ("PARIS_LEAP_OVER");
+            Gap : constant Natural := Ada.Strings.Fixed.Index (T, " ");
+            X, Z : Long_Float;
+         begin
+            Geo.To_Local (Long_Float'Value (T (T'First .. Gap - 1)), Long_Float'Value (T (Gap + 1 .. T'Last)), X, Z);
+            Walk_X := Float (X);
+            Walk_Z := Float (Z);
+            Feet_Y := Terrain.Height (Walk_X, Walk_Z) + 70.0;
+            Glide_V := (0.0, 0.0, 0.0);
+            Glide_T := Glide_Open;
+         end;
+      end if;
+   end if;
    --  PARIS_ARC=yaw: on the roof of the Arc de Triomphe (testing)
    if Ready and then Frame_Number = 30 and then Env ("PARIS_ARC") /= "" then
       if not Walking then
@@ -514,6 +534,13 @@ begin
          if not Walking then
             Floating := False;
             On_Roof := False;
+            if Gliding then
+               Gliding := False;
+               World.Set_Radius (3);
+            end if;
+         end if;
+         if not Gliding then
+            Extras.Set_Canopy (False, Vec3'(0.0, 0.0, 0.0), 0.0, 0.0);
          end if;
          if Visiting or else Walking then
             if Visiting then

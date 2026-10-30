@@ -296,12 +296,32 @@ package body Extras is
       end if;
    end Update;
 
+   Own_On   : Boolean := False;
+   Own_Feet : Vec3 := (0.0, 0.0, 0.0);
+   Own_Yaw, Own_Open : Float := 0.0;
+
+   procedure Set_Canopy (On : Boolean; Feet : Vec3; Yaw, Open : Float) is
+   begin
+      Own_On := On;
+      Own_Feet := Feet;
+      Own_Yaw := Yaw;
+      Own_Open := Open;
+   end Set_Canopy;
+
    procedure Draw (Model, Paint, Skin, Legs : GL.GLint; Cam : Vec3) is
       Skins : constant array (0 .. 3) of Vec3 :=
         ((0.86, 0.68, 0.56), (0.76, 0.57, 0.44), (0.58, 0.40, 0.29), (0.40, 0.27, 0.19));
    begin
       if not Built then
          Build;
+      end if;
+      if Own_On then
+         Shaders.Set (Paint, Vec3'(1.0, 0.12, 0.05));
+         Shaders.Set (Model, Translation (Own_Feet) * Rotation_Y (-Own_Yaw)
+                             * Translation ((0.0, Harness_Y, 0.0))
+                             * Scale (Canopy_Size * Float'Max (0.05, Own_Open))
+                             * Translation ((0.0, -Harness_Y, 0.0)));
+         Meshes.Draw (Canopy_M);
       end if;
       --  the boats and the children
       if Day and then Boats_Set and then (Cam.X - Pond_C.X) ** 2 + (Cam.Z - Pond_C.Z) ** 2 < 250.0 ** 2 then
@@ -351,7 +371,7 @@ package body Extras is
             Shaders.Set (Paint, Para.Canopy);
             case Para.Phase is
                when Floating =>
-                  Shaders.Set (Model, Translation (Para.P) * Rotation_Y (-Yaw + Pi / 2.0)
+                  Shaders.Set (Model, Translation (Para.P) * Rotation_Y (-Yaw)
                                       * Translation ((0.0, Harness_Y, 0.0))
                                       * Scale (Canopy_Size * Float'Min (1.0, 0.2 + Para.T * 1.5))
                                       * Translation ((0.0, -Harness_Y, 0.0)));
@@ -370,7 +390,7 @@ package body Extras is
                      M (10) := Wide;
                      Shaders.Set (Model, Translation (Para.P) * Rotation_Y (-Yaw)
                                          * Translation ((0.0, 0.02, 1.0 + 7.0 * Sunk * (1.0 - Drawn)))
-                                         * Rotation_Y (Pi / 2.0) * M);
+                                         * M);
                      Meshes.Draw (Canopy_M);
                   end;
                when Walking_Off =>

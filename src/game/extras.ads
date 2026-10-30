@@ -14,6 +14,9 @@ package Extras is
 
    procedure Update (Dt, Hour, Night : Float; Near : Math3D.Vec3);
 
+   procedure Set_Canopy (On : Boolean; Feet : Math3D.Vec3; Yaw, Open : Float);
+   --  One more canopy, over someone's head (Open: 0 .. 1)
+
    procedure Draw (Model, Paint, Skin, Legs : GL.GLint; Cam : Math3D.Vec3);
 
 end Extras;
