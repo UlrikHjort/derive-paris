@@ -351,31 +351,44 @@ package body World_Builder is
       N_Out := NA;
    end Clip_Rect;
 
-   --  The railway's cutting, north of the Gare du Nord (an experiment, for
-   --  this one station): down from the station's level, and up again at the
-   --  far end, by latitude.  The streets' bridges pass over it.
-   Cut_Relation : constant := 9826280;
-   Cut_Depth : constant := 6.0;
-   Cut_S0 : constant := 48.8820;   --  level here, going north
-   Cut_S1 : constant := 48.8840;   --  all the way down
-   Cut_N1 : constant := 48.8960;   --  and coming up
-   Cut_N0 : constant := 48.8985;   --  level again
+   --  The railways' cuttings, out of the big stations: each is the railway
+   --  land of one OSM relation, sunk between latitudes: level at S0, going
+   --  north all the way down by S1, coming up from N1, level again at N0.
+   --  The streets' bridges pass over it.
+   type Cut_Kind is record
+      Relation : Osm_Id;
+      S0, S1, N1, N0, Depth : Long_Float;
+   end record;
+   Cuts : constant array (1 .. 2) of Cut_Kind :=
+     ((9826280,  48.8820, 48.8840, 48.9000, 48.9012, 6.0),   --  the Gare du Nord
+      (10152078, 48.8776, 48.8795, 48.8910, 48.8935, 6.0));  --  the Gare de l'Est
 
-   function Cut_Here (X, Z : Long_Float) return Long_Float is
+   function Depth_At (C : Natural; X, Z : Long_Float) return Long_Float is
       Lat, Lon : Long_Float;
       function Ease (T : Long_Float) return Long_Float is
         (T * T * (3.0 - 2.0 * T));
    begin
-      Geo.To_Lat_Lon (X, Z, Lat, Lon);
-      if Lat <= Cut_S0 or else Lat >= Cut_N0 then
+      if C = 0 then
          return 0.0;
-      elsif Lat < Cut_S1 then
-         return Cut_Depth * Ease ((Lat - Cut_S0) / (Cut_S1 - Cut_S0));
-      elsif Lat > Cut_N1 then
-         return Cut_Depth * Ease ((Cut_N0 - Lat) / (Cut_N0 - Cut_N1));
       end if;
-      return Cut_Depth;
-   end Cut_Here;
+      Geo.To_Lat_Lon (X, Z, Lat, Lon);
+      if Lat <= Cuts (C).S0 or else Lat >= Cuts (C).N0 then
+         return 0.0;
+      elsif Lat < Cuts (C).S1 then
+         return Cuts (C).Depth * Ease ((Lat - Cuts (C).S0) / (Cuts (C).S1 - Cuts (C).S0));
+      elsif Lat > Cuts (C).N1 then
+         return Cuts (C).Depth * Ease ((Cuts (C).N0 - Lat) / (Cuts (C).N0 - Cuts (C).N1));
+      end if;
+      return Cuts (C).Depth;
+   end Depth_At;
+
+   Current_Cut : Natural := 0;
+
+   function Cut_Here (X, Z : Long_Float) return Long_Float is (Depth_At (Current_Cut, X, Z));
+
+   --  Ground_Tri keeps to these (the part of a railway land that is sunk)
+   Clip_Z0 : Long_Float := Long_Float'First;
+   Clip_Z1 : Long_Float := Long_Float'Last;
 
    Sunk : Boolean := False;   --  Ground_Tri: this lies down in the cutting
 
@@ -442,8 +455,8 @@ package body World_Builder is
               (Input, 3,
                Long_Float'Max (DX0, Long_Float (TX) * Geo.Tile_Size),
                Long_Float'Min (DX1, Long_Float (TX + 1) * Geo.Tile_Size),
-               Long_Float'Max (DZ0, Long_Float (TZ) * Geo.Tile_Size),
-               Long_Float'Min (DZ1, Long_Float (TZ + 1) * Geo.Tile_Size),
+               Long_Float'Max (Clip_Z0, Long_Float'Max (DZ0, Long_Float (TZ) * Geo.Tile_Size)),
+               Long_Float'Min (Clip_Z1, Long_Float'Min (DZ1, Long_Float (TZ + 1) * Geo.Tile_Size)),
                Clipped, N);
             if N >= 3 then
                declare
@@ -916,6 +929,8 @@ package body World_Builder is
    Lines        : Line_Vectors.Vector;
    River_Polys  : Poly_Vectors.Vector;
    Cut_Polys    : Poly_Vectors.Vector;
+   package Cut_Vectors is new Ada.Containers.Vectors (Natural, Positive);
+   Cut_Of       : Cut_Vectors.Vector;   --  which of Cuts each one belongs to
    Bridge_Polys : Poly_Vectors.Vector;
    Marina_Polys : Poly_Vectors.Vector;   --  the river ports: lower quays
 
@@ -996,10 +1011,15 @@ package body World_Builder is
             end loop;
          end if;
          Mat := Area_Material (Tags);
-         if Id = Cut_Relation then
+         if (for some C of Cuts => C.Relation = Id) then
             for P of Polys loop
                if Touches_Data (P.Outer) then
                   Cut_Polys.Append (P);
+                  for K in Cuts'Range loop
+                     if Cuts (K).Relation = Id then
+                        Cut_Of.Append (K);
+                     end if;
+                  end loop;
                end if;
             end loop;
          elsif Mat = Mat_Water
@@ -1323,19 +1343,39 @@ package body World_Builder is
    package Box_Vectors is new Ada.Containers.Vectors (Natural, Box);
    River_Boxes : Box_Vectors.Vector;
 
-   function In_Cut (P : P2) return Boolean is
+   --  Which cutting P lies down in (0: none)
+   type Cut_Step_List is array (1 .. 5) of Long_Float;
+   Cut_Steps : constant Cut_Step_List := (0.1, 0.3, 0.5, 0.7, 0.9);
+
+   function Cut_At (P : P2) return Natural is
    begin
-      for C of Cut_Polys loop
-         if Point_In_Poly (P, C) then
-            return True;
+      for I in Cut_Polys.First_Index .. Cut_Polys.Last_Index loop
+         if Depth_At (Cut_Of (I), P.X, P.Z) > 0.05 and then Point_In_Poly (P, Cut_Polys (I)) then
+            return Cut_Of (I);
          end if;
       end loop;
-      return False;
-   end In_Cut;
+      return 0;
+   end Cut_At;
+
+   function In_Cut (P : P2) return Boolean is (Cut_At (P) /= 0);
 
    --  A street's bridge over the cutting has its pavements with it: what
    --  stands by the road has something to stand on
    Cut_Pavement : constant := 3.5;
+
+   function Crosses_Cut (L : Line_Feature) return Boolean is
+      function Mid (A, B : P2; F : Long_Float) return P2 is
+        ((A.X + F * (B.X - A.X), A.Z + F * (B.Z - A.Z)));
+   begin
+      for I in L.Pts.First_Index .. L.Pts.Last_Index - 1 loop
+         for F of Cut_Steps loop
+            if In_Cut (Mid (L.Pts (I), L.Pts (I + 1), F)) then
+               return True;
+            end if;
+         end loop;
+      end loop;
+      return False;
+   end Crosses_Cut;
 
    function Line_In_Cut (L : Line_Feature) return Boolean is
    begin
@@ -4530,7 +4570,7 @@ package body World_Builder is
 
    --  The cutting: its floor down there, and the streets' level only claims
    --  its pixels, like the river's; retaining walls with a parapet round it
-   procedure Emit_Cut (Pl : Poly) is
+   procedure Emit_Cut (Pl : Poly; Which : Positive) is
       Pts  : Earcut.Point_Array (0 .. Point_Count (Pl) - 1);
       Tris : Earcut.Index_Vectors.Vector;
       function P (K : Natural) return P2 is
@@ -4563,10 +4603,10 @@ package body World_Builder is
                               T : Tile_Builder renames Tile_At (M).all;
                            begin
                               Solid_Quad (T, (S.X, -DS, S.Z), (E.X, -DE, E.Z), (E.X, 0.0, E.Z), (S.X, 0.0, S.Z),
-                                          (-Land.X, 0.0, -Land.Z), 0.0, Part, -Cut_Depth, 0.0, Mat_Quay, 0.3);
+                                          (-Land.X, 0.0, -Land.Z), 0.0, Part, -Cuts (Which).Depth, 0.0, Mat_Quay, 0.3);
                               if not Road_Crosses (M) then
                                  Prism (T, Strip (S, E, Land, 0.0, 0.4), 0.0, 0.95, Mat_Quay, 0.3);
-                                 Add_Edge (S, E, -Cut_Depth, 0.95);
+                                 Add_Edge (S, E, -Cuts (Which).Depth, 0.95);
                               end if;
                            end;
                         end if;
@@ -4577,17 +4617,32 @@ package body World_Builder is
          end loop;
       end Wall;
    begin
+      Current_Cut := Which;
       Triangulate (Pl, Pts, Tris);
-      for K in 0 .. Natural (Tris.Length) / 3 - 1 loop
-         Ground_Tri (Hole, Mat_Water, 0.0, P (3 * K), P (3 * K + 1), P (3 * K + 2));
-         Sunk := True;
-         Ground_Tri (Solid, Mat_Ballast, 0.0, P (3 * K), P (3 * K + 1), P (3 * K + 2));
-         Sunk := False;
-      end loop;
+      declare
+         XN, ZN, XS, ZS : Long_Float;
+      begin
+         Geo.To_Local (Cuts (Which).N0, 2.35, XN, ZN);
+         Geo.To_Local (Cuts (Which).S0, 2.35, XS, ZS);
+         for K in 0 .. Natural (Tris.Length) / 3 - 1 loop
+            --  all of it is railway land, and this stretch of it is sunk
+            Ground_Tri (Area, Mat_Ballast, 0.0, P (3 * K), P (3 * K + 1), P (3 * K + 2));
+            Clip_Z0 := ZN;
+            Clip_Z1 := ZS;
+            Ground_Tri (Hole, Mat_Water, 0.0, P (3 * K), P (3 * K + 1), P (3 * K + 2));
+            Sunk := True;
+            --  (a seed of its own: no vertex shared with the land up above)
+            Ground_Tri (Solid, Mat_Ballast, 0.25, P (3 * K), P (3 * K + 1), P (3 * K + 2));
+            Sunk := False;
+            Clip_Z0 := Long_Float'First;
+            Clip_Z1 := Long_Float'Last;
+         end loop;
+      end;
       Wall (Pl.Outer);
       for H of Pl.Holes loop
          Wall (H);
       end loop;
+      Current_Cut := 0;
    end Emit_Cut;
 
    --  Side of a bridge deck over the water: fascia below, parapet above
@@ -4699,14 +4754,14 @@ package body World_Builder is
                            or else In_River (0.25 * A + 0.75 * B));
                         --  (over water it needs a bridge, tagged so or not)
                         G0 : constant Group_Id := (if Wet then Deck else G1);
-                        Down : constant Boolean :=
-                          G0 = Curb and then In_Cut (0.5 * (A + B))
-                          and then Cut_Here ((A.X + B.X) / 2.0, (A.Z + B.Z) / 2.0) > 0.0;
+                        Which : constant Natural := (if G0 = Curb then Cut_At (0.5 * (A + B)) else 0);
+                        Down : constant Boolean := Which /= 0;
                         G : constant Group_Id := (if Down then Solid else G0);
                         Y : constant Long_Float :=
                           (if Down then 0.06 + 0.004 * Long_Float (Count mod 12) else 0.0);
                      begin
                         Sunk := Down;
+                        Current_Cut := Which;
                         Track_From := A;
                         Track_Dir := (DX, DZ);
                         Track_S := S;
@@ -4717,6 +4772,7 @@ package body World_Builder is
                                     (AX - DZ * H, AZ + DX * H), Y);
                         Along_Track := False;
                         Sunk := False;
+                        Current_Cut := 0;
                         if Wet then
                            declare
                               Left : constant P2 := (-1.0) * Edge_Out (A, B);
@@ -5619,11 +5675,17 @@ package body World_Builder is
          Emit_Rim (B);
       end loop;
       Emit_Low_Quays;
-      for C of Cut_Polys loop
-         Emit_Cut (C);
+      for I in Cut_Polys.First_Index .. Cut_Polys.Last_Index loop
+         Emit_Cut (Cut_Polys (I), Cut_Of (I));
       end loop;
       Ada.Text_IO.Put_Line ("  river done");
 
+      --  a real street across a cutting has a bridge, tagged so or not
+      for L of Lines loop
+         if L.Drive and then not L.Low and then not L.Bridge and then Crosses_Cut (L) then
+            L.Bridge := True;
+         end if;
+      end loop;
       for L of Lines loop
          declare
             G : constant Group_Id := (if L.Bridge then Deck else L.Group);

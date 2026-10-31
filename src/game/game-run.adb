@@ -78,6 +78,11 @@ begin
 
    Gtk.Window.Gtk_New (Window);
    Window.Set_Title ("Dérive");
+   --  a test run (PARIS_SHOT) leaves the keyboard to whoever is typing
+   if Env ("PARIS_SHOT") /= "" then
+      Window.Set_Accept_Focus (False);
+      Window.Set_Focus_On_Map (False);
+   end if;
    Window.Set_Default_Size (1600, 900);
    Window.On_Destroy (On_Destroy'Access);
    Window.On_Key_Press_Event (Key_Press'Access);
