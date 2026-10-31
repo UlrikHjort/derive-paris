@@ -169,6 +169,7 @@ smaller or larger one.
 | C | chase or drone camera |
 | mouse wheel, + / - | zoom |
 | F | take off in a plane / land and drive again |
+| Tab | in the plane: autopilot to the GPS's destination, then circling over it (any flight key takes over) |
 | W / S, arrows (in the air) | throttle, pitch (up = nose down) and bank |
 | T | one hour later |
 | P | weather: rain, thunderstorm, snow, dry again |

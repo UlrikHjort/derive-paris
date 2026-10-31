@@ -77,6 +77,7 @@ begin
           & "  left / right     bank" & LF
           & "  mouse wheel, +/-  zoom" & LF
           & "  F                land and drive" & LF
+          & "  Tab              autopilot to the GPS's destination, and circle there" & LF
           & "  R                restart the plane" & LF & LF)
      & Head ("Paris")
      & "  1 .. 0           go to Saint-Sulpice, Notre-Dame, Louvre," & LF

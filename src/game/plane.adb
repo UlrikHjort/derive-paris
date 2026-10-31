@@ -55,7 +55,9 @@ package body Plane is
       end if;
 
       --  Engine
-      if C.Throttle_Up then
+      if C.Auto then
+         Approach (S.Throttle, C.Want_Throttle, 0.5 * Dt);
+      elsif C.Throttle_Up then
          S.Throttle := Float'Min (1.0, S.Throttle + 0.5 * Dt);
       elsif C.Throttle_Down then
          S.Throttle := Float'Max (0.0, S.Throttle - 0.5 * Dt);
@@ -64,14 +66,18 @@ package body Plane is
 
       --  Stick: roll with left/right, pitch with up/down (up = nose down,
       --  like pushing a control stick); the plane levels itself gently
-      if C.Roll_Left then
+      if C.Auto then
+         Approach (S.Roll, C.Want_Roll, 1.6 * Dt);
+      elsif C.Roll_Left then
          Approach (S.Roll, -Max_Roll, 1.6 * Dt);
       elsif C.Roll_Right then
          Approach (S.Roll, Max_Roll, 1.6 * Dt);
       else
          Approach (S.Roll, 0.0, 0.9 * Dt);
       end if;
-      if C.Nose_Down then
+      if C.Auto then
+         Approach (S.Pitch, C.Want_Pitch, 0.8 * Dt);
+      elsif C.Nose_Down then
          Approach (S.Pitch, -Max_Pitch, 0.8 * Dt);
       elsif C.Nose_Up then
          Approach (S.Pitch, Max_Pitch, 0.8 * Dt);

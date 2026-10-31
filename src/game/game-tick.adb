@@ -111,6 +111,21 @@ begin
          end;
       end if;
    end if;
+   --  PARIS_AUTOPILOT="lat lon": off in the plane to there (testing)
+   if Ready and then Frame_Number = 40 and then Env ("PARIS_AUTOPILOT") /= "" then
+      declare
+         T : constant String := Env ("PARIS_AUTOPILOT");
+         Gap : constant Natural := Ada.Strings.Fixed.Index (T, " ");
+         X, Z : Long_Float;
+      begin
+         Geo.To_Local (Long_Float'Value (T (T'First .. Gap - 1)), Long_Float'Value (T (Gap + 1 .. T'Last)), X, Z);
+         Navigation.Set_Destination ("there", Float (X), Float (Z));
+         if Mode /= Flying then
+            Toggle_Flight;
+         end if;
+         Toggle_Autopilot;
+      end;
+   end if;
    --  PARIS_ARC=yaw: on the roof of the Arc de Triomphe (testing)
    if Ready and then Frame_Number = 30 and then Env ("PARIS_ARC") /= "" then
       if not Walking then
@@ -644,13 +659,39 @@ begin
                   Nose_Down     => Keys.Up,
                   Nose_Up       => Keys.Down,
                   Roll_Left     => Keys.Left or else Keys.A,
-                  Roll_Right    => Keys.Right or else Keys.D);
+                  Roll_Right    => Keys.Right or else Keys.D,
+                  others        => <>);
             begin
+               --  any flight key takes over
+               if Auto_On and then
+                 (Keys.W or else Keys.S or else Keys.Up or else Keys.Down or else Keys.Left
+                  or else Keys.Right or else Keys.A or else Keys.D)
+               then
+                  Toggle_Autopilot;
+               end if;
+               if Auto_On and then not Auto_There
+                 and then (Aircraft.Pos.X - Auto_X) ** 2 + (Aircraft.Pos.Z - Auto_Z) ** 2 < 500.0 ** 2
+               then
+                  Auto_There := True;
+                  Announce := Ada.Strings.Unbounded.To_Unbounded_String
+                    ("Over " & Ada.Strings.Unbounded.To_String (Auto_Name) & ": circling (any flight key takes over)");
+                  Announce_Timer := 5.0;
+                  Street_Timer := 1.0;
+               end if;
+               --  PARIS_AUTOPILOT=1: how it goes, on the terminal (testing)
+               if Auto_On and then Env ("PARIS_AUTOPILOT") /= "" and then Frame_Number mod 150 = 0 then
+                  Ada.Text_IO.Put_Line
+                    ("auto d" & Integer'Image (Integer (Sqrt ((Aircraft.Pos.X - Auto_X) ** 2 + (Aircraft.Pos.Z - Auto_Z) ** 2)))
+                     & " y" & Integer'Image (Integer (Aircraft.Pos.Y))
+                     & " v" & Integer'Image (Integer (Aircraft.Speed))
+                     & " roll" & Integer'Image (Integer (Aircraft.Roll * 57.3))
+                     & " crash" & Integer'Image (Integer (Aircraft.Crashed * 10.0)));
+               end if;
                for I in 1 .. Steps loop
                   declare
                      Before : constant Vec3 := Aircraft.Pos;
                   begin
-                     Plane.Update (Aircraft, Input, Dt / Float (Steps));
+                     Plane.Update (Aircraft, (if Auto_On then Auto_Controls else Input), Dt / Float (Steps));
                      Stunts.Update (Before, Aircraft.Pos, Flying => Aircraft.Crashed <= 0.0);
                   end;
                end loop;
@@ -786,7 +827,8 @@ begin
             elsif Aircraft.Crashed > 0.0 then
               " CRASH!   "
             else
-              Integer'Image (Integer (Aircraft.Speed * 3.6)) & " km/h"
+              (if Auto_On then " AUTOPILOT " else "")
+              & Integer'Image (Integer (Aircraft.Speed * 3.6)) & " km/h"
               & Integer'Image (Integer (Aircraft.Pos.Y)) & " m  throttle"
               & Integer'Image (Integer (Aircraft.Throttle * 100.0)) & "%   ")
          & Integer'Image (Integer (Fps)) & " fps   "

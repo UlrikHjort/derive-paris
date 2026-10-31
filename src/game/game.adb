@@ -1656,8 +1656,79 @@ package body Game is
 
    --  F: take off from the car, or land: the car goes to the nearest road
    --  below the plane
+   --  The plane's autopilot (Tab): to the GPS's destination, high enough
+   --  on the way, and round and round it, until a flight key takes over
+   Auto_On, Auto_There : Boolean := False;
+   Auto_X, Auto_Z : Float := 0.0;
+   Auto_Name : Ada.Strings.Unbounded.Unbounded_String;
+
+   procedure Toggle_Autopilot is
+      Found : Boolean;
+   begin
+      if Mode /= Flying then
+         return;
+      end if;
+      if Auto_On then
+         Auto_On := False;
+         Announce := Ada.Strings.Unbounded.To_Unbounded_String ("Autopilot off");
+      else
+         Navigation.Destination (Found, Auto_X, Auto_Z);
+         if Found then
+            Auto_On := True;
+            Auto_There := False;
+            Auto_Name := Ada.Strings.Unbounded.To_Unbounded_String (Navigation.Destination_Name);
+            Announce := Ada.Strings.Unbounded.To_Unbounded_String
+              ("Autopilot: to " & Ada.Strings.Unbounded.To_String (Auto_Name) & " (any flight key takes over)");
+         else
+            Announce := Ada.Strings.Unbounded.To_Unbounded_String
+              ("Autopilot: no destination.  Choose one first (O: saved places, F3: find)");
+         end if;
+      end if;
+      Announce_Timer := 4.0;
+      Street_Timer := 1.0;
+   end Toggle_Autopilot;
+
+   function Auto_Controls return Plane.Controls is
+      use Ada.Numerics.Elementary_Functions;
+      Circle : constant Float := 350.0;
+      P : constant Vec3 := Aircraft.Pos;
+      DX : constant Float := Auto_X - P.X;
+      DZ : constant Float := Auto_Z - P.Z;
+      D  : constant Float := Float'Max (1.0, Sqrt (DX * DX + DZ * DZ));
+      Bearing : constant Float := Arctan (DX, -DZ);
+      --  far off: straight at it; nearer, more and more to the side, and at
+      --  the circle's distance along it with the middle to the right
+      Side : constant Float :=
+        Float'Max (0.0, Float'Min (1.6, 1.0 - (D - Circle) / (1.2 * Circle)));
+      Want_H : constant Float := Bearing - 0.5 * Ada.Numerics.Pi * Side;
+      Off : constant Float := Arctan (Sin (Want_H - Aircraft.Heading), Cos (Want_H - Aircraft.Heading));
+      Under : constant Float := Terrain.Height (P.X, P.Z);
+      Goal : constant Float :=
+        Float'Max (Under + 90.0,
+                   Terrain.Height (Auto_X, Auto_Z) + 140.0
+                   + 230.0 * Float'Max (0.0, Float'Min (1.0, (D - 700.0) / 700.0)));
+      Blocked : Boolean := False;
+   begin
+      --  anything tall ahead: up, whatever the plan
+      for K in 1 .. 4 loop
+         declare
+            A : constant Vec3 := P + (60.0 * Float (K)) * Plane.Forward (Aircraft);
+         begin
+            Blocked := Blocked or else World.Obstacle_At (A.X, P.Y - 15.0, A.Z, 12.0, Up_Down => 30.0)
+              or else Terrain.Height (A.X, A.Z) + 50.0 > P.Y;
+         end;
+      end loop;
+      return (Auto => True,
+              Want_Roll => Float'Max (-0.6, Float'Min (0.6, 1.3 * Off)),
+              Want_Pitch => (if Blocked then 0.5
+                             else Float'Max (-0.22, Float'Min (0.3, 0.012 * (Goal - P.Y)))),
+              Want_Throttle => (if Blocked or else D > Circle * 2.5 then 0.8 else 0.35),
+              others => False);
+   end Auto_Controls;
+
    procedure Toggle_Flight is
    begin
+      Auto_On := False;
       if Mode = Driving then
          Mode := Flying;
          Plane.Start (Aircraft, Player.X, Player.Z, Player.Heading);

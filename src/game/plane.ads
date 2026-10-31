@@ -14,6 +14,9 @@ package Plane is
       Throttle_Up, Throttle_Down : Boolean := False;
       Nose_Down, Nose_Up         : Boolean := False;
       Roll_Left, Roll_Right      : Boolean := False;
+      --  or the autopilot's hand on the stick, instead of the keys
+      Auto : Boolean := False;
+      Want_Roll, Want_Pitch, Want_Throttle : Float := 0.0;
    end record;
 
    type State is record

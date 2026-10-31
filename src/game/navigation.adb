@@ -60,6 +60,15 @@ package body Navigation is
       end if;
    end Add_Marker;
 
+   procedure Destination (Found : out Boolean; X, Z : out Float) is
+   begin
+      Found := Has_Dest;
+      X := Dest_X;
+      Z := Dest_Z;
+   end Destination;
+
+   function Destination_Name return String is (To_String (Dest_Name));
+
    procedure Set_Destination (Name : String; X, Z : Float) is
    begin
       Dest_Name := To_Unbounded_String (Name);

@@ -21,6 +21,9 @@ package Navigation is
    procedure Clear;
    function Active return Boolean;
 
+   procedure Destination (Found : out Boolean; X, Z : out Float);
+   function Destination_Name return String;
+
    procedure Update (X, Z, Heading : Float; Dt : Float; Route_Allowed : Boolean);
    --  Follow progress, re-route when off the route, update the
    --  instruction text and redraw the minimap.  Route_Allowed is False in
