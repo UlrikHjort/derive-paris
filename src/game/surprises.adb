@@ -491,7 +491,8 @@ package body Surprises is
       World.Nearest_Lights (Now.Listener.X, Now.Listener.Z, Data, N);
       Lamp_Count := N;
       for I in 0 .. N - 1 loop
-         Lamps (I + 1) := ((Data (4 * I), Data (4 * I + 1) - 0.3 + 0.14, Data (4 * I + 2)),
+         --  (at its foot: the data gives where its light is, up in the lantern)
+         Lamps (I + 1) := ((Data (4 * I), Terrain.Height (Data (4 * I), Data (4 * I + 2)) + 0.14, Data (4 * I + 2)),
                            Hash (Data (4 * I), Data (4 * I + 2)));
       end loop;
    end Refresh_Lamps;
