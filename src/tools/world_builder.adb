@@ -1135,7 +1135,9 @@ package body World_Builder is
       return 30;
    end Speed_Limit;
 
-   procedure Classify_Highway (W : Way_Rec) is
+   --  Even_Tunnel: a street that really runs under the railway, where we
+   --  have the railway in a cutting under it
+   procedure Classify_Highway (W : Way_Rec; Even_Tunnel : Boolean := False) is
       --  a way still being built (the Place Denfert-Rochereau, being made
       --  over) is drawn as what it is to become
       HW    : constant String :=
@@ -1157,7 +1159,7 @@ package body World_Builder is
       Lanes : Natural;
    begin
       if HW = "" or else Tag (W.Tags, "area") = "yes"
-        or else (Has (W.Tags, "tunnel") and then Tag (W.Tags, "tunnel") /= "no")
+        or else (Has (W.Tags, "tunnel") and then Tag (W.Tags, "tunnel") /= "no" and then not Even_Tunnel)
         or else Tag (W.Tags, "indoor") = "yes"
         or else (Tag (W.Tags, "level")'Length > 0
                  and then Tag (W.Tags, "level") (Tag (W.Tags, "level")'First) = '-')
@@ -1421,6 +1423,37 @@ package body World_Builder is
       end loop;
       return False;
    end Crosses_Cut;
+
+   --  What OSM has passing under the rails passes over them here
+   procedure Streets_Over_Cuts is
+      R : Ring;
+   begin
+      for W of Model_Ref.Ways loop
+         if Has (W.Tags, "highway") and then Tag (W.Tags, "area") /= "yes"
+           and then Has (W.Tags, "tunnel") and then Tag (W.Tags, "tunnel") /= "no"
+           and then (Ids_To_Ring (W.Refs, R) or else R.Length >= 2)
+         then
+            declare
+               Hit : Boolean := False;
+            begin
+               for I in R.First_Index .. R.Last_Index - 1 loop
+                  for F of Cut_Steps loop
+                     Hit := Hit or else In_Cut
+                       ((R (I).X + F * (R (I + 1).X - R (I).X), R (I).Z + F * (R (I + 1).Z - R (I).Z)));
+                  end loop;
+               end loop;
+               if Hit then
+                  Classify_Highway (W, Even_Tunnel => True);
+               end if;
+            end;
+         end if;
+      end loop;
+      for L of Lines loop
+         if L.Layer < 0 and then Crosses_Cut (L) then
+            L.Layer := 0;
+         end if;
+      end loop;
+   end Streets_Over_Cuts;
 
    function Line_In_Cut (L : Line_Feature) return Boolean is
    begin
@@ -5714,6 +5747,7 @@ package body World_Builder is
       Build_Sphere;
 
       Collect_Features;
+      Streets_Over_Cuts;
       Split_Home;
       Index_Buildings;
       Count_Node_Use;
