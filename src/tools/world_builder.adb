@@ -352,43 +352,87 @@ package body World_Builder is
    end Clip_Rect;
 
    --  The railways' cuttings, out of the big stations: each is the railway
-   --  land of one OSM relation, sunk between latitudes: level at S0, going
-   --  north all the way down by S1, coming up from N1, level again at N0.
-   --  The streets' bridges pass over it.
-   type Cut_Kind is record
-      Relation : Osm_Id;
-      S0, S1, N1, N0, Depth : Long_Float;
+   --  land of one OSM relation, sunk along its line: a depth at each point
+   --  of the line, and between them a smooth slope.  The streets' bridges
+   --  pass over it; it comes up to street level to cross water.
+   type Line_Point is record
+      Lat, Lon, Depth : Long_Float;
    end record;
+   type Line_Points is array (Positive range <>) of Line_Point;
+
+   Nord_Line : constant Line_Points :=
+     ((48.8820, 2.3575, 0.0), (48.8840, 2.3575, 6.0), (48.9000, 2.3575, 6.0), (48.9012, 2.3575, 0.0));
+   Est_Line : constant Line_Points :=
+     ((48.8776, 2.3598, 0.0), (48.8795, 2.3603, 6.0), (48.8843, 2.3620, 6.0), (48.8899, 2.3645, 6.0),
+      (48.8955, 2.3720, 6.0), (48.8970, 2.3785, 6.0),
+      (48.8977, 2.3815, 0.0), (48.8979, 2.3835, 0.0),   --  the Canal Saint-Denis
+      (48.8979, 2.3856, 6.0), (48.8978, 2.3990, 6.0), (48.8988, 2.4074, 6.0), (48.8985, 2.4270, 6.0),
+      (48.8981, 2.4330, 0.0), (48.8985, 2.4400, 0.0));  --  the Canal de l'Ourcq
+
+   Cut_Reach : constant := 300.0;   --  from its line: the depth fades out
+   Cut_Fade  : constant := 100.0;   --  over this much more
+
+   type Cut_Kind is record
+      Relation    : Osm_Id;
+      First, Last : Positive;
+   end record;
+   All_Points : constant Line_Points := Nord_Line & Est_Line;
    Cuts : constant array (1 .. 2) of Cut_Kind :=
-     ((9826280,  48.8820, 48.8840, 48.9000, 48.9012, 6.0),   --  the Gare du Nord
-      (10152078, 48.8776, 48.8795, 48.8910, 48.8935, 6.0));  --  the Gare de l'Est
+     ((9826280, 1, Nord_Line'Length),
+      (10152078, Nord_Line'Length + 1, Nord_Line'Length + Est_Line'Length));
 
    function Depth_At (C : Natural; X, Z : Long_Float) return Long_Float is
-      Lat, Lon : Long_Float;
       function Ease (T : Long_Float) return Long_Float is
         (T * T * (3.0 - 2.0 * T));
+      Best : Long_Float := Long_Float'Last;
+      Depth : Long_Float := 0.0;
    begin
       if C = 0 then
          return 0.0;
       end if;
-      Geo.To_Lat_Lon (X, Z, Lat, Lon);
-      if Lat <= Cuts (C).S0 or else Lat >= Cuts (C).N0 then
+      for I in Cuts (C).First .. Cuts (C).Last - 1 loop
+         declare
+            AX, AZ, BX, BZ : Long_Float;
+         begin
+            Geo.To_Local (All_Points (I).Lat, All_Points (I).Lon, AX, AZ);
+            Geo.To_Local (All_Points (I + 1).Lat, All_Points (I + 1).Lon, BX, BZ);
+            declare
+               DX : constant Long_Float := BX - AX;
+               DZ : constant Long_Float := BZ - AZ;
+               T  : constant Long_Float :=
+                 Long_Float'Max (0.0, Long_Float'Min (1.0,
+                   ((X - AX) * DX + (Z - AZ) * DZ) / (DX * DX + DZ * DZ)));
+               D  : constant Long_Float :=
+                 Sqrt ((X - AX - T * DX) ** 2 + (Z - AZ - T * DZ) ** 2);
+            begin
+               if D < Best then
+                  Best := D;
+                  Depth := All_Points (I).Depth
+                    + Ease (T) * (All_Points (I + 1).Depth - All_Points (I).Depth);
+               end if;
+            end;
+         end;
+      end loop;
+      if Best >= Cut_Reach + Cut_Fade then
          return 0.0;
-      elsif Lat < Cuts (C).S1 then
-         return Cuts (C).Depth * Ease ((Lat - Cuts (C).S0) / (Cuts (C).S1 - Cuts (C).S0));
-      elsif Lat > Cuts (C).N1 then
-         return Cuts (C).Depth * Ease ((Cuts (C).N0 - Lat) / (Cuts (C).N0 - Cuts (C).N1));
+      elsif Best > Cut_Reach then
+         return Depth * (1.0 - Ease ((Best - Cut_Reach) / Cut_Fade));
       end if;
-      return Cuts (C).Depth;
+      return Depth;
    end Depth_At;
+
+   function Deepest (C : Positive) return Long_Float is
+      D : Long_Float := 0.0;
+   begin
+      for I in Cuts (C).First .. Cuts (C).Last loop
+         D := Long_Float'Max (D, All_Points (I).Depth);
+      end loop;
+      return D;
+   end Deepest;
 
    Current_Cut : Natural := 0;
 
    function Cut_Here (X, Z : Long_Float) return Long_Float is (Depth_At (Current_Cut, X, Z));
-
-   --  Ground_Tri keeps to these (the part of a railway land that is sunk)
-   Clip_Z0 : Long_Float := Long_Float'First;
-   Clip_Z1 : Long_Float := Long_Float'Last;
 
    Sunk : Boolean := False;   --  Ground_Tri: this lies down in the cutting
 
@@ -455,8 +499,8 @@ package body World_Builder is
               (Input, 3,
                Long_Float'Max (DX0, Long_Float (TX) * Geo.Tile_Size),
                Long_Float'Min (DX1, Long_Float (TX + 1) * Geo.Tile_Size),
-               Long_Float'Max (Clip_Z0, Long_Float'Max (DZ0, Long_Float (TZ) * Geo.Tile_Size)),
-               Long_Float'Min (Clip_Z1, Long_Float'Min (DZ1, Long_Float (TZ + 1) * Geo.Tile_Size)),
+               Long_Float'Max (DZ0, Long_Float (TZ) * Geo.Tile_Size),
+               Long_Float'Min (DZ1, Long_Float (TZ + 1) * Geo.Tile_Size),
                Clipped, N);
             if N >= 3 then
                declare
@@ -1221,15 +1265,16 @@ package body World_Builder is
    begin
       for W of Model_Ref.Ways loop
          if One_Of (Tag (W.Tags, "railway"), "rail|light_rail|tram") then
+            --  (a line, not a ring: two points are enough)
             if not (Has (W.Tags, "tunnel") and then Tag (W.Tags, "tunnel") /= "no")
-              and then Ids_To_Ring (W.Refs, R)
+              and then (Ids_To_Ring (W.Refs, R) or else R.Length >= 2)
             then
                Tracks.Append
                  ((Pts => R, Tram => Tag (W.Tags, "railway") = "tram",
                    Bridge => Has (W.Tags, "bridge") and then Tag (W.Tags, "bridge") /= "no"));
             end if;
          elsif Tag (W.Tags, "railway") = "platform" and then not Is_Closed (W.Refs) then
-            if Ids_To_Ring (W.Refs, R) then
+            if Ids_To_Ring (W.Refs, R) or else R.Length >= 2 then
                Lines.Append
                  ((Pts => R, Ids => Id_Lists.Empty_Vector, Width => 5.0, Group => Path, Mat => Mat_Square,
                    Curb => False, Bridge => False, Drive => False, Oneway => 0, Lanes => 0,
@@ -4507,6 +4552,37 @@ package body World_Builder is
       end loop;
    end Emit_Rim;
 
+   --  Where a track goes over water (found once): no parapet across it
+   package P2_Vectors is new Ada.Containers.Vectors (Positive, P2);
+   Wet_Ends : P2_Vectors.Vector;
+   Wet_Done : Boolean := False;
+
+   function Wet_Piece (A, B : P2) return Boolean is
+     (In_River (0.8 * A + 0.2 * B) or else In_River (0.5 * (A + B)) or else In_River (0.2 * A + 0.8 * B));
+
+   function Track_Crosses (Q : P2) return Boolean is
+   begin
+      if not Wet_Done then
+         Wet_Done := True;
+         for T of Tracks loop
+            if not T.Tram then
+               for I in T.Pts.First_Index .. T.Pts.Last_Index - 1 loop
+                  if Wet_Piece (T.Pts (I), T.Pts (I + 1)) then
+                     Wet_Ends.Append (T.Pts (I));
+                     Wet_Ends.Append (T.Pts (I + 1));
+                  end if;
+               end loop;
+            end if;
+         end loop;
+      end if;
+      for I in 1 .. Natural (Wet_Ends.Length) / 2 loop
+         if Segment_Distance (Q, Wet_Ends (2 * I - 1), Wet_Ends (2 * I)) < 3.2 then
+            return True;
+         end if;
+      end loop;
+      return False;
+   end Track_Crosses;
+
    procedure Emit_River (Pl : Poly) is
       Pts  : Earcut.Point_Array (0 .. Point_Count (Pl) - 1);
       Tris : Earcut.Index_Vectors.Vector;
@@ -4530,7 +4606,8 @@ package body World_Builder is
                function Off_Bridge (Q : P2) return Boolean is
                  (In_Data (Q.X, Q.Z) and then not Near_Bridge (Q, 2.5)
                   and then not In_Low (Q + 1.0 * Land)
-                  and then not Road_Crosses (Q));
+                  and then not Road_Crosses (Q)
+                  and then not Track_Crosses (Q));
 
                procedure Parapet (S, E : P2) is
                   T : Tile_Builder renames Tile_At (0.5 * (S + E)).all;
@@ -4603,10 +4680,10 @@ package body World_Builder is
                               T : Tile_Builder renames Tile_At (M).all;
                            begin
                               Solid_Quad (T, (S.X, -DS, S.Z), (E.X, -DE, E.Z), (E.X, 0.0, E.Z), (S.X, 0.0, S.Z),
-                                          (-Land.X, 0.0, -Land.Z), 0.0, Part, -Cuts (Which).Depth, 0.0, Mat_Quay, 0.3);
+                                          (-Land.X, 0.0, -Land.Z), 0.0, Part, -Deepest (Which), 0.0, Mat_Quay, 0.3);
                               if not Road_Crosses (M) then
                                  Prism (T, Strip (S, E, Land, 0.0, 0.4), 0.0, 0.95, Mat_Quay, 0.3);
-                                 Add_Edge (S, E, -Cuts (Which).Depth, 0.95);
+                                 Add_Edge (S, E, -Deepest (Which), 0.95);
                               end if;
                            end;
                         end if;
@@ -4616,28 +4693,46 @@ package body World_Builder is
             end;
          end loop;
       end Wall;
+
+      --  Cut small where the depth changes, and only what is low goes down
+      procedure Sink (A, B, C : P2) is
+         DA : constant Long_Float := Cut_Here (A.X, A.Z);
+         DB : constant Long_Float := Cut_Here (B.X, B.Z);
+         DC : constant Long_Float := Cut_Here (C.X, C.Z);
+         LA : constant Long_Float := Dist (B, C);
+         LB : constant Long_Float := Dist (C, A);
+         LC : constant Long_Float := Dist (A, B);
+         Most : constant Long_Float := Long_Float'Max (LA, Long_Float'Max (LB, LC));
+         Same : constant Boolean := abs (DA - Deepest (Which)) < 0.001
+           and then abs (DB - DA) < 0.001 and then abs (DC - DA) < 0.001;
+      begin
+         if Most > (if Same then 120.0 else 12.0) then
+            if LA = Most then
+               Sink (A, B, 0.5 * (B + C));
+               Sink (A, 0.5 * (B + C), C);
+            elsif LB = Most then
+               Sink (B, C, 0.5 * (C + A));
+               Sink (B, 0.5 * (C + A), A);
+            else
+               Sink (C, A, 0.5 * (A + B));
+               Sink (C, 0.5 * (A + B), B);
+            end if;
+         elsif Long_Float'Max (DA, Long_Float'Max (DB, DC)) > 0.01 then
+            Ground_Tri (Hole, Mat_Water, 0.0, A, B, C);
+            Sunk := True;
+            --  (a seed of its own: no vertex shared with the land up above)
+            Ground_Tri (Solid, Mat_Ballast, 0.25, A, B, C);
+            Sunk := False;
+         end if;
+      end Sink;
    begin
       Current_Cut := Which;
       Triangulate (Pl, Pts, Tris);
-      declare
-         XN, ZN, XS, ZS : Long_Float;
-      begin
-         Geo.To_Local (Cuts (Which).N0, 2.35, XN, ZN);
-         Geo.To_Local (Cuts (Which).S0, 2.35, XS, ZS);
-         for K in 0 .. Natural (Tris.Length) / 3 - 1 loop
-            --  all of it is railway land, and this stretch of it is sunk
-            Ground_Tri (Area, Mat_Ballast, 0.0, P (3 * K), P (3 * K + 1), P (3 * K + 2));
-            Clip_Z0 := ZN;
-            Clip_Z1 := ZS;
-            Ground_Tri (Hole, Mat_Water, 0.0, P (3 * K), P (3 * K + 1), P (3 * K + 2));
-            Sunk := True;
-            --  (a seed of its own: no vertex shared with the land up above)
-            Ground_Tri (Solid, Mat_Ballast, 0.25, P (3 * K), P (3 * K + 1), P (3 * K + 2));
-            Sunk := False;
-            Clip_Z0 := Long_Float'First;
-            Clip_Z1 := Long_Float'Last;
-         end loop;
-      end;
+      for K in 0 .. Natural (Tris.Length) / 3 - 1 loop
+         --  all of it is railway land, and where its line is low it is sunk
+         Ground_Tri (Area, Mat_Ballast, 0.0, P (3 * K), P (3 * K + 1), P (3 * K + 2));
+         Sink (P (3 * K), P (3 * K + 1), P (3 * K + 2));
+      end loop;
       Wall (Pl.Outer);
       for H of Pl.Holes loop
          Wall (H);
@@ -4646,7 +4741,7 @@ package body World_Builder is
    end Emit_Cut;
 
    --  Side of a bridge deck over the water: fascia below, parapet above
-   procedure Bridge_Side (A, B, Outward : P2) is
+   procedure Bridge_Side (A, B, Outward : P2; With_Parapet : Boolean := True) is
       function Over_Water (Q : P2) return Boolean is
         (In_Data (Q.X, Q.Z) and then (In_River (Q) or else In_Low (Q) or else In_Cut (Q))
          and then not Road_Crosses (Q));
@@ -4658,8 +4753,10 @@ package body World_Builder is
          Solid_Quad (T, (S.X, -1.4, S.Z), (E.X, -1.4, E.Z), (E.X, 0.0, E.Z),
                      (S.X, 0.0, S.Z), (Outward.X, 0.0, Outward.Z), 0.0, L, -1.4, 0.0,
                      Mat_Quay, 0.7);
-         Prism (T, Strip (S, E, Outward, -0.4, 0.4), 0.0, 1.0, Mat_Quay, 0.7);
-         Add_Edge (S, E, -1.4, 1.0);
+         if With_Parapet then
+            Prism (T, Strip (S, E, Outward, -0.4, 0.4), 0.0, 1.0, Mat_Quay, 0.7);
+            Add_Edge (S, E, -1.4, 1.0);
+         end if;
       end Side;
 
       procedure Walk is new Split_Runs (Over_Water, Side);
@@ -4727,8 +4824,7 @@ package body World_Builder is
       for T of Tracks loop
          declare
             S : Long_Float := 0.0;
-            G1 : constant Group_Id := (if T.Tram then Mark elsif T.Bridge then Deck else Curb);
-            H : constant Long_Float := (if T.Tram then 1.0 else Half);
+            G1 : constant Group_Id := (if T.Tram then Mark else Curb);
             M : constant Long_Float := (if T.Tram then Mat_Tram_Rails else Mat_Ballast);
          begin
             for I in T.Pts.First_Index .. T.Pts.Last_Index - 1 loop
@@ -4748,15 +4844,17 @@ package body World_Builder is
                         --  (seed: not 0, and no vertex shared with the next piece)
                         Seed : constant Long_Float := 1.0 + Long_Float (Count mod 1000);
                         --  in the cutting (a little apart, where the tracks overlap)
-                        Wet : constant Boolean :=
-                          not T.Tram and then
-                          (In_River (0.75 * A + 0.25 * B) or else In_River (0.5 * (A + B))
-                           or else In_River (0.25 * A + 0.75 * B));
-                        --  (over water it needs a bridge, tagged so or not)
-                        G0 : constant Group_Id := (if Wet then Deck else G1);
-                        Which : constant Natural := (if G0 = Curb then Cut_At (0.5 * (A + B)) else 0);
+                        Wet : constant Boolean := not T.Tram and then Wet_Piece (A, B);
+                        --  (down in a cutting even if it is a bridge over some
+                        --  street; over water it needs a bridge, tagged so or
+                        --  not, wide enough to close up with the next track's)
+                        Which : constant Natural :=
+                          (if T.Tram or else Wet then 0 else Cut_At (0.5 * (A + B)));
                         Down : constant Boolean := Which /= 0;
-                        G : constant Group_Id := (if Down then Solid else G0);
+                        G : constant Group_Id :=
+                          (if Down then Solid
+                           elsif Wet or else (T.Bridge and then not T.Tram) then Deck else G1);
+                        H : constant Long_Float := (if T.Tram then 1.0 elsif Wet then 2.6 else Half);
                         Y : constant Long_Float :=
                           (if Down then 0.06 + 0.004 * Long_Float (Count mod 12) else 0.0);
                      begin
@@ -4777,8 +4875,8 @@ package body World_Builder is
                            declare
                               Left : constant P2 := (-1.0) * Edge_Out (A, B);
                            begin
-                              Bridge_Side (A + H * Left, B + H * Left, Left);
-                              Bridge_Side (A - H * Left, B - H * Left, (-1.0) * Left);
+                              Bridge_Side (A + H * Left, B + H * Left, Left, With_Parapet => False);
+                              Bridge_Side (A - H * Left, B - H * Left, (-1.0) * Left, With_Parapet => False);
                            end;
                         end if;
                         Count := Count + 1;
