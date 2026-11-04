@@ -254,11 +254,15 @@ begin
             Zoom_By (1.25);
          end if;
       when 16#2B# | 16#3D# | 16#FFAB# =>                   --  + = keypad+
-         if Down then
+         if Down and then Navigation.Big_Shown then
+            Navigation.Zoom_Big (1.4);
+         elsif Down then
             Zoom_By (1.0 / 1.25);
          end if;
       when 16#2D# | 16#FFAD# =>                            --  - keypad-
-         if Down then
+         if Down and then Navigation.Big_Shown then
+            Navigation.Zoom_Big (1.0 / 1.4);
+         elsif Down then
             Zoom_By (1.25);
          end if;
       when 16#63# =>                                       --  c

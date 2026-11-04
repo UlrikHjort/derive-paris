@@ -66,6 +66,7 @@ begin
           & "  C                chase or drone camera" & LF
           & "  mouse wheel, +/-  zoom" & LF
           & "  F                take off in the plane" & LF
+          & "  Shift+M          the map of Paris (+/- zoom)" & LF
           & "  Q                get out and walk" & LF
           & "  E                gearbox: manual or automatic" & LF
           & "  I                instruments (gear, revs, speed)" & LF

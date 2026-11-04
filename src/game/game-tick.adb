@@ -133,6 +133,11 @@ begin
       end if;
       Circle_Here;
    end if;
+   --  PARIS_BIGMAP=zoom: the big map open (testing)
+   if Ready and then Frame_Number = 30 and then Env ("PARIS_BIGMAP") /= "" then
+      Navigation.Show_Big (True);
+      Navigation.Zoom_Big (Float'Value (Env ("PARIS_BIGMAP")));
+   end if;
    --  PARIS_ARC=yaw: on the roof of the Arc de Triomphe (testing)
    if Ready and then Frame_Number = 30 and then Env ("PARIS_ARC") /= "" then
       if not Walking then

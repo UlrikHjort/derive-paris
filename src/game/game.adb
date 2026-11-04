@@ -1794,7 +1794,11 @@ package body Game is
       Navigation.Clear_Markers;
       for I in 1 .. Saved_Places.Count loop
          Geo.To_Local (Saved_Places.Lat (I), Saved_Places.Lon (I), X, Z);
-         Navigation.Add_Marker (Float (X), Float (Z));
+         Navigation.Add_Marker (Float (X), Float (Z), Saved_Places.Name (I));
+      end loop;
+      for P of Places loop
+         Geo.To_Local (P.Lat, P.Lon, X, Z);
+         Navigation.Add_Place (Float (X), Float (Z), Ada.Strings.Unbounded.To_String (P.Name));
       end loop;
    end Show_Markers;
 
@@ -3411,6 +3415,17 @@ package body Game is
         and then (Event.Keyval = 16#46# or else Event.Keyval = 16#66#)
       then
          Toggle_Float;
+         return True;
+      end if;
+      --  Shift + M: the big map (Esc closes it too)
+      if (Event.State and Gdk.Types.Shift_Mask) /= 0
+        and then (Event.Keyval = 16#4D# or else Event.Keyval = 16#6D#)
+      then
+         Navigation.Show_Big (not Navigation.Big_Shown);
+         return True;
+      end if;
+      if Navigation.Big_Shown and then Event.Keyval = 16#FF1B# then
+         Navigation.Show_Big (False);
          return True;
       end if;
       --  Shift + H: home is here (asks first)

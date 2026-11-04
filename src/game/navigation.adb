@@ -9,6 +9,7 @@ with Ada.Strings.Unbounded;
 with Cairo;
 with Cairo.Image_Surface;
 with Cairo.Png;
+with River;
 with Glib;
 with Gtk.Drawing_Area;
 with Gtk.Label;
@@ -43,20 +44,39 @@ package body Navigation is
 
    type Marker is record
       X, Z : Float;
+      Name : Unbounded_String;
    end record;
    Markers : array (1 .. 64) of Marker;
    Marker_Count : Natural := 0;
+   Places : array (1 .. 32) of Marker;
+   Place_Count : Natural := 0;
+
+   Big          : Gtk.Drawing_Area.Gtk_Drawing_Area;
+   Big_On       : Boolean := False;
+   Big_Scale    : Float := 0.09;     --  pixels per metre: most of Paris
+   Big_Wait     : Float := 0.0;
+   Big_W        : constant := 1000;
+   Big_H        : constant := 760;
 
    procedure Clear_Markers is
    begin
       Marker_Count := 0;
+      Place_Count := 0;
    end Clear_Markers;
 
-   procedure Add_Marker (X, Z : Float) is
+   procedure Add_Place (X, Z : Float; Name : String) is
+   begin
+      if Place_Count < Places'Last then
+         Place_Count := Place_Count + 1;
+         Places (Place_Count) := (X, Z, To_Unbounded_String (Name));
+      end if;
+   end Add_Place;
+
+   procedure Add_Marker (X, Z : Float; Name : String := "") is
    begin
       if Marker_Count < Markers'Last then
          Marker_Count := Marker_Count + 1;
-         Markers (Marker_Count) := (X, Z);
+         Markers (Marker_Count) := (X, Z, To_Unbounded_String (Name));
       end if;
    end Add_Marker;
 
@@ -248,6 +268,12 @@ package body Navigation is
       Me_H := Heading;
       if Visible then
          Map.Queue_Draw;
+      end if;
+      --  (all of Paris is a lot to draw: two or four times a second is enough)
+      Big_Wait := Big_Wait - Dt;
+      if Big_On and then Big_Wait <= 0.0 then
+         Big_Wait := (if Big_Scale < 0.15 then 0.5 else 0.25);
+         Big.Queue_Draw;
       end if;
       if not Has_Dest then
          if Arrived_Time > 0.0 then
@@ -497,6 +523,229 @@ package body Navigation is
    end Save_Png;
 
    function Current_Text return String is (To_String (Shown_Text));
+
+   ---------------------------------------------------------------------------
+   --  The big map
+   ---------------------------------------------------------------------------
+
+   function Draw_Big
+     (Self : access Gtk.Widget.Gtk_Widget_Record'Class;
+      Cr   : Cairo.Cairo_Context) return Boolean
+   is
+      pragma Unreferenced (Self);
+      use Cairo;
+      Pi : constant := Ada.Numerics.Pi;
+      W  : constant Gdouble := Gdouble (Big_W);
+      H  : constant Gdouble := Gdouble (Big_H);
+      CX : constant Gdouble := W / 2.0;
+      CY : constant Gdouble := H / 2.0;
+      S  : constant Float := Big_Scale;
+
+      --  north up: x to the right, z (south) down
+      procedure To_Screen (X, Z : Float; SX, SY : out Gdouble) is
+      begin
+         SX := CX + Gdouble ((X - Me_X) * S);
+         SY := CY + Gdouble ((Z - Me_Z) * S);
+      end To_Screen;
+
+      procedure Road (AX, AZ, BX, BZ, Width : Float; Named : Boolean) is
+         X0, Y0, X1, Y1 : Gdouble;
+      begin
+         To_Screen (AX, AZ, X0, Y0);
+         To_Screen (BX, BZ, X1, Y1);
+         Set_Line_Width (Cr, Gdouble (Float'Max (0.6, Width * S * (if Named then 1.0 else 0.6))));
+         Move_To (Cr, X0, Y0);
+         Line_To (Cr, X1, Y1);
+         Stroke (Cr);
+      end Road;
+      procedure Roads is new For_Segments_Near (Road);
+
+      procedure Label (SX, SY : Gdouble; Text : String; Size : Gdouble) is
+      begin
+         Set_Font_Size (Cr, Size);
+         Set_Source_Rgba (Cr, 0.0, 0.0, 0.0, 0.75);
+         Move_To (Cr, SX + 7.0, SY + 5.0);
+         Show_Text (Cr, Text);
+         Set_Source_Rgba (Cr, 1.0, 1.0, 1.0, 0.95);
+         Move_To (Cr, SX + 6.0, SY + 4.0);
+         Show_Text (Cr, Text);
+      end Label;
+   begin
+      Rectangle (Cr, 0.0, 0.0, W, H);
+      Set_Source_Rgba (Cr, 0.10, 0.11, 0.14, 0.97);
+      Fill_Preserve (Cr);
+      Clip (Cr);
+
+      --  the Seine
+      if River.Points > 1 then
+         declare
+            SX, SY : Gdouble;
+         begin
+            Set_Source_Rgba (Cr, 0.20, 0.38, 0.62, 0.95);
+            Set_Line_Width (Cr, Gdouble (Float'Max (3.0, 110.0 * S)));
+            Set_Line_Cap (Cr, Cairo_Line_Cap_Round);
+            Set_Line_Join (Cr, Cairo_Line_Join_Round);
+            for I in 1 .. River.Points loop
+               declare
+                  X, Z : Float;
+               begin
+                  River.Point_At (I, X, Z);
+                  To_Screen (X, Z, SX, SY);
+                  if I = 1 then
+                     Move_To (Cr, SX, SY);
+                  else
+                     Line_To (Cr, SX, SY);
+                  end if;
+               end;
+            end loop;
+            Stroke (Cr);
+         end;
+      end if;
+
+      --  the streets
+      Set_Source_Rgba (Cr, 0.70, 0.70, 0.68, 0.85);
+      Set_Line_Cap (Cr, Cairo_Line_Cap_Round);
+      Roads (Me_X, Me_Z, Sqrt (Float (CX * CX + CY * CY)) / S + 30.0);
+
+      --  the route
+      if Has_Dest and then Natural (Route.Length) >= 2 then
+         declare
+            SX, SY : Gdouble;
+         begin
+            Set_Source_Rgba (Cr, 0.25, 0.6, 1.0, 0.95);
+            Set_Line_Width (Cr, 4.0);
+            Set_Line_Join (Cr, Cairo_Line_Join_Round);
+            To_Screen (Me_X, Me_Z, SX, SY);
+            Move_To (Cr, SX, SY);
+            for I in Progress + 1 .. Route.Last_Index loop
+               To_Screen (Route (I).X, Route (I).Z, SX, SY);
+               Line_To (Cr, SX, SY);
+            end loop;
+            Stroke (Cr);
+         end;
+      end if;
+
+      Select_Font_Face (Cr, "Sans", Cairo_Font_Slant_Normal, Cairo_Font_Weight_Bold);
+      --  the famous places
+      for I in 1 .. Place_Count loop
+         declare
+            SX, SY : Gdouble;
+         begin
+            To_Screen (Places (I).X, Places (I).Z, SX, SY);
+            Arc (Cr, SX, SY, 4.0, 0.0, 2.0 * Pi);
+            Set_Source_Rgba (Cr, 1.0, 1.0, 1.0, 0.95);
+            Fill (Cr);
+            Label (SX, SY, To_String (Places (I).Name), 14.0);
+         end;
+      end loop;
+      --  saved places
+      for I in 1 .. Marker_Count loop
+         declare
+            SX, SY : Gdouble;
+         begin
+            To_Screen (Markers (I).X, Markers (I).Z, SX, SY);
+            Move_To (Cr, SX, SY - 6.0);
+            Line_To (Cr, SX + 5.0, SY);
+            Line_To (Cr, SX, SY + 6.0);
+            Line_To (Cr, SX - 5.0, SY);
+            Close_Path (Cr);
+            Set_Source_Rgba (Cr, 0.2, 0.85, 0.75, 1.0);
+            Fill (Cr);
+            if Length (Markers (I).Name) > 0 then
+               Label (SX, SY, To_String (Markers (I).Name), 11.0);
+            end if;
+         end;
+      end loop;
+      --  the destination
+      if Has_Dest then
+         declare
+            SX, SY : Gdouble;
+         begin
+            To_Screen (Dest_X, Dest_Z, SX, SY);
+            Arc (Cr, SX, SY, 7.0, 0.0, 2.0 * Pi);
+            Set_Source_Rgba (Cr, 0.9, 0.15, 0.15, 1.0);
+            Fill (Cr);
+            Label (SX, SY, To_String (Dest_Name), 13.0);
+         end;
+      end if;
+
+      --  you, pointing the way you go
+      declare
+         FX : constant Gdouble := Gdouble (Sin (Me_H));
+         FY : constant Gdouble := Gdouble (-Cos (Me_H));
+         procedure P (A, B : Gdouble; First : Boolean := False) is
+         begin
+            --  A along, B to the right
+            if First then
+               Move_To (Cr, CX + A * FX - B * FY, CY + A * FY + B * FX);
+            else
+               Line_To (Cr, CX + A * FX - B * FY, CY + A * FY + B * FX);
+            end if;
+         end P;
+      begin
+         P (14.0, 0.0, First => True);
+         P (-10.0, 9.0);
+         P (-5.0, 0.0);
+         P (-10.0, -9.0);
+         Close_Path (Cr);
+         Set_Source_Rgba (Cr, 1.0, 0.85, 0.2, 1.0);
+         Fill_Preserve (Cr);
+         Set_Source_Rgba (Cr, 0.0, 0.0, 0.0, 0.8);
+         Set_Line_Width (Cr, 1.5);
+         Stroke (Cr);
+      end;
+
+      --  a scale bar, and the keys
+      declare
+         Metres : constant Float :=
+           (if S < 0.05 then 2000.0 elsif S < 0.2 then 1000.0 elsif S < 0.6 then 200.0 else 50.0);
+         Bar : constant Gdouble := Gdouble (Metres * S);
+      begin
+         Set_Source_Rgba (Cr, 1.0, 1.0, 1.0, 0.9);
+         Set_Line_Width (Cr, 3.0);
+         Move_To (Cr, 24.0, H - 28.0);
+         Line_To (Cr, 24.0 + Bar, H - 28.0);
+         Stroke (Cr);
+         Label (18.0 + Bar, H - 24.0,
+                (if Metres >= 1000.0 then Integer'Image (Integer (Metres / 1000.0)) & " km"
+                 else Integer'Image (Integer (Metres)) & " m"), 13.0);
+         Label (12.0, 22.0, "Paris   (N up)        + / -  zoom      Shift+M or Esc  close", 14.0);
+      end;
+      Reset_Clip (Cr);
+      return True;
+   end Draw_Big;
+
+   function Create_Big_Map return Gtk.Widget.Gtk_Widget is
+   begin
+      Gtk.Drawing_Area.Gtk_New (Big);
+      Big.Set_Size_Request (Big_W, Big_H);
+      Big.Set_Halign (Gtk.Widget.Align_Center);
+      Big.Set_Valign (Gtk.Widget.Align_Center);
+      Big.On_Draw (Draw_Big'Access);
+      Big.Set_No_Show_All (True);
+      return Gtk.Widget.Gtk_Widget (Big);
+   end Create_Big_Map;
+
+   procedure Show_Big (On : Boolean) is
+   begin
+      Big_On := On;
+      if On then
+         Big.Show;
+         Big.Queue_Draw;
+      else
+         Big.Hide;
+      end if;
+   end Show_Big;
+
+   function Big_Shown return Boolean is (Big_On);
+
+   procedure Zoom_Big (Factor : Float) is
+   begin
+      Big_Scale := Float'Max (0.03, Float'Min (1.2, Big_Scale * Factor));
+      if Big_On then
+         Big.Queue_Draw;
+      end if;
+   end Zoom_Big;
 
    function Create_Minimap return Gtk.Widget.Gtk_Widget is
    begin

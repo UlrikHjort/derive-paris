@@ -30,7 +30,15 @@ package Navigation is
    --  the apartment and the plane (no driving instructions there).
 
    procedure Clear_Markers;
-   procedure Add_Marker (X, Z : Float);
+   procedure Add_Marker (X, Z : Float; Name : String := "");
+   procedure Add_Place (X, Z : Float; Name : String);
+   --  A named place, for the big map
+
+   --  The big map (Shift+M): all of Paris, north up, you in the middle
+   function Create_Big_Map return Gtk.Widget.Gtk_Widget;
+   procedure Show_Big (On : Boolean);
+   function Big_Shown return Boolean;
+   procedure Zoom_Big (Factor : Float);
    --  Saved places, shown as small diamonds on the minimap
 
    procedure Show (On : Boolean);

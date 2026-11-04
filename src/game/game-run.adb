@@ -258,6 +258,7 @@ begin
    Compass_Widget := Compass.Create;
    Hud_Over.Add_Overlay (Compass_Widget);
    Hud_Over.Add_Overlay (Navigation.Create_Minimap);
+   Hud_Over.Add_Overlay (Navigation.Create_Big_Map);
    Hud_Over.Add_Overlay (Navigation.Create_Instructions);
 
    Gtk.Label.Gtk_New (Credit);

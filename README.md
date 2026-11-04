@@ -176,6 +176,7 @@ smaller or larger one.
 | P | weather: rain, thunderstorm, snow, dry again |
 | N | street names |
 | G | compass, position (lat/lon, heading, altitude) and minimap |
+| Shift+M | a big map of Paris, north up, with you, the Seine, the famous places, your saved places and the GPS's route (+/- zoom, Esc closes) |
 | Shift + 1 .. 0 | GPS: navigate to that place (route through the real streets, turn-by-turn with street names) |
 | Y / Shift+Y | one day later / earlier (hold it to run through the calendar) |
 | F3 | find an address: type a street and a number (in any order, accents and capitals don't matter), Enter sets the GPS |
