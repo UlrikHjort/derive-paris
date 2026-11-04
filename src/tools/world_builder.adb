@@ -6072,7 +6072,11 @@ package body World_Builder is
          begin
             if Kind /= "" then
                Geo.To_Local (P.Pos.Lat, P.Pos.Lon, X, Z);
-               if In_Data (X, Z) and then not In_River ((X, Z)) then
+               --  (none down in a railway's cutting or up on its embankment,
+               --  but on a street's bridge over it)
+               if In_Data (X, Z) and then not In_River ((X, Z))
+                 and then (Cut_At ((X, Z)) = 0 or else Near_Bridge ((X, Z), 4.0))
+               then
                   if Kind = "tree" then
                      Emit_Tree (P.Id, X, Z, (if In_Low ((X, Z)) then Low_Level else 0.0));
                   elsif In_Spot ("ornate_lamps", X, Z)
