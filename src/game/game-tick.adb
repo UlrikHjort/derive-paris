@@ -126,6 +126,13 @@ begin
          Toggle_Autopilot;
       end;
    end if;
+   --  PARIS_CIRCLE=1: in the plane, circling where it took off (testing)
+   if Ready and then Frame_Number = 40 and then Env ("PARIS_CIRCLE") /= "" then
+      if Mode /= Flying then
+         Toggle_Flight;
+      end if;
+      Circle_Here;
+   end if;
    --  PARIS_ARC=yaw: on the roof of the Arc de Triomphe (testing)
    if Ready and then Frame_Number = 30 and then Env ("PARIS_ARC") /= "" then
       if not Walking then

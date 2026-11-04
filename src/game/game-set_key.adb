@@ -167,6 +167,10 @@ begin
          elsif Down and then not Visiting and then not Gliding then
             Toggle_Flight;
          end if;
+      when 16#FE20# =>                                     --  Shift+Tab: circle here
+         if Down then
+            Circle_Here;
+         end if;
       when 16#FF09# =>                                     --  Tab: the plane's autopilot
          if Down then
             Toggle_Autopilot;

@@ -1688,6 +1688,22 @@ package body Game is
       Street_Timer := 1.0;
    end Toggle_Autopilot;
 
+   --  Shift+Tab: round and round where the plane is now
+   procedure Circle_Here is
+   begin
+      if Mode /= Flying then
+         return;
+      end if;
+      Auto_X := Aircraft.Pos.X;
+      Auto_Z := Aircraft.Pos.Z;
+      Auto_On := True;
+      Auto_There := True;
+      Auto_Name := Ada.Strings.Unbounded.To_Unbounded_String ("here");
+      Announce := Ada.Strings.Unbounded.To_Unbounded_String ("Autopilot: circling here (any flight key takes over)");
+      Announce_Timer := 4.0;
+      Street_Timer := 1.0;
+   end Circle_Here;
+
    function Auto_Controls return Plane.Controls is
       use Ada.Numerics.Elementary_Functions;
       Circle : constant Float := 350.0;
@@ -1695,7 +1711,8 @@ package body Game is
       DX : constant Float := Auto_X - P.X;
       DZ : constant Float := Auto_Z - P.Z;
       D  : constant Float := Float'Max (1.0, Sqrt (DX * DX + DZ * DZ));
-      Bearing : constant Float := Arctan (DX, -DZ);
+      Bearing : constant Float :=
+        (if abs DX + abs DZ < 0.01 then Aircraft.Heading else Arctan (DX, -DZ));
       --  far off: straight at it; nearer, more and more to the side, and at
       --  the circle's distance along it with the middle to the right
       Side : constant Float :=
