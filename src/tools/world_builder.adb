@@ -354,7 +354,8 @@ package body World_Builder is
    --  The railways' cuttings, out of the big stations: each is the railway
    --  land of one OSM relation, sunk along its line: a depth at each point
    --  of the line, and between them a smooth slope.  The streets' bridges
-   --  pass over it; it comes up to street level to cross water.
+   --  pass over it; it comes up to street level to cross water.  A depth
+   --  below 0 raises it: an embankment, and the streets pass under it.
    type Line_Point is record
       Lat, Lon, Depth : Long_Float;
    end record;
@@ -368,6 +369,13 @@ package body World_Builder is
       (48.8977, 2.3815, 0.0), (48.8979, 2.3835, 0.0),   --  the Canal Saint-Denis
       (48.8979, 2.3856, 6.0), (48.8978, 2.3990, 6.0), (48.8988, 2.4074, 6.0), (48.8985, 2.4270, 6.0),
       (48.8981, 2.4330, 0.0), (48.8985, 2.4400, 0.0));  --  the Canal de l'Ourcq
+   Lyon_Line : constant Line_Points :=
+     ((48.8450, 2.3740, 0.0),
+      (48.8425, 2.3790, -5.0), (48.8403, 2.3833, -5.0),   --  over the Boulevard de Bercy
+      (48.8373, 2.3891, -5.0), (48.8350, 2.3914, -5.0),   --  and the Rue Proudhon
+      (48.8312, 2.3963, 6.0), (48.8283, 2.3988, 6.0),     --  under the Boulevard Poniatowski,
+      (48.8242, 2.4044, 6.0), (48.8213, 2.4113, 6.0),     --  the Périphérique and others
+      (48.8203, 2.4127, 6.0), (48.8185, 2.4142, 0.0), (48.8150, 2.4170, 0.0));
 
    Cut_Reach : constant := 300.0;   --  from its line: the depth fades out
    Cut_Fade  : constant := 100.0;   --  over this much more
@@ -376,10 +384,16 @@ package body World_Builder is
       Relation    : Osm_Id;
       First, Last : Positive;
    end record;
-   All_Points : constant Line_Points := Nord_Line & Est_Line;
-   Cuts : constant array (1 .. 2) of Cut_Kind :=
-     ((9826280, 1, Nord_Line'Length),
-      (10152078, Nord_Line'Length + 1, Nord_Line'Length + Est_Line'Length));
+   All_Points : constant Line_Points := Nord_Line & Est_Line & Lyon_Line;
+   N1 : constant Positive := Nord_Line'Length;
+   N2 : constant Positive := N1 + Est_Line'Length;
+   N3 : constant Positive := N2 + Lyon_Line'Length;
+   --  (a railway land is an OSM relation or a closed way)
+   Cuts : constant array (1 .. 4) of Cut_Kind :=
+     ((9826280, 1, N1),             --  the Gare du Nord
+      (10152078, N1 + 1, N2),       --  the Gare de l'Est
+      (231076284, N2 + 1, N3),      --  the Gare de Lyon, and Bercy
+      (12756833, N2 + 1, N3));      --  the same line further out
 
    function Depth_At (C : Natural; X, Z : Long_Float) return Long_Float is
       function Ease (T : Long_Float) return Long_Float is
@@ -425,7 +439,7 @@ package body World_Builder is
       D : Long_Float := 0.0;
    begin
       for I in Cuts (C).First .. Cuts (C).Last loop
-         D := Long_Float'Max (D, All_Points (I).Depth);
+         D := Long_Float'Max (D, abs All_Points (I).Depth);
       end loop;
       return D;
    end Deepest;
@@ -870,6 +884,26 @@ package body World_Builder is
    end record;
    package Track_Vectors is new Ada.Containers.Vectors (Positive, Track_Rec);
    Tracks : Track_Vectors.Vector;
+
+   --  Railway tracks by cell of 20 m, to find the nearest quickly
+   type Rail_Seg is record
+      A, B : P2;
+   end record;
+   package Rail_Seg_Vectors is new Ada.Containers.Vectors (Positive, Rail_Seg);
+   function Rail_Hash (K : Long_Long_Integer) return Ada.Containers.Hash_Type is
+     (Ada.Containers.Hash_Type (K mod 2**31));
+   package Rail_Lists is new Ada.Containers.Vectors (Positive, Positive);
+   use type Rail_Lists.Vector;
+   package Rail_Maps is new Ada.Containers.Hashed_Maps
+     (Long_Long_Integer, Rail_Lists.Vector, Rail_Hash, "=");
+   Track_Segs  : Rail_Seg_Vectors.Vector;
+   Rail_Cells : Rail_Maps.Map;
+   Rail_Done  : Boolean := False;
+   Rail_Cell : constant := 20.0;
+
+   function Rail_Key (X, Z : Long_Float) return Long_Long_Integer is
+     (Long_Long_Integer (Long_Float'Floor (X / Rail_Cell)) * 1_000_000
+      + Long_Long_Integer (Long_Float'Floor (Z / Rail_Cell)));
 
    function Area_Material (Tags : Tag_Maps.Map) return Long_Float is
       Natural_V : constant String := Tag (Tags, "natural");
@@ -1394,17 +1428,28 @@ package body World_Builder is
    type Cut_Step_List is array (1 .. 5) of Long_Float;
    Cut_Steps : constant Cut_Step_List := (0.1, 0.3, 0.5, 0.7, 0.9);
 
-   function Cut_At (P : P2) return Natural is
+   --  Which cutting or embankment P lies in (0: none); Sunk_Only: only a
+   --  cutting, below the streets
+   function Cut_At (P : P2; Sunk_Only : Boolean := False) return Natural is
    begin
       for I in Cut_Polys.First_Index .. Cut_Polys.Last_Index loop
-         if Depth_At (Cut_Of (I), P.X, P.Z) > 0.05 and then Point_In_Poly (P, Cut_Polys (I)) then
-            return Cut_Of (I);
-         end if;
+         declare
+            D : constant Long_Float := Depth_At (Cut_Of (I), P.X, P.Z);
+         begin
+            if (D > 0.05 or else (D < -0.05 and then not Sunk_Only))
+              and then Point_In_Poly (P, Cut_Polys (I))
+            then
+               return Cut_Of (I);
+            end if;
+         end;
       end loop;
       return 0;
    end Cut_At;
 
-   function In_Cut (P : P2) return Boolean is (Cut_At (P) /= 0);
+   function In_Cut (P : P2) return Boolean is (Cut_At (P, Sunk_Only => True) /= 0);
+
+   function On_Bank (P : P2) return Boolean is
+     (Cut_At (P) /= 0 and then not In_Cut (P));
 
    --  A street's bridge over the cutting has its pavements with it: what
    --  stands by the road has something to stand on
@@ -1438,8 +1483,8 @@ package body World_Builder is
             begin
                for I in R.First_Index .. R.Last_Index - 1 loop
                   for F of Cut_Steps loop
-                     Hit := Hit or else In_Cut
-                       ((R (I).X + F * (R (I + 1).X - R (I).X), R (I).Z + F * (R (I + 1).Z - R (I).Z)));
+                     Hit := Hit or else Cut_At
+                       ((R (I).X + F * (R (I + 1).X - R (I).X), R (I).Z + F * (R (I + 1).Z - R (I).Z))) /= 0;
                   end loop;
                end loop;
                if Hit then
@@ -1449,8 +1494,16 @@ package body World_Builder is
          end if;
       end loop;
       for L of Lines loop
-         if L.Layer < 0 and then Crosses_Cut (L) then
-            L.Layer := 0;
+         if L.Layer < 0 then
+            for I in L.Pts.First_Index .. L.Pts.Last_Index - 1 loop
+               for F of Cut_Steps loop
+                  if Cut_At ((L.Pts (I).X + F * (L.Pts (I + 1).X - L.Pts (I).X),
+                              L.Pts (I).Z + F * (L.Pts (I + 1).Z - L.Pts (I).Z))) /= 0
+                  then
+                     L.Layer := 0;   --  (on the ground, not a lower quay)
+                  end if;
+               end loop;
+            end loop;
          end if;
       end loop;
    end Streets_Over_Cuts;
@@ -4585,6 +4638,58 @@ package body World_Builder is
       end loop;
    end Emit_Rim;
 
+   function Near_Track (P : P2; Within : Long_Float) return Boolean is
+   begin
+      if not Rail_Done then
+         Rail_Done := True;
+         for T of Tracks loop
+            if not T.Tram then
+               for I in T.Pts.First_Index .. T.Pts.Last_Index - 1 loop
+                  Track_Segs.Append ((T.Pts (I), T.Pts (I + 1)));
+                  declare
+                     A : constant P2 := T.Pts (I);
+                     B : constant P2 := T.Pts (I + 1);
+                  begin
+                     for CX in Long_Long_Integer (Long_Float'Floor (Long_Float'Min (A.X, B.X) / Rail_Cell))
+                            .. Long_Long_Integer (Long_Float'Floor (Long_Float'Max (A.X, B.X) / Rail_Cell))
+                     loop
+                        for CZ in Long_Long_Integer (Long_Float'Floor (Long_Float'Min (A.Z, B.Z) / Rail_Cell))
+                               .. Long_Long_Integer (Long_Float'Floor (Long_Float'Max (A.Z, B.Z) / Rail_Cell))
+                        loop
+                           declare
+                              K : constant Long_Long_Integer := CX * 1_000_000 + CZ;
+                           begin
+                              if not Rail_Cells.Contains (K) then
+                                 Rail_Cells.Insert (K, Rail_Lists.Empty_Vector);
+                              end if;
+                              Rail_Cells (K).Append (Track_Segs.Last_Index);
+                           end;
+                        end loop;
+                     end loop;
+                  end;
+               end loop;
+            end if;
+         end loop;
+      end if;
+      for DX in -1 .. 1 loop
+         for DZ in -1 .. 1 loop
+            declare
+               C : constant Rail_Maps.Cursor :=
+                 Rail_Cells.Find (Rail_Key (P.X + Long_Float (DX) * Rail_Cell, P.Z + Long_Float (DZ) * Rail_Cell));
+            begin
+               if Rail_Maps.Has_Element (C) then
+                  for I of Rail_Maps.Element (C) loop
+                     if Segment_Distance (P, Track_Segs (I).A, Track_Segs (I).B) < Within then
+                        return True;
+                     end if;
+                  end loop;
+               end if;
+            end;
+         end loop;
+      end loop;
+      return False;
+   end Near_Track;
+
    --  Where a track goes over water (found once): no parapet across it
    package P2_Vectors is new Ada.Containers.Vectors (Positive, P2);
    Wet_Ends : P2_Vectors.Vector;
@@ -4719,6 +4824,19 @@ package body World_Builder is
                                  Add_Edge (S, E, -Deepest (Which), 0.95);
                               end if;
                            end;
+                        --  an embankment: its wall faces out, with a parapet
+                        --  on top; a street goes through under it
+                        elsif False then
+                           declare
+                              T : Tile_Builder renames Tile_At (M).all;
+                              Top : constant Long_Float := -Long_Float'Min (DS, DE);
+                           begin
+                              Solid_Quad (T, (S.X, 0.0, S.Z), (E.X, 0.0, E.Z), (E.X, -DE, E.Z), (S.X, -DS, S.Z),
+                                          (Land.X, 0.0, Land.Z), 0.0, Part, 0.0, Top, Mat_Quay, 0.3);
+                              Prism (T, Strip (S, E, Land, -0.4, 0.0), -0.5 * (DS + DE), -0.5 * (DS + DE) + 0.95,
+                                     Mat_Quay, 0.3);
+                              Add_Edge (S, E, 0.0, Top + 0.95);
+                           end;
                         end if;
                      end;
                   end loop;
@@ -4736,10 +4854,11 @@ package body World_Builder is
          LB : constant Long_Float := Dist (C, A);
          LC : constant Long_Float := Dist (A, B);
          Most : constant Long_Float := Long_Float'Max (LA, Long_Float'Max (LB, LC));
-         Same : constant Boolean := abs (DA - Deepest (Which)) < 0.001
+         Same : constant Boolean := abs (abs DA - Deepest (Which)) < 0.001
            and then abs (DB - DA) < 0.001 and then abs (DC - DA) < 0.001;
+         Raised : constant Boolean := Long_Float'Min (DA, Long_Float'Min (DB, DC)) < -0.01;
       begin
-         if Most > (if Same then 120.0 else 12.0) then
+         if Most > (if Raised then 6.0 elsif Same then 120.0 else 12.0) then
             if LA = Most then
                Sink (A, B, 0.5 * (B + C));
                Sink (A, 0.5 * (B + C), C);
@@ -4750,8 +4869,53 @@ package body World_Builder is
                Sink (C, A, 0.5 * (A + B));
                Sink (C, 0.5 * (A + B), B);
             end if;
-         elsif Long_Float'Max (DA, Long_Float'Max (DB, DC)) > 0.01 then
-            Ground_Tri (Hole, Mat_Water, 0.0, A, B, C);
+         elsif Raised then
+            --  an embankment only where the tracks are, with a wall at its
+            --  side (not where a street goes in under it)
+            declare
+               Mid : constant P2 := (1.0 / 3.0) * (A + B + C);
+               procedure Skirt (P, Q : P2) is
+                  M   : constant P2 := 0.5 * (P + Q);
+                  Out_N : P2 := M + (-1.0) * Mid;
+                  L   : constant Long_Float := Sqrt (Out_N.X ** 2 + Out_N.Z ** 2);
+                  DP  : constant Long_Float := Cut_Here (P.X, P.Z);
+                  DQ  : constant Long_Float := Cut_Here (Q.X, Q.Z);
+               begin
+                  if L < 0.001 then
+                     return;
+                  end if;
+                  Out_N := (1.0 / L) * Out_N;
+                  if not Near_Track (M + 4.0 * Out_N, 7.0) and then not Road_Crosses (M)
+                    and then In_Data (M.X, M.Z)
+                  then
+                     declare
+                        T : Tile_Builder renames Tile_At (M).all;
+                        Top : constant Long_Float := -Long_Float'Min (DP, DQ);
+                     begin
+                        Solid_Quad (T, (P.X, 0.0, P.Z), (Q.X, 0.0, Q.Z), (Q.X, -DQ, Q.Z), (P.X, -DP, P.Z),
+                                    (Out_N.X, 0.0, Out_N.Z), 0.0, Dist (P, Q), 0.0, Top, Mat_Quay, 0.3);
+                        Prism (T, Strip (P, Q, Out_N, -0.35, 0.0), -0.5 * (DP + DQ), -0.5 * (DP + DQ) + 0.95,
+                               Mat_Quay, 0.3);
+                        Add_Edge (P, Q, 0.0, Top + 0.95);
+                     end;
+                  end if;
+               end Skirt;
+            begin
+               if Near_Track (Mid, 7.0) then
+                  Sunk := True;
+                  Ground_Tri (Solid, Mat_Ballast, 0.25, A, B, C);
+                  Sunk := False;
+                  Skirt (A, B);
+                  Skirt (B, C);
+                  Skirt (C, A);
+               end if;
+            end;
+         elsif Long_Float'Max (abs DA, Long_Float'Max (abs DB, abs DC)) > 0.01 then
+            --  (down in a cutting the street level must let go of its
+            --  pixels; up on an embankment the streets below stay)
+            if Long_Float'Max (DA, Long_Float'Max (DB, DC)) > 0.01 then
+               Ground_Tri (Hole, Mat_Water, 0.0, A, B, C);
+            end if;
             Sunk := True;
             --  (a seed of its own: no vertex shared with the land up above)
             Ground_Tri (Solid, Mat_Ballast, 0.25, A, B, C);

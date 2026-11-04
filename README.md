@@ -272,9 +272,10 @@ and out across the city, the tram lines in their boulevards, and the platforms.
 They come from OpenStreetMap, like everything else (`data/osm/rail.osm`,
 downloaded once by `make tiles`).  If your tiles are older than this, run
 `make tiles` to see them.  Out of the Gare du Nord and the Gare de l'Est the
-lines run down in cuttings, under the streets' bridges; elsewhere the tracks
-still lie at street level, also where the real line runs on a viaduct or in a
-cutting.
+lines run down in cuttings, under the streets' bridges; out of the Gare de Lyon
+the line first runs up on an embankment, over the Boulevard de Bercy and the
+Rue Proudhon, then down in a cutting.  Elsewhere the tracks still lie at street
+level.
 
 ### Up in the balloon
 
