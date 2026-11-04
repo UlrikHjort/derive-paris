@@ -252,8 +252,9 @@ begin
             Walk_Step := Walk_Step + Dt * Speed * 4.2;
             return;
          end if;
-         --  walls, and the parked car
+         --  walls, and the parked car, and out of a train's way
          World.Collide (Walk_X, Walk_Z, 0.35, Hit, NX, NZ);
+         Trains.Push (Walk_X, Walk_Z, Walk_Eye.Y - 1.65);
          if Museum.Touching_Pyramid (Walk_X, Walk_Z) then
             Enter_Museum;
             return;

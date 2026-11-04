@@ -112,6 +112,7 @@ begin
       Load_Home (Dir & "/home.txt");
       Tower.Load (Dir & "/eiffel.txt");
       Arc_Top.Load (Dir & "/arc.txt");
+      Trains.Load (Dir);
       Scenes.Load;
       Postcards.Load;
       Trials.Load;

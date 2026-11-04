@@ -5,6 +5,7 @@
 with Ada.Containers.Generic_Array_Sort;
 with Ada.Directories;
 with Ada.Containers.Hashed_Maps;
+with Ada.Containers.Ordered_Sets;
 with Ada.Containers.Vectors;
 with Ada.Streams.Stream_IO;
 with Ada.Strings.Fixed;
@@ -1007,6 +1008,9 @@ package body World_Builder is
    Lines        : Line_Vectors.Vector;
    River_Polys  : Poly_Vectors.Vector;
    Cut_Polys    : Poly_Vectors.Vector;
+   Every_Cut    : Poly_Vectors.Vector;   --  all of them, for the trains' heights
+   package Every_Of_Vectors is new Ada.Containers.Vectors (Natural, Positive);
+   Every_Of     : Every_Of_Vectors.Vector;
    package Cut_Vectors is new Ada.Containers.Vectors (Natural, Positive);
    Cut_Of       : Cut_Vectors.Vector;   --  which of Cuts each one belongs to
    Bridge_Polys : Poly_Vectors.Vector;
@@ -1091,6 +1095,12 @@ package body World_Builder is
          Mat := Area_Material (Tags);
          if (for some C of Cuts => C.Relation = Id) then
             for P of Polys loop
+               Every_Cut.Append (P);
+               for K in Cuts'Range loop
+                  if Cuts (K).Relation = Id then
+                     Every_Of.Append (K);
+                  end if;
+               end loop;
                if Touches_Data (P.Outer) then
                   Cut_Polys.Append (P);
                   for K in Cuts'Range loop
@@ -5181,6 +5191,275 @@ package body World_Builder is
       end loop;
    end Emit_Tracks;
 
+   ---------------------------------------------------------------------------
+   --  The trains' lines: from the end of a station's platforms out to the
+   --  edge of the city, the shortest way through the switches, with the
+   --  height of the track all the way (cuttings and embankments).  Written
+   --  by the chunk that holds the station, as train_<name>.txt: a line
+   --  "name kind", then "x y z" every 4 m.
+   ---------------------------------------------------------------------------
+
+   type Train_Line is record
+      Name : String (1 .. 4);
+      Kind : String (1 .. 4);   --  tgv_, rer_
+      From_Lat, From_Lon, To_Lat, To_Lon : Long_Float;
+   end record;
+   Train_Lines : constant array (1 .. 4) of Train_Line :=
+     (("nord", "tgv_", 48.8820, 2.3560, 48.8998, 2.3549),
+      ("nor2", "rer_", 48.8835, 2.3540, 48.8998, 2.3549),
+      ("est_", "tgv_", 48.8790, 2.3600, 48.8985, 2.4400),
+      ("lyon", "tgv_", 48.8430, 2.3760, 48.8160, 2.4170));
+
+   function Track_Height (P : P2) return Long_Float is
+   begin
+      for I in Every_Cut.First_Index .. Every_Cut.Last_Index loop
+         declare
+            D : constant Long_Float := Depth_At (Every_Of (I), P.X, P.Z);
+         begin
+            if abs D > 0.05 and then not In_River (P) and then Point_In_Poly (P, Every_Cut (I)) then
+               return Terrain.Height (P.X, P.Z) - D;
+            end if;
+         end;
+      end loop;
+      return Terrain.Height (P.X, P.Z);
+   end Track_Height;
+
+   procedure Emit_Trains is
+      package Node_Lists is new Ada.Containers.Vectors (Positive, Osm_Id);
+      use type Node_Lists.Vector;
+      package Links is new Ada.Containers.Hashed_Maps (Osm_Id, Node_Lists.Vector, Hash_Id, "=");
+      package Costs is new Ada.Containers.Hashed_Maps (Osm_Id, Long_Float, Hash_Id, "=");
+      package Froms is new Ada.Containers.Hashed_Maps (Osm_Id, Osm_Id, Hash_Id, "=");
+      type Item is record
+         D : Long_Float;
+         N : Osm_Id;
+      end record;
+      function "<" (A, B : Item) return Boolean is
+        (A.D < B.D or else (A.D = B.D and then A.N < B.N));
+      package Queues is new Ada.Containers.Ordered_Sets (Item);
+      Graph : Links.Map;
+      Mains : Costs.Map;   --  the main lines' nodes, to start and end on
+
+      function Pos (N : Osm_Id) return P2 is
+         X, Z : Long_Float;
+         C : constant Node_Pos := Model_Ref.Nodes.Element (N);
+      begin
+         Geo.To_Local (C.Lat, C.Lon, X, Z);
+         return (X, Z);
+      end Pos;
+
+      --  (a neighbour through a tunnel is kept negative)
+      procedure Link (A, B : Osm_Id) is
+      begin
+         if not Graph.Contains (A) then
+            Graph.Insert (A, Node_Lists.Empty_Vector);
+         end if;
+         Graph (A).Append (B);
+      end Link;
+
+      function Nearest (Lat, Lon : Long_Float) return Osm_Id is
+         X, Z : Long_Float;
+         Best : Long_Float := Long_Float'Last;
+         Id   : Osm_Id := 0;
+      begin
+         Geo.To_Local (Lat, Lon, X, Z);
+         for C in Mains.Iterate loop
+            declare
+               P : constant P2 := Pos (Costs.Key (C));
+               D : constant Long_Float := (P.X - X) ** 2 + (P.Z - Z) ** 2;
+            begin
+               if D < Best then
+                  Best := D;
+                  Id := Costs.Key (C);
+               end if;
+            end;
+         end loop;
+         return Id;
+      end Nearest;
+   begin
+      for W of Model_Ref.Ways loop
+         if Tag (W.Tags, "railway") = "rail" then
+            declare
+               Under : constant Boolean := Has (W.Tags, "tunnel") and then Tag (W.Tags, "tunnel") /= "no";
+               Sign  : constant Osm_Id := (if Under then -1 else 1);
+            begin
+               for I in W.Refs.First_Index .. W.Refs.Last_Index - 1 loop
+                  if Model_Ref.Nodes.Contains (W.Refs (I)) and then Model_Ref.Nodes.Contains (W.Refs (I + 1)) then
+                     Link (W.Refs (I), Sign * W.Refs (I + 1));
+                     Link (W.Refs (I + 1), Sign * W.Refs (I));
+                     if Tag (W.Tags, "usage") = "main" and then not Under then
+                        Mains.Include (W.Refs (I), 0.0);
+                        Mains.Include (W.Refs (I + 1), 0.0);
+                     end if;
+                  end if;
+               end loop;
+            end;
+         end if;
+      end loop;
+      for L of Train_Lines loop
+         declare
+            SX, SZ : Long_Float;
+         begin
+            Geo.To_Local (L.From_Lat, L.From_Lon, SX, SZ);
+            if SX >= DX0 and then SX < DX1 and then SZ >= DZ0 and then SZ < DZ1 and then not Mains.Is_Empty then
+               declare
+                  Start : constant Osm_Id := Nearest (L.From_Lat, L.From_Lon);
+                  Goal  : constant Osm_Id := Nearest (L.To_Lat, L.To_Lon);
+                  --  A train goes on the way it came: the search is over
+                  --  steps from one node to the next, and a sharp turn
+                  --  (through a crossover, backwards) costs a lot
+                  type Edge is record
+                     A, B : Osm_Id;
+                  end record;
+                  function Edge_Hash (E : Edge) return Ada.Containers.Hash_Type is
+                    (Ada.Containers.Hash_Type ((E.A * 31 + E.B) mod 2**31));
+                  package Edge_Costs is new Ada.Containers.Hashed_Maps (Edge, Long_Float, Edge_Hash, "=");
+                  package Edge_Froms is new Ada.Containers.Hashed_Maps (Edge, Edge, Edge_Hash, "=");
+                  type E_Item is record
+                     D : Long_Float;
+                     E : Edge;
+                  end record;
+                  function "<" (X, Y : E_Item) return Boolean is
+                    (X.D < Y.D or else (X.D = Y.D and then (X.E.A < Y.E.A
+                     or else (X.E.A = Y.E.A and then X.E.B < Y.E.B))));
+                  package E_Queues is new Ada.Containers.Ordered_Sets (E_Item);
+                  Cost  : Edge_Costs.Map;
+                  From  : Edge_Froms.Map;
+                  Done  : Edge_Costs.Map;
+                  Q     : E_Queues.Set;
+                  Path  : Node_Lists.Vector;
+                  Last  : Edge := (0, 0);
+                  Found : Boolean := False;
+
+                  function Turn (A, B, C : Osm_Id) return Long_Float is
+                     PA : constant P2 := Pos (A);
+                     PB : constant P2 := Pos (B);
+                     PC : constant P2 := Pos (C);
+                     UX : constant Long_Float := PB.X - PA.X;
+                     UZ : constant Long_Float := PB.Z - PA.Z;
+                     VX : constant Long_Float := PC.X - PB.X;
+                     VZ : constant Long_Float := PC.Z - PB.Z;
+                     LU : constant Long_Float := Sqrt (UX * UX + UZ * UZ);
+                     LV : constant Long_Float := Sqrt (VX * VX + VZ * VZ);
+                  begin
+                     if LU < 1.0E-6 or else LV < 1.0E-6 then
+                        return 0.0;
+                     end if;
+                     return (UX * VX + UZ * VZ) / (LU * LV);   --  the cosine
+                  end Turn;
+
+                  procedure Offer (E : Edge; D : Long_Float; Prev : Edge; Has_Prev : Boolean) is
+                  begin
+                     if not Cost.Contains (E) or else D < Cost (E) then
+                        if Cost.Contains (E) then
+                           Q.Exclude ((Cost (E), E));
+                           Cost (E) := D;
+                        else
+                           Cost.Insert (E, D);
+                        end if;
+                        if Has_Prev then
+                           From.Include (E, Prev);
+                        end if;
+                        Q.Insert ((D, E));
+                     end if;
+                  end Offer;
+               begin
+                  for Raw of Graph (Start) loop
+                     Offer ((Start, abs Raw), Dist (Pos (Start), Pos (abs Raw)) * (if Raw < 0 then 20.0 else 1.0),
+                            (0, 0), False);
+                  end loop;
+                  while not Q.Is_Empty loop
+                     declare
+                        Cur : constant E_Item := Q.First_Element;
+                     begin
+                        Q.Delete_First;
+                        Done.Include (Cur.E, Cur.D);
+                        if Cur.E.B = Goal then
+                           Last := Cur.E;
+                           Found := True;
+                           exit;
+                        end if;
+                        for Raw of Graph (Cur.E.B) loop
+                           declare
+                              Nb : constant Osm_Id := abs Raw;
+                              Next : constant Edge := (Cur.E.B, Nb);
+                           begin
+                              if Nb /= Cur.E.A and then not Done.Contains (Next) then
+                                 Offer (Next,
+                                        Cur.D + Dist (Pos (Cur.E.B), Pos (Nb)) * (if Raw < 0 then 20.0 else 1.0)
+                                        + (if Turn (Cur.E.A, Cur.E.B, Nb) < 0.7 then 500.0 else 0.0),
+                                        Cur.E, True);
+                              end if;
+                           end;
+                        end loop;
+                     end;
+                  end loop;
+                  if Found then
+                     declare
+                        E : Edge := Last;
+                     begin
+                        Path.Prepend (E.B);
+                        loop
+                           Path.Prepend (E.A);
+                           exit when not From.Contains (E);
+                           E := From (E);
+                        end loop;
+                     end;
+                     --  begin after the last sharp turn (backing out of a siding)
+                     declare
+                        Cut_At : Natural := 0;
+                     begin
+                        for I in Path.First_Index + 1 .. Path.Last_Index - 1 loop
+                           if Turn (Path (I - 1), Path (I), Path (I + 1)) < 0.7 then
+                              Cut_At := I;
+                           end if;
+                        end loop;
+                        if Cut_At > 0 then
+                           Path.Delete_First (Ada.Containers.Count_Type (Cut_At - Path.First_Index));
+                        end if;
+                     end;
+                     declare
+                        use Ada.Text_IO;
+                        F : File_Type;
+                        Step : constant Long_Float := 4.0;
+                        Carry : Long_Float := 0.0;
+                        Count : Natural := 0;
+                     begin
+                        Create (F, Out_File, Ada.Strings.Unbounded.To_String (Output_Dir)
+                                & "/train_" & L.Name & ".txt");
+                        Put_Line (F, L.Name & " " & L.Kind);
+                        for I in Path.First_Index .. Path.Last_Index - 1 loop
+                           declare
+                              A : constant P2 := Pos (Path (I));
+                              B : constant P2 := Pos (Path (I + 1));
+                              Len : constant Long_Float := Dist (A, B);
+                              T : Long_Float := Carry;
+                           begin
+                              while T < Len loop
+                                 declare
+                                    P : constant P2 := A + (T / Len) * (B + (-1.0) * A);
+                                 begin
+                                    Put_Line (F, Long_Float'Image (P.X) & " " & Long_Float'Image (Track_Height (P))
+                                              & " " & Long_Float'Image (P.Z));
+                                    Count := Count + 1;
+                                 end;
+                                 T := T + Step;
+                              end loop;
+                              Carry := T - Len;
+                           end;
+                        end loop;
+                        Close (F);
+                        Ada.Text_IO.Put_Line ("  train line " & L.Name & ":" & Count'Image & " points");
+                     end;
+                  else
+                     Ada.Text_IO.Put_Line ("  train line " & L.Name & ": no way through");
+                  end if;
+               end;
+            end if;
+         end;
+      end loop;
+   end Emit_Trains;
+
    procedure Ribbon (Pts : Ring; Width : Long_Float; G : Group_Id;
                      Mat : Long_Float; Y : Long_Float := 0.0)
    is
@@ -6096,6 +6375,7 @@ package body World_Builder is
          end;
       end loop;
       Emit_Tracks;
+      Emit_Trains;
       Emit_Bridges;
       for L of Lines loop
          Emit_Markings (L);

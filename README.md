@@ -279,6 +279,15 @@ the line first runs up on an embankment, over the Boulevard de Bercy and the
 Rue Proudhon, then down in a cutting.  Elsewhere the tracks still lie at street
 level.
 
+### Trains
+
+TGVs run out of the Gare du Nord, the Gare de l'Est and the Gare de Lyon, and a
+double-deck suburban train out of the Gare du Nord: out along their line to the
+edge of the city, and some minutes later back in to the platform, where they
+wait before setting off again with a blast of the horn.  Their lines are found
+by `make tiles` in the tracks (`train_*.txt` in `tiles/`), the way a train can
+run through the switches.  On foot you are pushed out of a passing train's way.
+
 ### Up in the balloon
 
 Over the Parc André-Citroën the tethered balloon goes up on its cable to

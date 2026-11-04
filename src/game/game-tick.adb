@@ -138,6 +138,10 @@ begin
       Navigation.Show_Big (True);
       Navigation.Zoom_Big (Float'Value (Env ("PARIS_BIGMAP")));
    end if;
+   --  PARIS_TRAINS=1: every train sets off now (testing)
+   if Ready and then Frame_Number = 30 and then Env ("PARIS_TRAINS") /= "" then
+      Trains.Leave_Now;
+   end if;
    --  PARIS_ARC=yaw: on the roof of the Arc de Triomphe (testing)
    if Ready and then Frame_Number = 30 and then Env ("PARIS_ARC") /= "" then
       if not Walking then
@@ -790,6 +794,7 @@ begin
             end if;
          end;
          Moulin.Update (Dt);
+         Trains.Update (Dt, Cam_Pos);
          Extras.Update (Dt, Hour, Night,
                         (if Walking then Vec3'(Walk_X, 0.0, Walk_Z) else Vec3'(Player.X, 0.0, Player.Z)));
          Pedestrians.Set_Sweepers ((if Env ("PARIS_SWEEPERS") /= "" then 0.5 else Sweeper_Share));

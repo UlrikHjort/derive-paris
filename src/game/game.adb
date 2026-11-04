@@ -49,6 +49,7 @@ with Compass;
 with Config;
 with Funicular;
 with Garden_Chairs;
+with Trains;
 with Geo;
 with Halloween;
 with Instruments;

@@ -217,6 +217,8 @@ begin
       if not In_Museum and then not In_Hall_B and then not In_Room then
          Birds.Draw (WU.Model, WU.Car_Color, Cam_Pos);
          Extras.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos);
+         Trains.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos);
+         Set (WU.Car_Color, Car_Color);
          Boats.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos, Night);
          Funicular.Draw (WU.Model, WU.Car_Color, Cam_Pos);
          Balloon.Draw (WU.Model, WU.Car_Color, Cam_Pos);
