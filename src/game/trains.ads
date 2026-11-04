@@ -17,8 +17,10 @@ package Trains is
 
    procedure Update (Dt : Float; Listener : Math3D.Vec3);
 
-   procedure Draw (Model, Paint, Stripe, Roof : GL.GLint; Cam : Math3D.Vec3);
-   --  Body in Paint, the stripe and the roof in the other two colours
+   procedure Draw (Model, Paint, Stripe, Roof : GL.GLint; Cam : Math3D.Vec3;
+                   Night : Float := 0.0);
+   --  Body in Paint, the stripe and the roof in the other two colours; the
+   --  windows lit after dark
 
    procedure Leave_Now;
    --  Every train at a platform sets off (testing)

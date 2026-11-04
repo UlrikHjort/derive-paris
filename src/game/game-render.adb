@@ -82,6 +82,7 @@ begin
          Car.Draw_Model (Usual_Model);
       end if;
       Traffic.Draw (Sh_Model, GLint (-1));
+      Trains.Draw (Sh_Model, -1, -1, -1, Cam_Pos);
       Pedestrians.Draw (Sh_Model, -1, -1, -1, Cam_Pos.X, Cam_Pos.Z, 50.0);
       if Mode = Flying then
          Plane.Draw (Aircraft, Sh_Model);
@@ -217,7 +218,7 @@ begin
       if not In_Museum and then not In_Hall_B and then not In_Room then
          Birds.Draw (WU.Model, WU.Car_Color, Cam_Pos);
          Extras.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos);
-         Trains.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos);
+         Trains.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos, Night);
          Set (WU.Car_Color, Car_Color);
          Boats.Draw (WU.Model, WU.Car_Color, WU.Extra_Color, WU.Extra_Color2, Cam_Pos, Night);
          Funicular.Draw (WU.Model, WU.Car_Color, Cam_Pos);

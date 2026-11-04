@@ -233,15 +233,17 @@ package body Trains is
    --  The cars: front -Z, the rails at Y = 0
 
    Built : Boolean := False;
-   Car_Mesh : array (Car_Kind) of Meshes.Mesh;
+   Car_Mesh : array (Boolean, Car_Kind) of Meshes.Mesh;   --  (True: lit windows)
 
    procedure Build is
       use Meshes;
       Mat_Stripe : constant := Mat_Skin;       --  in Stripe
       Mat_Roof   : constant := Mat_Trousers;   --  in Roof
    begin
+      for Lit in Boolean loop
       for K in Car_Kind loop
          declare
+            Mat_Glass : constant Float := (if Lit then 76.0 else Meshes.Mat_Glass);   --  amber, lit
             H  : constant Float := Car_Length (K) / 2.0;
             Up : constant Float := (if K in Double_End | Double then 4.4 else 3.8);
             Nose : constant Float := (case K is when Power => 7.0, when Double_End => 1.2, when others => 0.0);
@@ -267,13 +269,23 @@ package body Trains is
                end if;
             end if;
             Box (-1.25, 1.25, Up, Up + 0.2, -H + Nose + 0.3, H - 0.4, Mat_Roof);
-            Finish (Car_Mesh (K));
+            --  the lights at the ends: white ahead, red behind (the shader
+            --  lights one or the other the way the car faces)
+            if K in Power | Double_End then
+               Box (-1.1, -0.7, 1.15, 1.45, -H - 0.03, -H + 0.1, Mat_Headlight);
+               Box (0.7, 1.1, 1.15, 1.45, -H - 0.03, -H + 0.1, Mat_Headlight);
+               Box (-1.1, -0.8, 1.15, 1.4, H - 0.1, H + 0.03, Mat_Taillight);
+               Box (0.8, 1.1, 1.15, 1.4, H - 0.1, H + 0.03, Mat_Taillight);
+            end if;
+            Finish (Car_Mesh (Lit, K));
          end;
+      end loop;
       end loop;
       Built := True;
    end Build;
 
-   procedure Draw (Model, Paint, Stripe, Roof : GL.GLint; Cam : Vec3) is
+   procedure Draw (Model, Paint, Stripe, Roof : GL.GLint; Cam : Vec3;
+                   Night : Float := 0.0) is
    begin
       if Count = 0 then
          return;
@@ -309,7 +321,7 @@ package body Trains is
                        * Rotation_X (Pitch) * (if Turn then Rotation_Y (Pi) else Identity);
                   begin
                      Shaders.Set (Model, M);
-                     Meshes.Draw (Car_Mesh (List (I)));
+                     Meshes.Draw (Car_Mesh (Night > 0.4, List (I)));
                      Along := Along + L + Gap;
                   end;
                end loop;
