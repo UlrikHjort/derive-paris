@@ -4638,7 +4638,13 @@ package body World_Builder is
       end loop;
    end Emit_Rim;
 
+   function Track_Distance (P : P2; Within : Long_Float) return Long_Float;
+
    function Near_Track (P : P2; Within : Long_Float) return Boolean is
+     (Track_Distance (P, Within) < Within);
+
+   function Track_Distance (P : P2; Within : Long_Float) return Long_Float is
+      Best : Long_Float := Within;
    begin
       if not Rail_Done then
          Rail_Done := True;
@@ -4679,16 +4685,14 @@ package body World_Builder is
             begin
                if Rail_Maps.Has_Element (C) then
                   for I of Rail_Maps.Element (C) loop
-                     if Segment_Distance (P, Track_Segs (I).A, Track_Segs (I).B) < Within then
-                        return True;
-                     end if;
+                     Best := Long_Float'Min (Best, Segment_Distance (P, Track_Segs (I).A, Track_Segs (I).B));
                   end loop;
                end if;
             end;
          end loop;
       end loop;
-      return False;
-   end Near_Track;
+      return Best;
+   end Track_Distance;
 
    --  Where a track goes over water (found once): no parapet across it
    package P2_Vectors is new Ada.Containers.Vectors (Positive, P2);
@@ -4785,6 +4789,136 @@ package body World_Builder is
 
    --  The cutting: its floor down there, and the streets' level only claims
    --  its pixels, like the river's; retaining walls with a parapet round it
+   --  An embankment: the ground near the tracks goes up, as far as Reach
+   --  from them.  On a grid of Step the distance to the nearest track is
+   --  measured, and the edge is traced where it is Reach (marching squares):
+   --  a wall that runs smooth along the tracks, and a floor inside it.
+   procedure Emit_Bank (Pl : Poly; Which : Positive) is
+      Reach : constant Long_Float := 7.0;
+      Step  : constant Long_Float := 3.0;
+      X0, X1, Z0, Z1 : Long_Float;
+
+      --  below 0: up on the embankment
+      function Field (X, Z : Long_Float) return Long_Float is
+      begin
+         if not In_Data (X, Z) or else Cut_Here (X, Z) > -0.05
+           or else not Point_In_Poly ((X, Z), Pl)
+         then
+            return 1.0;
+         end if;
+         return Track_Distance ((X, Z), Reach + 1.0) - Reach;
+      end Field;
+
+      procedure Wall (P, Q : P2; Out_N : P2) is
+         M  : constant P2 := 0.5 * (P + Q);
+         DP : constant Long_Float := Cut_Here (P.X, P.Z);
+         DQ : constant Long_Float := Cut_Here (Q.X, Q.Z);
+      begin
+         if Dist (P, Q) < 0.01 or else Road_Crosses (M) or else not In_Data (M.X, M.Z) then
+            return;
+         end if;
+         declare
+            T   : Tile_Builder renames Tile_At (M).all;
+            Top : constant Long_Float := -Long_Float'Min (DP, DQ);
+         begin
+            Solid_Quad (T, (P.X, 0.0, P.Z), (Q.X, 0.0, Q.Z), (Q.X, -DQ, Q.Z), (P.X, -DP, P.Z),
+                        (Out_N.X, 0.0, Out_N.Z), 0.0, Dist (P, Q), 0.0, Top, Mat_Quay, 0.3);
+            Prism (T, Strip (P, Q, Out_N, -0.35, 0.0), -0.5 * (DP + DQ), -0.5 * (DP + DQ) + 0.95,
+                   Mat_Quay, 0.3);
+            Add_Edge (P, Q, 0.0, Top + 0.95);
+         end;
+      end Wall;
+   begin
+      if (for all I in Cuts (Which).First .. Cuts (Which).Last => All_Points (I).Depth >= 0.0) then
+         return;
+      end if;
+      Bounds (Pl.Outer, X0, X1, Z0, Z1);
+      X0 := Long_Float'Max (X0, DX0);
+      X1 := Long_Float'Min (X1, DX1);
+      Z0 := Long_Float'Max (Z0, DZ0);
+      Z1 := Long_Float'Min (Z1, DZ1);
+      if X1 <= X0 or else Z1 <= Z0 then
+         return;
+      end if;
+      Current_Cut := Which;
+      declare
+         NX : constant Natural := Natural (Long_Float'Ceiling ((X1 - X0) / Step));
+         NZ : constant Natural := Natural (Long_Float'Ceiling ((Z1 - Z0) / Step));
+         type Grid is array (0 .. NX, 0 .. NZ) of Long_Float;
+         V : access Grid := new Grid;
+         function Corner (I, J : Natural) return P2 is
+           ((X0 + Long_Float (I) * Step, Z0 + Long_Float (J) * Step));
+      begin
+         for I in 0 .. NX loop
+            for J in 0 .. NZ loop
+               V (I, J) := Field (Corner (I, J).X, Corner (I, J).Z);
+            end loop;
+         end loop;
+         for I in 0 .. NX - 1 loop
+            for J in 0 .. NZ - 1 loop
+               declare
+                  C : constant array (0 .. 3) of P2 :=
+                    (Corner (I, J), Corner (I + 1, J), Corner (I + 1, J + 1), Corner (I, J + 1));
+                  F : constant array (0 .. 3) of Long_Float :=
+                    (V (I, J), V (I + 1, J), V (I + 1, J + 1), V (I, J + 1));
+                  Pts : array (1 .. 8) of P2;
+                  Cross_Out : array (1 .. 8) of Boolean := (others => False);
+                  N : Natural := 0;
+               begin
+                  if (for some K in 0 .. 3 => F (K) < 0.0) then
+                     --  the square clipped to the inside, corner by corner
+                     for K in 0 .. 3 loop
+                        declare
+                           K2 : constant Natural := (K + 1) mod 4;
+                        begin
+                           if F (K) < 0.0 then
+                              N := N + 1;
+                              Pts (N) := C (K);
+                           end if;
+                           if (F (K) < 0.0) /= (F (K2) < 0.0) then
+                              N := N + 1;
+                              Pts (N) := C (K) + (F (K) / (F (K) - F (K2))) * (C (K2) + (-1.0) * C (K));
+                              Cross_Out (N) := F (K) < 0.0;   --  leaving the inside here
+                           end if;
+                        end;
+                     end loop;
+                     declare
+                        Mid : P2 := (0.0, 0.0);
+                     begin
+                        for K in 1 .. N loop
+                           Mid := Mid + (1.0 / Long_Float (N)) * Pts (K);
+                        end loop;
+                        Sunk := True;
+                        for K in 2 .. N - 1 loop
+                           Ground_Tri (Solid, Mat_Ballast, 0.25, Pts (1), Pts (K), Pts (K + 1));
+                        end loop;
+                        Sunk := False;
+                        --  out at one crossing, in at the next: the edge
+                        for K in 1 .. N loop
+                           if Cross_Out (K) then
+                              declare
+                                 Q   : constant P2 := Pts (K mod N + 1);
+                                 E   : constant P2 := 0.5 * (Pts (K) + Q);
+                                 D   : constant P2 := Q + (-1.0) * Pts (K);
+                                 L   : constant Long_Float := Sqrt (D.X ** 2 + D.Z ** 2);
+                                 Nrm : P2 := (D.Z / Long_Float'Max (L, 1.0E-6), -D.X / Long_Float'Max (L, 1.0E-6));
+                              begin
+                                 if (E.X - Mid.X) * Nrm.X + (E.Z - Mid.Z) * Nrm.Z < 0.0 then
+                                    Nrm := (-Nrm.X, -Nrm.Z);
+                                 end if;
+                                 Wall (Pts (K), Q, Nrm);
+                              end;
+                           end if;
+                        end loop;
+                     end;
+                  end if;
+               end;
+            end loop;
+         end loop;
+      end;
+      Current_Cut := 0;
+   end Emit_Bank;
+
    procedure Emit_Cut (Pl : Poly; Which : Positive) is
       Pts  : Earcut.Point_Array (0 .. Point_Count (Pl) - 1);
       Tris : Earcut.Index_Vectors.Vector;
@@ -4858,7 +4992,7 @@ package body World_Builder is
            and then abs (DB - DA) < 0.001 and then abs (DC - DA) < 0.001;
          Raised : constant Boolean := Long_Float'Min (DA, Long_Float'Min (DB, DC)) < -0.01;
       begin
-         if Most > (if Raised then 6.0 elsif Same then 120.0 else 12.0) then
+         if Most > (if Same or else Raised then 120.0 else 12.0) then
             if LA = Most then
                Sink (A, B, 0.5 * (B + C));
                Sink (A, 0.5 * (B + C), C);
@@ -4869,47 +5003,8 @@ package body World_Builder is
                Sink (C, A, 0.5 * (A + B));
                Sink (C, 0.5 * (A + B), B);
             end if;
-         elsif Raised then
-            --  an embankment only where the tracks are, with a wall at its
-            --  side (not where a street goes in under it)
-            declare
-               Mid : constant P2 := (1.0 / 3.0) * (A + B + C);
-               procedure Skirt (P, Q : P2) is
-                  M   : constant P2 := 0.5 * (P + Q);
-                  Out_N : P2 := M + (-1.0) * Mid;
-                  L   : constant Long_Float := Sqrt (Out_N.X ** 2 + Out_N.Z ** 2);
-                  DP  : constant Long_Float := Cut_Here (P.X, P.Z);
-                  DQ  : constant Long_Float := Cut_Here (Q.X, Q.Z);
-               begin
-                  if L < 0.001 then
-                     return;
-                  end if;
-                  Out_N := (1.0 / L) * Out_N;
-                  if not Near_Track (M + 4.0 * Out_N, 7.0) and then not Road_Crosses (M)
-                    and then In_Data (M.X, M.Z)
-                  then
-                     declare
-                        T : Tile_Builder renames Tile_At (M).all;
-                        Top : constant Long_Float := -Long_Float'Min (DP, DQ);
-                     begin
-                        Solid_Quad (T, (P.X, 0.0, P.Z), (Q.X, 0.0, Q.Z), (Q.X, -DQ, Q.Z), (P.X, -DP, P.Z),
-                                    (Out_N.X, 0.0, Out_N.Z), 0.0, Dist (P, Q), 0.0, Top, Mat_Quay, 0.3);
-                        Prism (T, Strip (P, Q, Out_N, -0.35, 0.0), -0.5 * (DP + DQ), -0.5 * (DP + DQ) + 0.95,
-                               Mat_Quay, 0.3);
-                        Add_Edge (P, Q, 0.0, Top + 0.95);
-                     end;
-                  end if;
-               end Skirt;
-            begin
-               if Near_Track (Mid, 7.0) then
-                  Sunk := True;
-                  Ground_Tri (Solid, Mat_Ballast, 0.25, A, B, C);
-                  Sunk := False;
-                  Skirt (A, B);
-                  Skirt (B, C);
-                  Skirt (C, A);
-               end if;
-            end;
+         elsif Long_Float'Max (DA, Long_Float'Max (DB, DC)) <= 0.01 then
+            null;   --  up on an embankment, or level: Emit_Bank
          elsif Long_Float'Max (abs DA, Long_Float'Max (abs DB, abs DC)) > 0.01 then
             --  (down in a cutting the street level must let go of its
             --  pixels; up on an embankment the streets below stay)
@@ -5973,6 +6068,7 @@ package body World_Builder is
       Emit_Low_Quays;
       for I in Cut_Polys.First_Index .. Cut_Polys.Last_Index loop
          Emit_Cut (Cut_Polys (I), Cut_Of (I));
+         Emit_Bank (Cut_Polys (I), Cut_Of (I));
       end loop;
       Ada.Text_IO.Put_Line ("  river done");
 
