@@ -38,8 +38,9 @@ and pedestrians, day and night, and rain.
 
 You start in your car on the Rue Bonaparte by Saint-Sulpice.  Arrow keys
 or W/A/S/D to drive, **F1** for all the keys, **F2** for the games, **Q**
-to get out and walk.  Running `make tiles` later builds all of Paris,
-keeping what the small build downloaded.
+to get out and walk.  A racing wheel or a game controller works too, just
+plug it in (see [Controls](#controls)).  Running `make tiles` later builds
+all of Paris, keeping what the small build downloaded.
 
 ## In motion
 
@@ -156,6 +157,19 @@ smaller or larger one.
 
 ## Controls
 
+You can play with:
+
+- **Keyboard and mouse**: everything, see the table below (F1 in the game
+  shows it too).
+- **A racing wheel**: the Logitech G29, with its pedals and the Driving
+  Force H-shifter, and force feedback ([Racing wheel](#racing-wheel)).
+- **A game controller**: Xbox and PlayStation pads, the Steam Controller,
+  and other pads Linux sees as a gamepad ([Game controller](#game-controller)).
+
+Plug a wheel or a pad in before or while the game runs; it is found by
+itself.  They can all stay plugged in together: whichever you touched last
+drives.  Linux only: they are read straight from `/dev/input`.
+
 | Key | |
 |---|---|
 | arrows / WASD | drive |
@@ -226,7 +240,7 @@ you go and kicks over kerbs and in crashes.
 | d-pad right / left | save this place / saved places |
 | + / - and turning the red dial | zoom |
 
-The plane is flown with the keyboard.
+The plane is flown with the keyboard (or a game controller).
 
 ### Game controller
 
