@@ -75,6 +75,9 @@ begin
    if Env ("PARIS_NOWHEEL") = "" then
       Wheel.Open;
    end if;
+   if Env ("PARIS_NOPAD") = "" then
+      Gamepad.Open;
+   end if;
 
    Gtk.Window.Gtk_New (Window);
    Window.Set_Title ("Dérive");

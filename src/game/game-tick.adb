@@ -527,6 +527,7 @@ begin
    Compute_Lighting;
 
    Wheel.Poll;
+   Gamepad.Poll;
    --  PARIS_KEYS="up left": hold those keys from the start (testing)
    if Frame_Number = 2 and then Env ("PARIS_KEYS") /= "" then
       Keys.Up := Ada.Strings.Fixed.Index (Env ("PARIS_KEYS"), "up") > 0;
@@ -540,21 +541,35 @@ begin
          if Keys.Up or else Keys.Down or else Keys.Left or else Keys.Right
            or else Keys.W or else Keys.S or else Keys.A or else Keys.D
          then
-            if not On_The_Keys then
+            if not On_The_Keys and then not On_The_Pad then
                Player.Steer := 0.0;   --  the front wheels no longer follow the rim
             end if;
             On_The_Keys := True;
+            On_The_Pad := False;
             Rim_Left := W.Steering;
          elsif On_The_Keys
            and then (abs (W.Steering - Rim_Left) > 0.03 or else W.Throttle > 0.1
                      or else W.Brake > 0.1 or else W.Clutch > 0.1)
          then
             On_The_Keys := False;
+            On_The_Pad := False;
          end if;
       end;
    else
       On_The_Keys := False;
    end if;
+   --  the game controller: its sticks and triggers make it the one that
+   --  drives; on foot and in the plane it stands in for the keys
+   if Gamepad.Touched and then not Pad_Keys_Only then
+      if not On_The_Pad then
+         Player.Steer := 0.0;
+      end if;
+      On_The_Pad := True;
+      On_The_Keys := False;
+   elsif not Gamepad.Present then
+      On_The_Pad := False;
+   end if;
+   Pad_As_Keys (Dt);
    Wheel_Buttons;
 
    if Ready then
@@ -585,24 +600,30 @@ begin
          elsif Mode = Driving then
             declare
                W     : constant Wheel.Input := Wheel.State;
-               Analog : constant Boolean := Wheel_Drives;
+               P     : constant Gamepad.Input := Gamepad.State;
+               Pad   : constant Boolean := Pad_Drives;
+               Analog : constant Boolean := Wheel_Drives or else Pad;
                Input : constant Car.Controls :=
                  (Throttle  => Keys.Up or else Keys.W,
                   Brake     => Keys.Down or else Keys.S,
                   Left      => Keys.Left or else Keys.A,
                   Right     => Keys.Right or else Keys.D,
-                  Handbrake => Keys.Space or else Wheel.Held (Wheel.Cross),
+                  Handbrake => Keys.Space or else Wheel.Held (Wheel.Cross) or else Gamepad.Held (Wheel.Circle),
                   Analog         => Analog,
                   Throttle_Pedal =>
-                    Float'Max (W.Throttle, (if Keys.Up or else Keys.W then 1.0 else 0.0)),
+                    Float'Max ((if Pad then P.Right_Trigger else W.Throttle),
+                               (if Keys.Up or else Keys.W then 1.0 else 0.0)),
                   Brake_Pedal    =>
-                    Float'Max (W.Brake, (if Keys.Down or else Keys.S then 1.0 else 0.0)),
-                  Clutch_Pedal   => W.Clutch,
+                    Float'Max ((if Pad then P.Left_Trigger else W.Brake),
+                               (if Keys.Down or else Keys.S then 1.0 else 0.0)),
+                  Clutch_Pedal   => (if Pad then 0.0 else W.Clutch),
+                  --  (a stick moves less far than a wheel: gentler near the middle)
                   Steering       =>
-                    Float'Max (-1.0, Float'Min (1.0,
-                      (W.Steering - Steer_Centre / 450.0) * Steer_Gain)),
-                  Manual         => Analog and then Manual_Gearbox,
-                  Gear           => Integer (W.Shifter),
+                    (if Pad then P.Left_X * abs P.Left_X * 0.55 + P.Left_X * 0.45
+                     else Float'Max (-1.0, Float'Min (1.0,
+                       (W.Steering - Steer_Centre / 450.0) * Steer_Gain))),
+                  Manual         => Wheel_Drives and then Manual_Gearbox,
+                  Gear           => (if Pad then 0 else Integer (W.Shifter)),
                   Need_Clutch    => Need_Clutch,
                   Wet            => Wetness,
                   Snow           => Snow_Cover,

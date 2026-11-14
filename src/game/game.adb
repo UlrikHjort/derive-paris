@@ -48,6 +48,7 @@ with Car;
 with Compass;
 with Config;
 with Funicular;
+with Gamepad;
 with Garden_Chairs;
 with Trains;
 with Geo;
@@ -303,8 +304,11 @@ package body Game is
    --  when the keys took over; moving it from there hands back to the wheel.
    On_The_Keys    : Boolean := False;
    Rim_Left       : Float := 0.0;
+   On_The_Pad     : Boolean := False;   --  a game controller, touched last
 
-   function Wheel_Drives return Boolean is (Wheel.Present and then not On_The_Keys);
+   function Wheel_Drives return Boolean is
+     (Wheel.Present and then not On_The_Keys and then not On_The_Pad);
+   function Pad_Drives return Boolean is (Gamepad.Present and then On_The_Pad);
    Force_Time     : Float := 0.0;       --  for the force feedback
    Last_Steering  : Float := 0.0;
    Jolt           : Float := 0.0;       --  kerb or crash kick, decays
@@ -2768,23 +2772,67 @@ package body Game is
       end;
    end Scene_Overlays;
 
-   --  Racing wheel buttons do what the keys do
+   --  On foot and in the plane the game controller's sticks and triggers
+   --  press the keys for you (and let them go); the right stick looks round
+   function Pad_Keys_Only return Boolean is (Walking or else Visiting or else Mode = Flying);
+
+   type Pad_Key is record
+      Code : Gdk.Types.Gdk_Key_Type;
+      Held : Boolean := False;
+   end record;
+   Pad_Keys : array (1 .. 8) of Pad_Key :=
+     ((16#77#, False), (16#73#, False), (16#61#, False), (16#64#, False),             --  W S A D
+      (16#FF52#, False), (16#FF54#, False), (16#FF51#, False), (16#FF53#, False));    --  arrows
+
+   procedure Pad_As_Keys (Dt : Float) is
+      P    : constant Gamepad.Input := Gamepad.State;
+      Free : constant Boolean :=
+        Gamepad.Present and then not Menu_Open and then not List_Open and then not Confirm_Open
+        and then not Search_Open;
+      On   : constant Float := 0.35;
+      Want : array (Pad_Keys'Range) of Boolean := (others => False);
+   begin
+      if Free and then Walking then
+         Want (1) := P.Left_Y < -On;
+         Want (2) := P.Left_Y > On;
+         Want (3) := P.Left_X < -On;
+         Want (4) := P.Left_X > On;
+         Walk_Yaw := Walk_Yaw + 2.4 * P.Right_X * Dt;
+         Walk_Pitch := Float'Max (-1.4, Float'Min (1.4, Walk_Pitch - 1.6 * P.Right_Y * Dt));
+      elsif Free and then Mode = Flying and then not Visiting then
+         Want (1) := P.Right_Trigger > 0.3;          --  throttle up
+         Want (2) := P.Left_Trigger > 0.3;           --  and down
+         Want (5) := P.Left_Y < -On;                 --  stick forward: nose down
+         Want (6) := P.Left_Y > On;
+         Want (7) := P.Left_X < -On;                 --  roll
+         Want (8) := P.Left_X > On;
+      end if;
+      for I in Pad_Keys'Range loop
+         if Want (I) /= Pad_Keys (I).Held then
+            Pad_Keys (I).Held := Want (I);
+            Set_Key (Pad_Keys (I).Code, Want (I));
+         end if;
+      end loop;
+   end Pad_As_Keys;
+
+   --  Racing wheel and game controller buttons do what the keys do
    procedure Wheel_Buttons is
-      B : Wheel.Button;
       procedure Tap (Key : Gdk.Types.Gdk_Key_Type) is
       begin
          Set_Key (Key, True);
          Set_Key (Key, False);
       end Tap;
-   begin
-      while Wheel.Next_Press (B) loop
+
+      procedure Button (B : Wheel.Button; From_Pad : Boolean) is
+         pragma Unreferenced (From_Pad);
+      begin
          if Confirm_Open then
             case B is
                when Wheel.Cross  => Tap (16#FF0D#);
                when Wheel.Circle => Tap (16#FF1B#);
                when others => null;
             end case;
-            goto Next;
+            return;
          end if;
          if not Menu_Open and then Taxi.Panel_Text /= "" then
             case B is
@@ -2792,7 +2840,7 @@ package body Game is
                when Wheel.Circle => Tap (16#FF1B#);   --  end the shift
                when others => null;
             end case;
-            goto Next;
+            return;
          end if;
          if Menu_Open then
             case B is
@@ -2803,7 +2851,7 @@ package body Game is
                when Wheel.Circle   => Tap (16#FFBF#);
                when others => null;
             end case;
-            goto Next;
+            return;
          end if;
          if List_Open then
             case B is
@@ -2815,7 +2863,7 @@ package body Game is
                when Wheel.Pad_Right => Tap (16#6C#);
                when others => null;
             end case;
-            goto Next;
+            return;
          end if;
          case B is
             when Wheel.Pad_Right => Tap (16#6C#);   --  l: save this place
@@ -2833,7 +2881,49 @@ package body Game is
             when Wheel.Minus | Wheel.Dial_Left => Zoom_By (1.15);
             when others => null;
          end case;
-         <<Next>>
+      end Button;
+
+      --  The game controller, where it differs from the wheel
+      procedure Pad_Button (B : Wheel.Button) is
+      begin
+         if Confirm_Open or else Menu_Open or else List_Open
+           or else (not Menu_Open and then Taxi.Panel_Text /= "")
+         then
+            Button (B, True);
+            return;
+         end if;
+         case B is
+            when Wheel.Triangle     => Tap (16#71#);     --  q: on foot / back in the car
+            when Wheel.Square       => Tap (16#63#);     --  c: camera
+            when Wheel.Paddle_Right => Tap (16#66#);     --  f: the plane
+            when Wheel.Paddle_Left  => Navigation.Show_Big (not Navigation.Big_Shown);
+            when Wheel.Share        => Tap (16#67#);     --  g: compass and minimap
+            when Wheel.Options      => Tap (16#FFBF#);   --  F2: the games
+            when Wheel.R3           => Tap (16#6E#);     --  n: street names
+            when Wheel.Pad_Up       =>
+               if Navigation.Big_Shown then
+                  Navigation.Zoom_Big (1.4);
+               else
+                  Zoom_By (1.0 / 1.15);
+               end if;
+            when Wheel.Pad_Down     =>
+               if Navigation.Big_Shown then
+                  Navigation.Zoom_Big (1.0 / 1.4);
+               else
+                  Zoom_By (1.15);
+               end if;
+            when Wheel.Cross | Wheel.Circle => null;     --  held: the horn, the handbrake
+            when others             => Button (B, True);
+         end case;
+      end Pad_Button;
+
+      B : Wheel.Button;
+   begin
+      while Wheel.Next_Press (B) loop
+         Button (B, False);
+      end loop;
+      while Gamepad.Next_Press (B) loop
+         Pad_Button (B);
       end loop;
    end Wheel_Buttons;
 
@@ -2849,7 +2939,7 @@ package body Game is
    begin
       Last_Steering := Steer;
       Force_Time := Force_Time + Dt;
-      if On_The_Keys then
+      if On_The_Keys or else On_The_Pad then
          Wheel.Set_Force (0.0);   --  (a pull would move the rim, and take over)
          return;
       end if;
@@ -2989,6 +3079,8 @@ package body Game is
           Night    => Night,
           Traffic  => Float'Max (0.0, 1.0 - Traffic.Nearest (Where.X, Where.Z) / 60.0),
           Horn     => Keys.B or else Wheel.Held (Wheel.Enter)
+                      or else (Gamepad.Held (Wheel.Cross) and then Mode = Driving and then not Walking
+                               and then not Menu_Open and then not List_Open and then not Confirm_Open)
                       or else (Env ("PARIS_BELL") /= "" and then Frame_Number mod 150 < 5),   --  (testing)
           Engine_Off => Mode = Driving and then not Visiting and then (Race.Wrecked or else Riding_Velib),
           Two_Stroke => Car."=" (Car.Player_Model, Car.Scooter) or else Boating,

@@ -228,6 +228,35 @@ you go and kicks over kerbs and in crashes.
 
 The plane is flown with the keyboard.
 
+### Game controller
+
+A game controller is found by itself when it is plugged in, also while the
+game runs: an Xbox or PlayStation pad, or the Steam Controller (with Steam
+running, through Steam Input, or with the kernel's own driver).  It is read
+straight from the Linux event device, like the wheel; you may need to be in
+the `input` group, or have Steam's udev rules installed, to read it.  Touch a
+stick or a trigger and the pad drives; touch a key and the keyboard does.
+
+| Controller | Driving | On foot | Flying |
+|---|---|---|---|
+| left stick | steer | walk | pitch and roll |
+| right stick | | look round | |
+| right / left trigger | throttle / brake (and reverse) | | throttle up / down |
+| A | horn | | |
+| B | handbrake | | |
+| Y | out of the car / back in | back to the car | |
+| X | camera | camera | camera |
+| RB | take off | | land |
+| LB | the big map | the big map | the big map |
+| d-pad up / down | zoom | zoom | zoom |
+| d-pad right / left | save this place / saved places | | |
+| back / view | compass and minimap | | |
+| start / menu | the games menu | | |
+| guide / Steam | home | | |
+| R3 / L3 | street names / stop navigating | | |
+
+In the menus and lists the d-pad chooses, A takes and B goes back.
+
 ### Saved places
 
 L saves the place where you are (named after the street) and O lists the
