@@ -1703,12 +1703,25 @@ package body World_Builder is
    --  Collision edges go into every tile their bounding box touches, so
    --  the game only has to look at the tiles under a point
    --  Edges keep absolute heights (on the hills), like the geometry
+   --  Tall walls that are not a house's front (a fountain, a monument, a
+   --  cutting's wall): no posters on them (no_posters_*.txt)
+   Bare_Walls : Ada.Strings.Unbounded.Unbounded_String;
+   Facade     : Boolean := False;   --  Add_Edge: a building's wall
+
    procedure Add_Edge (A, B : P2; Bottom : Long_Float := 0.0; Top : Long_Float := 1.0) is
       MX  : constant Long_Float := (A.X + B.X) / 2.0;
       MZ  : constant Long_Float := (A.Z + B.Z) / 2.0;
       Bot : constant Long_Float := Lift_Y (MX, Bottom, MZ);
       Tp  : constant Long_Float := Lift_Y (MX, Top, MZ);
    begin
+      --  (only what stands up over the street: a poster is pasted there)
+      if not Facade and then Tp - Bot >= 4.0 and then Top >= 2.0 and then In_Data (MX, MZ)
+        and then (A.X - B.X) ** 2 + (A.Z - B.Z) ** 2 >= 9.0   --  (a poster needs 3 m)
+      then
+         Ada.Strings.Unbounded.Append
+           (Bare_Walls, Integer'Image (Integer (MX * 10.0)) & " " & Integer'Image (Integer (MZ * 10.0))
+            & ASCII.LF);
+      end if;
       for TX in Integer'Max (TX0, Geo.Tile_Of (Long_Float'Min (A.X, B.X)))
              .. Integer'Min (TX1, Geo.Tile_Of (Long_Float'Max (A.X, B.X)))
       loop
@@ -2911,10 +2924,12 @@ package body World_Builder is
          declare
             procedure Edges_Of (R : Ring) is
             begin
+               Facade := True;
                for I in R.First_Index .. R.Last_Index loop
                   Add_Edge (R (I), R (if I = R.Last_Index then R.First_Index else I + 1),
                             Min_H, H);
                end loop;
+               Facade := False;
             end Edges_Of;
          begin
             Edges_Of (B.Shape.Outer);
@@ -6553,6 +6568,15 @@ package body World_Builder is
                end;
             end if;
          end loop;
+         Ada.Text_IO.Close (F);
+      end;
+      declare
+         F : Ada.Text_IO.File_Type;
+      begin
+         Ada.Text_IO.Create (F, Ada.Text_IO.Out_File,
+                             Out_Dir & "/no_posters_" & Roads_File (Roads_File'First + 6 .. Roads_File'Last - 4)
+                             & ".txt");
+         Ada.Text_IO.Put (F, Ada.Strings.Unbounded.To_String (Bare_Walls));
          Ada.Text_IO.Close (F);
       end;
       declare

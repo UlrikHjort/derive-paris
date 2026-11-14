@@ -18,6 +18,7 @@ data/scenes.txt
 IDEAS.md
 tiles/addresses_*.txt
 tiles/metro_*.txt
+tiles/no_posters_*.txt
 data/rooms.txt
 dist/
 data/collection.txt

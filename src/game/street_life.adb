@@ -429,6 +429,76 @@ package body Street_Life is
    Entrances : Vec_Vectors.Vector;
    Entrances_Read : Boolean := False;
 
+   --  Tall walls that are not a house's front (tiles/no_posters_*.txt, the
+   --  middle of each, in decimetres): no tags and posters there
+   package Bare_Sets is new Ada.Containers.Ordered_Maps (Long_Long_Integer, Boolean);
+   Bare : Bare_Sets.Map;
+   Bare_Read : Boolean := False;
+
+   function Bare_Key (X, Z : Float) return Long_Long_Integer is
+     (Long_Long_Integer (Float'Floor (X * 2.0)) * 100_000_000 + Long_Long_Integer (Float'Floor (Z * 2.0)));
+
+   procedure Read_Bare is
+      use Ada.Directories;
+      Dir : constant String :=
+        (if Ada.Environment_Variables.Exists ("PARIS_TILES")
+         then Ada.Environment_Variables.Value ("PARIS_TILES") else "tiles");
+      S : Search_Type;
+      E : Directory_Entry_Type;
+   begin
+      Bare_Read := True;
+      if not Exists (Dir) then
+         return;
+      end if;
+      Start_Search (S, Dir, "no_posters_*.txt", (Ordinary_File => True, others => False));
+      while More_Entries (S) loop
+         Get_Next_Entry (S, E);
+         declare
+            F : Ada.Text_IO.File_Type;
+         begin
+            Ada.Text_IO.Open (F, Ada.Text_IO.In_File, Full_Name (E));
+            while not Ada.Text_IO.End_Of_File (F) loop
+               declare
+                  L : constant String := Ada.Strings.Fixed.Trim (Ada.Text_IO.Get_Line (F), Ada.Strings.Both);
+                  Sp : constant Natural := Ada.Strings.Fixed.Index (L, " ");
+               begin
+                  if Sp > 0 then
+                     Bare.Include
+                       (Bare_Key (Float (Integer'Value (L (L'First .. Sp - 1))) / 10.0,
+                                  Float (Integer'Value (Ada.Strings.Fixed.Trim (L (Sp .. L'Last), Ada.Strings.Both))) / 10.0),
+                        True);
+                  end if;
+               exception
+                  when Constraint_Error => null;
+               end;
+            end loop;
+            Ada.Text_IO.Close (F);
+         exception
+            when others =>
+               if Ada.Text_IO.Is_Open (F) then
+                  Ada.Text_IO.Close (F);
+               end if;
+         end;
+      end loop;
+      End_Search (S);
+   end Read_Bare;
+
+   --  (the middle of a wall, as the converter wrote it, to the decimetre)
+   function Is_Bare (MX, MZ : Float) return Boolean is
+   begin
+      if not Bare_Read then
+         Read_Bare;
+      end if;
+      for DX in -1 .. 1 loop
+         for DZ in -1 .. 1 loop
+            if Bare.Contains (Bare_Key (MX + 0.5 * Float (DX), MZ + 0.5 * Float (DZ))) then
+               return True;
+            end if;
+         end loop;
+      end loop;
+      return False;
+   end Is_Bare;
+
    procedure Read_Entrances is
       use Ada.Directories;
       Dir : constant String :=
@@ -989,7 +1059,7 @@ package body Street_Life is
          H  : constant Float := Hash (Float'Rounding (MX * 3.0), Float'Rounding (MZ * 3.0), Session, 3.0);
       begin
          if L < 3.0 or else Top - Bottom < 4.0 or else Bottom > G + 1.0 or else not Mine (MX, MZ)
-           or else H > 0.17
+           or else H > 0.17 or else Is_Bare (MX, MZ)
          then
             return;
          end if;
