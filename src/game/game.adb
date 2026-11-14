@@ -2784,6 +2784,9 @@ package body Game is
      ((16#77#, False), (16#73#, False), (16#61#, False), (16#64#, False),             --  W S A D
       (16#FF52#, False), (16#FF54#, False), (16#FF51#, False), (16#FF53#, False));    --  arrows
 
+   function Pad_Pressing return Boolean is
+     (for some K of Pad_Keys => K.Held);
+
    procedure Pad_As_Keys (Dt : Float) is
       P    : constant Gamepad.Input := Gamepad.State;
       Free : constant Boolean :=

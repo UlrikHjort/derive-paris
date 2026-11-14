@@ -61,6 +61,10 @@ package body Gamepad is
    --  Axis ranges, read from the device (codes 0 .. 16#13#)
    Low, High : array (Unsigned_16 range 0 .. 16#13#) of Float := (others => 0.0);
    Has_Axis  : array (Unsigned_16 range 0 .. 16#13#) of Boolean := (others => False);
+   --  An axis resting at its low end is a trigger; one resting in the
+   --  middle is a stick (Z and RZ are the right stick on some pads)
+   Is_Trigger : array (Unsigned_16 range 0 .. 16#13#) of Boolean := (others => False);
+   Rest      : Input;   --  how the pad lies untouched
 
    procedure Close is
       R : Interfaces.C.int;
@@ -131,9 +135,22 @@ package body Gamepad is
          when 1 => Current.Left_Y := Stick (Code, Raw);
          when 3 => Current.Right_X := Stick (Code, Raw);
          when 4 => Current.Right_Y := Stick (Code, Raw);
-         --  the triggers: Z and RZ on most pads, HAT2Y / HAT2X on hid-steam
-         when 2 | 16#13# => Current.Left_Trigger := Trigger (Code, Raw);
-         when 5 | 16#12# => Current.Right_Trigger := Trigger (Code, Raw);
+         --  the triggers: Z and RZ on most pads, HAT2Y / HAT2X on hid-steam,
+         --  BRAKE / GAS on Android pads; or Z and RZ are the right stick
+         when 2 =>
+            if Is_Trigger (Code) then
+               Current.Left_Trigger := Trigger (Code, Raw);
+            else
+               Current.Right_X := Stick (Code, Raw);
+            end if;
+         when 5 =>
+            if Is_Trigger (Code) then
+               Current.Right_Trigger := Trigger (Code, Raw);
+            else
+               Current.Right_Y := Stick (Code, Raw);
+            end if;
+         when 16#A# | 16#13# => Current.Left_Trigger := Trigger (Code, Raw);
+         when 9 | 16#12# => Current.Right_Trigger := Trigger (Code, Raw);
          when 16#10# =>
             Set (Pad_Left, Raw < 0);
             Set (Pad_Right, Raw > 0);
@@ -181,10 +198,13 @@ package body Gamepad is
                Has_Axis (Code) := True;
                Low (Code) := Float (Info (2));
                High (Code) := Float (Info (3));
+               Is_Trigger (Code) :=
+                 Float (Info (1)) - Low (Code) < 0.2 * (High (Code) - Low (Code));
                Axis_Value (Code, Info (1));
             end if;
          end;
       end loop;
+      Rest := Current;
       Queued := 0;
       return True;
    end Try;
@@ -212,11 +232,15 @@ package body Gamepad is
    function Present return Boolean is (Fd >= 0);
    function State return Input is (Current);
 
+   --  (against how it lay when found: a pad whose axes rest off the middle
+   --  does not take over by itself)
    function Touched return Boolean is
      (Fd >= 0 and then
-        (Current.Left_X /= 0.0 or else Current.Left_Y /= 0.0 or else Current.Right_X /= 0.0
-         or else Current.Right_Y /= 0.0 or else Current.Left_Trigger > 0.05
-         or else Current.Right_Trigger > 0.05));
+        (abs (Current.Left_X - Rest.Left_X) > 0.25 or else abs (Current.Left_Y - Rest.Left_Y) > 0.25
+         or else abs (Current.Right_X - Rest.Right_X) > 0.25
+         or else abs (Current.Right_Y - Rest.Right_Y) > 0.25
+         or else Current.Left_Trigger - Rest.Left_Trigger > 0.2
+         or else Current.Right_Trigger - Rest.Right_Trigger > 0.2));
 
    procedure Poll is
       use Ada.Real_Time;

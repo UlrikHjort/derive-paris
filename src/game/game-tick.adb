@@ -559,8 +559,14 @@ begin
       On_The_Keys := False;
    end if;
    --  the game controller: its sticks and triggers make it the one that
-   --  drives; on foot and in the plane it stands in for the keys
-   if Gamepad.Touched and then not Pad_Keys_Only then
+   --  drives (until a driving key is pressed); on foot and in the plane it
+   --  stands in for the keys
+   if (Keys.Up or else Keys.Down or else Keys.Left or else Keys.Right
+       or else Keys.W or else Keys.S or else Keys.A or else Keys.D)
+     and then not Pad_Keys_Only and then not Pad_Pressing
+   then
+      On_The_Pad := False;
+   elsif Gamepad.Touched and then not Pad_Keys_Only then
       if not On_The_Pad then
          Player.Steer := 0.0;
       end if;
