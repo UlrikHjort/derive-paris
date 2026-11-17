@@ -2,12 +2,12 @@
 --  Copyright (c) 2026 Ulrik Hørlyk Hjort
 --  SPDX-License-Identifier: MIT
 --
-with Ada.Directories;
 with Ada.Real_Time;
 with Ada.Strings.Fixed;
 with GNAT.OS_Lib;
 with Interfaces;
 with Interfaces.C;
+with System.Storage_Elements;
 with System;
 
 with Notes;
@@ -50,38 +50,48 @@ package body Gamepad is
                      Arg : System.Address) return Interfaces.C.int
      with Import, Convention => C, External_Name => "ioctl";
 
-   Fd        : Interfaces.C.int := -1;
-   Current   : Input;
+   --  Steam Input shows one controller as several virtual pads, and only
+   --  one of them gets its input: all of them are read, and the one that
+   --  sent something last is the one that counts
+   Max_Pads : constant := 8;
+   type Axis_Floats is array (Unsigned_16 range 0 .. 16#13#) of Float;
+   type Axis_Flags is array (Unsigned_16 range 0 .. 16#13#) of Boolean;
+   type Pad is record
+      Fd        : Interfaces.C.int := -1;
+      Low, High : Axis_Floats := (others => 0.0);   --  axis ranges, read from the device
+      Has_Axis  : Axis_Flags := (others => False);
+      --  An axis resting at its low end is a trigger; one resting in the
+      --  middle is a stick (Z and RZ are the right stick on some pads)
+      Is_Trigger : Axis_Flags := (others => False);
+      State     : Input;
+      Rest      : Input;   --  how the pad lies untouched
+   end record;
+   Pads   : array (1 .. Max_Pads) of Pad;
+   N_Pads : Natural := 0;
+   Active : Positive := 1;
+
    Pressed   : array (Button) of Boolean := (others => False);
    Queue     : array (1 .. 32) of Button;
    Queued    : Natural := 0;
    Taken     : Natural := 0;
    Last_Look : Ada.Real_Time.Time := Ada.Real_Time.Time_First;
 
-   --  Axis ranges, read from the device (codes 0 .. 16#13#)
-   Low, High : array (Unsigned_16 range 0 .. 16#13#) of Float := (others => 0.0);
-   Has_Axis  : array (Unsigned_16 range 0 .. 16#13#) of Boolean := (others => False);
-   --  An axis resting at its low end is a trigger; one resting in the
-   --  middle is a stick (Z and RZ are the right stick on some pads)
-   Is_Trigger : array (Unsigned_16 range 0 .. 16#13#) of Boolean := (others => False);
-   Rest      : Input;   --  how the pad lies untouched
-
-   procedure Close is
+   procedure Close_All is
       R : Interfaces.C.int;
+      pragma Unreferenced (R);
    begin
-      if Fd >= 0 then
-         R := C_Close (Fd);
-         pragma Unreferenced (R);
-      end if;
-      Fd := -1;
-      Current := (others => <>);
+      for P of Pads (1 .. N_Pads) loop
+         R := C_Close (P.Fd);
+      end loop;
+      N_Pads := 0;
+      Active := 1;
       Pressed := (others => False);
-   end Close;
+   end Close_All;
 
    --  A stick: -1 .. 1, with a dead zone in the middle
-   function Stick (Code : Unsigned_16; Raw : Integer_32) return Float is
-      Mid  : constant Float := (Low (Code) + High (Code)) / 2.0;
-      Half : constant Float := Float'Max (1.0, (High (Code) - Low (Code)) / 2.0);
+   function Stick (P : Pad; Code : Unsigned_16; Raw : Integer_32) return Float is
+      Mid  : constant Float := (P.Low (Code) + P.High (Code)) / 2.0;
+      Half : constant Float := Float'Max (1.0, (P.High (Code) - P.Low (Code)) / 2.0);
       V    : constant Float := Float'Max (-1.0, Float'Min (1.0, (Float (Raw) - Mid) / Half));
       Dead : constant := 0.15;
    begin
@@ -91,8 +101,9 @@ package body Gamepad is
       return (if V > 0.0 then (V - Dead) / (1.0 - Dead) else (V + Dead) / (1.0 - Dead));
    end Stick;
 
-   function Trigger (Code : Unsigned_16; Raw : Integer_32) return Float is
-      V : constant Float := (Float (Raw) - Low (Code)) / Float'Max (1.0, High (Code) - Low (Code));
+   function Trigger (P : Pad; Code : Unsigned_16; Raw : Integer_32) return Float is
+      V : constant Float :=
+        (Float (Raw) - P.Low (Code)) / Float'Max (1.0, P.High (Code) - P.Low (Code));
    begin
       return Float'Max (0.0, Float'Min (1.0, (V - 0.04) / 0.96));
    end Trigger;
@@ -128,29 +139,30 @@ package body Gamepad is
       end case;
    end Key;
 
-   procedure Axis_Value (Code : Unsigned_16; Raw : Integer_32) is
+   procedure Axis_Value (P : in out Pad; Code : Unsigned_16; Raw : Integer_32) is
+      C : Input renames P.State;
    begin
       case Code is
-         when 0 => Current.Left_X := Stick (Code, Raw);
-         when 1 => Current.Left_Y := Stick (Code, Raw);
-         when 3 => Current.Right_X := Stick (Code, Raw);
-         when 4 => Current.Right_Y := Stick (Code, Raw);
+         when 0 => C.Left_X := Stick (P, Code, Raw);
+         when 1 => C.Left_Y := Stick (P, Code, Raw);
+         when 3 => C.Right_X := Stick (P, Code, Raw);
+         when 4 => C.Right_Y := Stick (P, Code, Raw);
          --  the triggers: Z and RZ on most pads, HAT2Y / HAT2X on hid-steam,
          --  BRAKE / GAS on Android pads; or Z and RZ are the right stick
          when 2 =>
-            if Is_Trigger (Code) then
-               Current.Left_Trigger := Trigger (Code, Raw);
+            if P.Is_Trigger (Code) then
+               C.Left_Trigger := Trigger (P, Code, Raw);
             else
-               Current.Right_X := Stick (Code, Raw);
+               C.Right_X := Stick (P, Code, Raw);
             end if;
          when 5 =>
-            if Is_Trigger (Code) then
-               Current.Right_Trigger := Trigger (Code, Raw);
+            if P.Is_Trigger (Code) then
+               C.Right_Trigger := Trigger (P, Code, Raw);
             else
-               Current.Right_Y := Stick (Code, Raw);
+               C.Right_Y := Stick (P, Code, Raw);
             end if;
-         when 16#A# | 16#13# => Current.Left_Trigger := Trigger (Code, Raw);
-         when 9 | 16#12# => Current.Right_Trigger := Trigger (Code, Raw);
+         when 16#A# | 16#13# => C.Left_Trigger := Trigger (P, Code, Raw);
+         when 9 | 16#12# => C.Right_Trigger := Trigger (P, Code, Raw);
          when 16#10# =>
             Set (Pad_Left, Raw < 0);
             Set (Pad_Right, Raw > 0);
@@ -161,125 +173,169 @@ package body Gamepad is
       end case;
    end Axis_Value;
 
-   function Try (Path : String) return Boolean is
+   --  Is Path a game pad (it has the south button, and is not a wheel)?
+   --  If so it is added to Pads.
+   procedure Try (Path : String) is
       Name : Interfaces.C.char_array (1 .. 64) := (others => Interfaces.C.nul);
       Bits : array (0 .. 95) of Unsigned_8 := (others => 0);
+      Fd   : constant Interfaces.C.int := C_Open (Interfaces.C.To_C (Path), O_RDONLY + O_NONBLOCK);
+      R    : Interfaces.C.int;
    begin
-      Fd := C_Open (Interfaces.C.To_C (Path), O_RDONLY + O_NONBLOCK);
       if Fd < 0 then
-         return False;
-      end if;
-      if C_Ioctl (Fd, EVIOCGNAME_64, Name'Address) < 0
-        or else C_Ioctl (Fd, EVIOCGBIT_KEY, Bits'Address) < 0
-        or else (Bits (BTN_SOUTH / 8) and Shift_Left (1, BTN_SOUTH mod 8)) = 0
-      then
-         Close;
-         return False;
-      end if;
-      declare
-         N : constant String := Interfaces.C.To_Ada (Name);
-      begin
-         if Ada.Strings.Fixed.Index (N, "Wheel") > 0
-           or else Ada.Strings.Fixed.Index (N, "Driving Force") > 0
-         then
-            Close;
-            return False;
-         end if;
-         Notes.Say ("Game controller: " & N);
-      end;
-      for Code in Low'Range loop
-         declare
-            Info : array (1 .. 6) of Integer_32 := (others => 0);
-         begin
-            Has_Axis (Code) := False;
-            if C_Ioctl (Fd, Interfaces.C.unsigned_long (EVIOCGABS) + Interfaces.C.unsigned_long (Code),
-                        Info'Address) = 0 and then Info (3) > Info (2)
-            then
-               Has_Axis (Code) := True;
-               Low (Code) := Float (Info (2));
-               High (Code) := Float (Info (3));
-               Is_Trigger (Code) :=
-                 Float (Info (1)) - Low (Code) < 0.2 * (High (Code) - Low (Code));
-               Axis_Value (Code, Info (1));
-            end if;
-         end;
-      end loop;
-      Rest := Current;
-      Queued := 0;
-      return True;
-   end Try;
-
-   procedure Open is
-      use Ada.Directories;
-      S : Search_Type;
-      E : Directory_Entry_Type;
-   begin
-      Last_Look := Ada.Real_Time.Clock;
-      if not Exists ("/dev/input") then
          return;
       end if;
-      --  (all of them: Steam Input's pad is made up and has no by-id name)
-      Start_Search (S, "/dev/input", "event*");
-      while More_Entries (S) loop
-         Get_Next_Entry (S, E);
-         exit when Try (Full_Name (E));
+      if N_Pads = Max_Pads
+        or else C_Ioctl (Fd, EVIOCGNAME_64, Name'Address) < 0
+        or else C_Ioctl (Fd, EVIOCGBIT_KEY, Bits'Address) < 0
+        or else (Bits (BTN_SOUTH / 8) and Shift_Left (1, BTN_SOUTH mod 8)) = 0
+        or else Ada.Strings.Fixed.Index (Interfaces.C.To_Ada (Name), "Wheel") > 0
+        or else Ada.Strings.Fixed.Index (Interfaces.C.To_Ada (Name), "Driving Force") > 0
+      then
+         R := C_Close (Fd);
+         pragma Unreferenced (R);
+         return;
+      end if;
+      Notes.Say ("Game controller: " & Interfaces.C.To_Ada (Name) & " (" & Path & ")");
+      N_Pads := N_Pads + 1;
+      declare
+         P : Pad renames Pads (N_Pads);
+      begin
+         P := (Fd => Fd, others => <>);
+         for Code in P.Low'Range loop
+            declare
+               Info : array (1 .. 6) of Integer_32 := (others => 0);
+            begin
+               if C_Ioctl (Fd, Interfaces.C.unsigned_long (EVIOCGABS) + Interfaces.C.unsigned_long (Code),
+                           Info'Address) = 0 and then Info (3) > Info (2)
+               then
+                  P.Has_Axis (Code) := True;
+                  P.Low (Code) := Float (Info (2));
+                  P.High (Code) := Float (Info (3));
+                  P.Is_Trigger (Code) :=
+                    Float (Info (1)) - P.Low (Code) < 0.2 * (P.High (Code) - P.Low (Code));
+                  Axis_Value (P, Code, Info (1));
+               end if;
+            end;
+         end loop;
+         P.Rest := P.State;
+      end;
+      Queued := 0;
+   end Try;
+
+   --  (opendir and readdir: Ada.Directories gives up on the whole of
+   --  /dev/input over one entry it cannot look at)
+   function C_Opendir (Path : Interfaces.C.char_array) return System.Address
+     with Import, Convention => C, External_Name => "opendir";
+   function C_Readdir (Dir : System.Address) return System.Address
+     with Import, Convention => C, External_Name => "readdir";
+   function C_Closedir (Dir : System.Address) return Interfaces.C.int
+     with Import, Convention => C, External_Name => "closedir";
+   Name_Offset : constant := 19;   --  struct dirent's d_name, on Linux
+
+   procedure Open is
+      use type System.Address;
+      Dir : System.Address;
+      R   : Interfaces.C.int;
+   begin
+      Last_Look := Ada.Real_Time.Clock;
+      Dir := C_Opendir (Interfaces.C.To_C ("/dev/input"));
+      if Dir = System.Null_Address then
+         return;
+      end if;
+      --  (all of them: Steam Input's pads are made up and have no by-id name)
+      loop
+         declare
+            use System.Storage_Elements;
+            Entry_Address : constant System.Address := C_Readdir (Dir);
+         begin
+            exit when Entry_Address = System.Null_Address;
+            declare
+               Chars : Interfaces.C.char_array (0 .. 255)
+                 with Import, Address => Entry_Address + Storage_Offset (Name_Offset);
+               Name : constant String := Interfaces.C.To_Ada (Chars);
+            begin
+               if Name'Length > 5 and then Name (Name'First .. Name'First + 4) = "event" then
+                  Try ("/dev/input/" & Name);
+               end if;
+            end;
+         end;
       end loop;
-      End_Search (S);
+      R := C_Closedir (Dir);
+      pragma Unreferenced (R);
    exception
       when others => null;
    end Open;
 
-   function Present return Boolean is (Fd >= 0);
-   function State return Input is (Current);
+   function Present return Boolean is (N_Pads > 0);
+   function State return Input is (if N_Pads > 0 then Pads (Active).State else (others => <>));
 
    --  (against how it lay when found: a pad whose axes rest off the middle
    --  does not take over by itself)
    function Touched return Boolean is
-     (Fd >= 0 and then
-        (abs (Current.Left_X - Rest.Left_X) > 0.25 or else abs (Current.Left_Y - Rest.Left_Y) > 0.25
-         or else abs (Current.Right_X - Rest.Right_X) > 0.25
-         or else abs (Current.Right_Y - Rest.Right_Y) > 0.25
-         or else Current.Left_Trigger - Rest.Left_Trigger > 0.2
-         or else Current.Right_Trigger - Rest.Right_Trigger > 0.2));
+   begin
+      if N_Pads = 0 then
+         return False;
+      end if;
+      declare
+         C : Input renames Pads (Active).State;
+         R : Input renames Pads (Active).Rest;
+      begin
+         return abs (C.Left_X - R.Left_X) > 0.25 or else abs (C.Left_Y - R.Left_Y) > 0.25
+           or else abs (C.Right_X - R.Right_X) > 0.25 or else abs (C.Right_Y - R.Right_Y) > 0.25
+           or else C.Left_Trigger - R.Left_Trigger > 0.2
+           or else C.Right_Trigger - R.Right_Trigger > 0.2;
+      end;
+   end Touched;
 
    procedure Poll is
       use Ada.Real_Time;
-      Buf : Event_Array;
-      N   : Interfaces.C.long;
+      Buf  : Event_Array;
+      N    : Interfaces.C.long;
+      Lost : Boolean := False;
    begin
       Queued := 0;
       Taken := 0;
-      if Fd < 0 then
+      if N_Pads = 0 then
          if Last_Look /= Time_First and then Clock - Last_Look > Seconds (3) then
             Open;
          end if;
          return;
       end if;
-      loop
-         N := C_Read (Fd, Buf'Address, Buf'Size / 8);
-         if N < 0 then
-            if GNAT.OS_Lib.Errno /= 11 then
-               Notes.Say ("Game controller disconnected");
-               Close;
+      for K in 1 .. N_Pads loop
+         loop
+            N := C_Read (Pads (K).Fd, Buf'Address, Buf'Size / 8);
+            if N < 0 then
+               Lost := GNAT.OS_Lib.Errno /= 11;   --  EAGAIN: nothing more
+               exit;
+            elsif N = 0 then
+               Lost := True;
+               exit;
             end if;
-            exit;
-         elsif N = 0 then
-            Close;
-            exit;
-         end if;
-         for I in 1 .. Integer (N) / 24 loop
-            declare
-               E : Event renames Buf (I);
-            begin
-               if E.Kind = EV_ABS and then E.Code in Low'Range and then Has_Axis (E.Code) then
-                  Axis_Value (E.Code, E.Value);
-               elsif E.Kind = EV_KEY then
-                  Key (E.Code, E.Value /= 0);
-               end if;
-            end;
+            for I in 1 .. Integer (N) / 24 loop
+               declare
+                  E : Event renames Buf (I);
+               begin
+                  if E.Kind = EV_ABS and then E.Code in Pads (K).Low'Range
+                    and then Pads (K).Has_Axis (E.Code)
+                  then
+                     Axis_Value (Pads (K), E.Code, E.Value);
+                     Active := K;
+                  elsif E.Kind = EV_KEY then
+                     Key (E.Code, E.Value /= 0);
+                     Active := K;
+                  end if;
+               end;
+            end loop;
+            exit when Integer (N) < Buf'Size / 8;
          end loop;
-         exit when Integer (N) < Buf'Size / 8;
+         exit when Lost;
       end loop;
+      --  one unplugged: look again for all of them
+      if Lost then
+         Notes.Say ("Game controller disconnected");
+         Close_All;
+         Last_Look := Clock;
+      end if;
    end Poll;
 
    function Next_Press (B : out Button) return Boolean is
