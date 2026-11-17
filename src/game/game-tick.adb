@@ -142,6 +142,18 @@ begin
    if Ready and then Frame_Number = 30 and then Env ("PARIS_TRAINS") /= "" then
       Trains.Leave_Now;
    end if;
+   --  PARIS_PRESS="frame letter": tap that key then (testing)
+   if Ready and then Env ("PARIS_PRESS") /= "" then
+      declare
+         T   : constant String := Env ("PARIS_PRESS");
+         Gap : constant Natural := Ada.Strings.Fixed.Index (T, " ");
+      begin
+         if Gap > 0 and then Frame_Number = Natural'Value (T (T'First .. Gap - 1)) then
+            Set_Key (Gdk.Types.Gdk_Key_Type (Character'Pos (T (Gap + 1))), True);
+            Set_Key (Gdk.Types.Gdk_Key_Type (Character'Pos (T (Gap + 1))), False);
+         end if;
+      end;
+   end if;
    --  PARIS_ARC=yaw: on the roof of the Arc de Triomphe (testing)
    if Ready and then Frame_Number = 30 and then Env ("PARIS_ARC") /= "" then
       if not Walking then

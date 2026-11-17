@@ -1235,6 +1235,7 @@ package body Game is
    procedure Go_Home_Now;
    procedure Save_Home_Here;
    procedure Toggle_Float;
+   procedure Capture_Mouse (On : Boolean);
    procedure Off_The_Top;
    procedure Update_Glide (Dt : Float);
    --  (below, after Teleport)
@@ -1275,12 +1276,29 @@ package body Game is
    procedure Go_Home;
    --  Up to the window (below)
 
+   Walked_In : Boolean := False;   --  home over the blue cross, on foot
+
    procedure Toggle_Visit is
    begin
       if Visiting then
          Visiting := False;
          World.Set_Radius (3);
-         Pending_Load := True;
+         if Walked_In then
+            --  back down to the pavement, beside the cross
+            declare
+               X, Z : Float;
+            begin
+               Decals.Position (Decals.Decal_E, X, Z);
+               Walk_X := X + 2.0;
+               Walk_Z := Z;
+               Walk_Pitch := 0.0;
+               Walking := True;
+               Capture_Mouse (True);
+            end;
+            Walked_In := False;
+         else
+            Pending_Load := True;
+         end if;
       --  a hidden place: only from close by, with the car (nearly) stopped
       elsif Home.Known and then Mode = Driving and then abs Player.Speed < 3.0
         and then (Player.X - (Home.Origin.X + Home.Length / 2.0 * Home.Along.X)) ** 2
@@ -1585,6 +1603,7 @@ package body Game is
          when Decals.Decal_I => Enter_Room (Rooms.Room_E);
          when Decals.Decal_J => Enter_Room (Rooms.Room_F);
          when Decals.Decal_E =>
+            Walked_In := True;
             Walking := False;
             Capture_Mouse (False);
             Traffic.Set_Walker (False, 0.0, 0.0);

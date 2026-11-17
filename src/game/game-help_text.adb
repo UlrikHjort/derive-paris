@@ -17,7 +17,7 @@ begin
           & "  A / D            step aside" & LF
           & "  PgUp/PgDn, drag  look up and down" & LF
           & "  K                kitchen window" & LF
-          & "  V                back to the car" & LF & LF
+          & "  Q or V           out again" & LF & LF
         elsif Walking and then On_Tower then
           Head ("On top of the Eiffel Tower")
           & "  mouse            look all round" & LF

@@ -13,6 +13,11 @@ procedure Toggle_Walk is
       Street_Timer := 1.0;
    end Say;
 begin
+   --  at home: Q goes out again, like V
+   if Visiting then
+      Toggle_Visit;
+      return;
+   end if;
    if not Walking and then Boating then
       --  out of the boat: only at the landing, where it is tied up
       if not Motorboat.Near_Landing (Player) then
