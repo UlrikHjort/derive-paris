@@ -63,12 +63,16 @@ package body Gamepad is
       --  An axis resting at its low end is a trigger; one resting in the
       --  middle is a stick (Z and RZ are the right stick on some pads)
       Is_Trigger : Axis_Flags := (others => False);
-      State     : Input;
-      Rest      : Input;   --  how the pad lies untouched
    end record;
    Pads   : array (1 .. Max_Pads) of Pad;
    N_Pads : Natural := 0;
-   Active : Positive := 1;
+   --  One state for all of them: each pad's events are interpreted with that
+   --  pad's own ranges, but written into the same state, so a button that
+   --  Steam puts on a different virtual pad than the sticks cannot steal the
+   --  input away (picking "the pad that sent something last" drops the
+   --  sticks the moment another pad blips)
+   Current : Input;
+   Rest    : Input;   --  how the pad lies untouched
 
    Pressed   : array (Button) of Boolean := (others => False);
    Queue     : array (1 .. 32) of Button;
@@ -84,7 +88,7 @@ package body Gamepad is
          R := C_Close (P.Fd);
       end loop;
       N_Pads := 0;
-      Active := 1;
+      Current := (others => <>);
       Pressed := (others => False);
    end Close_All;
 
@@ -140,29 +144,28 @@ package body Gamepad is
    end Key;
 
    procedure Axis_Value (P : in out Pad; Code : Unsigned_16; Raw : Integer_32) is
-      C : Input renames P.State;
    begin
       case Code is
-         when 0 => C.Left_X := Stick (P, Code, Raw);
-         when 1 => C.Left_Y := Stick (P, Code, Raw);
-         when 3 => C.Right_X := Stick (P, Code, Raw);
-         when 4 => C.Right_Y := Stick (P, Code, Raw);
+         when 0 => Current.Left_X := Stick (P, Code, Raw);
+         when 1 => Current.Left_Y := Stick (P, Code, Raw);
+         when 3 => Current.Right_X := Stick (P, Code, Raw);
+         when 4 => Current.Right_Y := Stick (P, Code, Raw);
          --  the triggers: Z and RZ on most pads, HAT2Y / HAT2X on hid-steam,
          --  BRAKE / GAS on Android pads; or Z and RZ are the right stick
          when 2 =>
             if P.Is_Trigger (Code) then
-               C.Left_Trigger := Trigger (P, Code, Raw);
+               Current.Left_Trigger := Trigger (P, Code, Raw);
             else
-               C.Right_X := Stick (P, Code, Raw);
+               Current.Right_X := Stick (P, Code, Raw);
             end if;
          when 5 =>
             if P.Is_Trigger (Code) then
-               C.Right_Trigger := Trigger (P, Code, Raw);
+               Current.Right_Trigger := Trigger (P, Code, Raw);
             else
-               C.Right_Y := Stick (P, Code, Raw);
+               Current.Right_Y := Stick (P, Code, Raw);
             end if;
-         when 16#A# | 16#13# => C.Left_Trigger := Trigger (P, Code, Raw);
-         when 9 | 16#12# => C.Right_Trigger := Trigger (P, Code, Raw);
+         when 16#A# | 16#13# => Current.Left_Trigger := Trigger (P, Code, Raw);
+         when 9 | 16#12# => Current.Right_Trigger := Trigger (P, Code, Raw);
          when 16#10# =>
             Set (Pad_Left, Raw < 0);
             Set (Pad_Right, Raw > 0);
@@ -217,7 +220,7 @@ package body Gamepad is
                end if;
             end;
          end loop;
-         P.Rest := P.State;
+         Rest := Current;
       end;
       Queued := 0;
    end Try;
@@ -267,24 +270,18 @@ package body Gamepad is
    end Open;
 
    function Present return Boolean is (N_Pads > 0);
-   function State return Input is (if N_Pads > 0 then Pads (Active).State else (others => <>));
+   function State return Input is (Current);
 
    --  (against how it lay when found: a pad whose axes rest off the middle
    --  does not take over by itself)
    function Touched return Boolean is
    begin
-      if N_Pads = 0 then
-         return False;
-      end if;
-      declare
-         C : Input renames Pads (Active).State;
-         R : Input renames Pads (Active).Rest;
-      begin
-         return abs (C.Left_X - R.Left_X) > 0.25 or else abs (C.Left_Y - R.Left_Y) > 0.25
-           or else abs (C.Right_X - R.Right_X) > 0.25 or else abs (C.Right_Y - R.Right_Y) > 0.25
-           or else C.Left_Trigger - R.Left_Trigger > 0.2
-           or else C.Right_Trigger - R.Right_Trigger > 0.2;
-      end;
+      return abs (Current.Left_X - Rest.Left_X) > 0.25
+        or else abs (Current.Left_Y - Rest.Left_Y) > 0.25
+        or else abs (Current.Right_X - Rest.Right_X) > 0.25
+        or else abs (Current.Right_Y - Rest.Right_Y) > 0.25
+        or else Current.Left_Trigger - Rest.Left_Trigger > 0.2
+        or else Current.Right_Trigger - Rest.Right_Trigger > 0.2;
    end Touched;
 
    procedure Poll is
@@ -302,6 +299,7 @@ package body Gamepad is
          return;
       end if;
       for K in 1 .. N_Pads loop
+         Lost := False;   --  one pad going away does not mean the rest have
          loop
             N := C_Read (Pads (K).Fd, Buf'Address, Buf'Size / 8);
             if N < 0 then
@@ -319,10 +317,8 @@ package body Gamepad is
                     and then Pads (K).Has_Axis (E.Code)
                   then
                      Axis_Value (Pads (K), E.Code, E.Value);
-                     Active := K;
                   elsif E.Kind = EV_KEY then
                      Key (E.Code, E.Value /= 0);
-                     Active := K;
                   end if;
                end;
             end loop;
