@@ -646,6 +646,7 @@ package body Sound is
    Rpm_Now                  : Float := 850.0;
    Rumble, Road, Wind, Rain_F, Engine_Tone, Engine_Grit : Lowpass;
    Engine_Tone2, Road2, Wind2, Rumble2 : Lowpass;   --  second stages: softer roll-off
+   Prop_Tone, Prop_Tone2, Air, Air2, Air_Swell : Lowpass;   --  the plane: a far-off hum
    Wobble   : Float := 0.0;                --  slow random drift of the revs
    Wobble_F : Lowpass;
    Rain_Hp                  : Lowpass;
@@ -1215,23 +1216,30 @@ package body Sound is
                   L := L + S;
                   R := R + S;
                when Flying =>
-                  --  propeller blades and engine
+                  --  the engine as heard in a cabin with a headset on: a
+                  --  low, soft hum that rises a little with the throttle,
+                  --  and the air rushing by, swelling slowly
                   declare
-                     F0 : constant Float := 55.0 + 60.0 * P.Load;
+                     F0 : constant Float := 38.0 + 22.0 * P.Load;
                      Ph : Float;
                   begin
                      Prop_Phase := Prop_Phase + F0 / Float (Rate);
                      Prop_Phase := Prop_Phase - Float'Floor (Prop_Phase);
                      Ph := Two_Pi * Prop_Phase;
-                     S := (Sin (Ph) + 0.6 * Sin (2.0 * Ph) + 0.35 * Sin (3.0 * Ph)
-                           + 0.15 * Sin (5.0 * Ph)) * 0.035 * (0.6 + 0.6 * P.Load);
-                     S := S + Step (Engine_Grit, Noise, 450.0) * 0.09;
+                     S := Sin (Ph) + 0.35 * Sin (2.0 * Ph + 0.7) + 0.12 * Sin (3.0 * Ph + 1.9);
+                     S := Step (Prop_Tone2, Step (Prop_Tone, S, 180.0 + 120.0 * P.Load), 180.0 + 120.0 * P.Load)
+                       * 0.04 * (0.7 + 0.4 * P.Load);
                      L := L + S;
                      R := R + S;
                   end;
-                  S := Step (Wind, Noise, 1500.0) * 0.28 * Float'Min (1.0, P.Speed / 50.0);
-                  L := L + S;
-                  R := R + S;
+                  declare
+                     Swell : constant Float := 0.75 + 0.5 * abs Step (Air_Swell, Noise, 0.6) * 6.0;
+                  begin
+                     S := Step (Air2, Step (Air, Noise, 520.0), 520.0)
+                       * 0.2 * Float'Min (1.0, P.Speed / 50.0) * Float'Min (1.4, Swell);
+                     L := L + S;
+                     R := R + S;
+                  end;
                when Visiting | Walking =>
                   null;
             end case;
