@@ -663,7 +663,7 @@ package body Closures is
          if D < R and then D > 0.001 then
             S.X := S.X + EX / D * (R - D);
             S.Z := S.Z + EZ / D * (R - D);
-            S.Speed := S.Speed * 0.5;
+            Car.Bounce_Off (S, EX / D, EZ / D);
          end if;
       end Push;
    begin

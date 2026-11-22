@@ -60,11 +60,16 @@ package Car is
       Ground   : Float := 0.0;      --  height of the ground under the car
       Pitch    : Float := 0.0;      --  nose up, radians (hills)
       Roll     : Float := 0.0;      --  right side up, radians
+      Leaning  : Float := 0.0;      --  a two-wheeler's lean into the turn, radians
    end record;
 
    function Rear_Wheel (S : State; Right : Boolean) return Math3D.Vec3;
    function Front_Wheel (S : State; Right : Boolean) return Math3D.Vec3;
    --  Where the tyres touch the road
+
+   procedure Bounce_Off (S : in out State; NX, NZ : Float; Dt : Float := 0.008);
+   --  The car has run into something whose way out is (NX, NZ): head-on it
+   --  bounces back a little, at an angle it turns along it and slides on
 
    procedure Update (S : in out State; C : Controls; Dt : Float);
    --  Advance physics and resolve collisions with the world

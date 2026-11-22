@@ -47,6 +47,19 @@ package body Plane is
    procedure Update (S : in out State; C : Controls; Dt : Float) is
    begin
       if S.Crashed > 0.0 then
+         --  hit: it tumbles down to the ground (rather than stopping in
+         --  the air), lies there a moment, and you are off again above
+         declare
+            G : constant Float := Terrain.Height (S.Pos.X, S.Pos.Z) + 0.5;
+         begin
+            if S.Pos.Y > G then
+               S.Speed := S.Speed + Gravity * Dt;   --  (falling now)
+               S.Pos.Y := Float'Max (G, S.Pos.Y - S.Speed * Dt);
+               Approach (S.Pitch, -1.2, 1.5 * Dt);
+               S.Roll := S.Roll + 2.5 * Dt;
+               S.Crashed := Float'Max (S.Crashed, 1.5);   --  (the pause starts on the ground)
+            end if;
+         end;
          S.Crashed := S.Crashed - Dt;
          if S.Crashed <= 0.0 then
             Start (S, S.Pos.X, S.Pos.Z, S.Heading);
@@ -112,6 +125,9 @@ package body Plane is
             S.Speed := 0.0;
             if S.Pos.Y < G then
                S.Pos.Y := G;
+            else
+               --  off the wall it hit, a little back the way it came
+               S.Pos := S.Pos - 4.0 * Forward (S);
             end if;
          end if;
       end;

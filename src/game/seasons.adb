@@ -449,8 +449,7 @@ package body Seasons is
                   begin
                      S.X := S.X + Out_By * B.DX;
                      S.Z := S.Z + Out_By * B.DZ;
-                     S.Speed := S.Speed * 0.3;
-                     S.Bumped := True;
+                     Car.Bounce_Off (S, (if V >= 0.0 then B.DX else -B.DX), (if V >= 0.0 then B.DZ else -B.DZ));
                   end;
                end if;
             end;

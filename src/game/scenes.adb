@@ -1345,7 +1345,6 @@ package body Scenes is
    end Draw;
 
    procedure Collide (S : in out Car.State) is
-      F : constant Vec3 := Car.Forward (S);
    begin
       for Sc of All_Scenes loop
          if Sc.On and then (Sc.Centre.X - S.X) ** 2 + (Sc.Centre.Z - S.Z) ** 2 < (Sc.Reach + 20.0) ** 2 then
@@ -1359,12 +1358,7 @@ package body Scenes is
                   if D < R and then D > 0.001 then
                      S.X := S.X + EX / D * (R - D);
                      S.Z := S.Z + EZ / D * (R - D);
-                     if (F.X * EX + F.Z * EZ) * S.Speed < 0.0 then
-                        S.Speed := S.Speed * 0.4;
-                     end if;
-                     S.Bumped := True;
-                     S.Hit_NX := EX / D;
-                     S.Hit_NZ := EZ / D;
+                     Car.Bounce_Off (S, EX / D, EZ / D);
                   end if;
                end;
             end loop;

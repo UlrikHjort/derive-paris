@@ -74,12 +74,49 @@ package body Car is
    --  From the front wheels to the back (the bus: long, it turns wide)
    function Base_Of return Float is (if Current_Model = Bus then 6.2 else Wheel_Base);
 
-   function Lean (S : State) return Float is
-      --  the sideways pull of the turn against gravity
+   --  The lean a two-wheeler wants in this turn: the sideways pull of the
+   --  turn against gravity (Update brings S.Leaning to it, as a rider would)
+   function Lean_Wanted (S : State) return Float is
       Side_G : constant Float := S.Speed * S.Speed * Tan (S.Steer) / (Base_Of * 9.81);
    begin
-      return Float'Max (-0.6, Float'Min (0.6, Arctan (Side_G)));
-   end Lean;
+      return Float'Max (-0.35, Float'Min (0.35, 0.7 * Arctan (Side_G)));
+   end Lean_Wanted;
+
+   function Lean (S : State) return Float is (S.Leaning);
+
+   --  (rather than driving into it again every step, and sticking there)
+   procedure Bounce_Off (S : in out State; NX, NZ : Float; Dt : Float := 0.008) is
+      VX : constant Float := Sin (S.Heading) * S.Speed;
+      VZ : constant Float := -Cos (S.Heading) * S.Speed;
+      VN : constant Float := VX * NX + VZ * NZ;
+      Into : constant Float := abs VN / Float'Max (abs S.Speed, 0.01);   --  0 .. 1
+   begin
+      S.Bumped := True;
+      S.Hit_NX := NX;
+      S.Hit_NZ := NZ;
+      --  a little room, so the next step does not start in it
+      S.X := S.X + 0.03 * NX;
+      S.Z := S.Z + 0.03 * NZ;
+      if VN >= 0.0 then
+         return;   --  going away from it already
+      elsif Into > 0.95 then
+         S.Speed := -0.25 * S.Speed;   --  (only straight on: otherwise round it)
+      else
+         declare
+            --  along it, the way the car was going
+            TX : constant Float := VX - VN * NX;
+            TZ : constant Float := VZ - VN * NZ;
+            Along_H : constant Float :=
+              (if S.Speed >= 0.0 then Arctan (TX, -TZ) else Arctan (-TX, TZ));
+            Diff : constant Float := Arctan (Sin (Along_H - S.Heading), Cos (Along_H - S.Heading));
+         begin
+            S.Heading := S.Heading + Diff * Float'Min (1.0, 12.0 * Dt);
+            --  (a rate: while it rubs along, every step costs a little,
+            --  not as much as the first knock)
+            S.Speed := S.Speed * (1.0 - Float'Min (0.5, Into * 25.0 * Dt));
+         end;
+      end if;
+   end Bounce_Off;
 
    procedure Approach (V : in out Float; Target, Rate : Float) is
    begin
@@ -368,6 +405,15 @@ package body Car is
       S.X := S.X + Sin (S.Heading) * S.Speed * Dt;
       S.Z := S.Z - Cos (S.Heading) * S.Speed * Dt;
 
+      --  A rider leans into a turn and comes up again smoothly, not at once
+      --  (on keys or a pad the steering goes all the way at once)
+      declare
+         Want : constant Float := Lean_Wanted (S);
+         Rate : constant Float := 0.45 * Dt;   --  radians a second
+      begin
+         S.Leaning := S.Leaning + Float'Max (-Rate, Float'Min (Rate, (Want - S.Leaning) * 2.5 * Dt));
+      end;
+
       --  Collision: two circles (front and rear; four along the bus)
       --  pushed out of edges
       S.Bumped := False;
@@ -388,19 +434,7 @@ package body Car is
             if Hit then
                S.X := CX - FX;
                S.Z := CZ - FZ;
-               S.Bumped := True;
-               S.Hit_NX := NX;
-               S.Hit_NZ := NZ;
-               --  Remove the velocity component going into the wall
-               declare
-                  VX : constant Float := Sin (S.Heading) * S.Speed;
-                  VZ : constant Float := -Cos (S.Heading) * S.Speed;
-                  VN : constant Float := VX * NX + VZ * NZ;
-               begin
-                  if VN < 0.0 then
-                     S.Speed := S.Speed * (1.0 - 0.9 * abs VN / Float'Max (abs S.Speed, 0.01));
-                  end if;
-               end;
+               Bounce_Off (S, NX, NZ, Dt);
             end if;
          end;
       end loop;

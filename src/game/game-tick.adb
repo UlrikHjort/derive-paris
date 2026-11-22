@@ -545,6 +545,17 @@ begin
       Keys.Up := Ada.Strings.Fixed.Index (Env ("PARIS_KEYS"), "up") > 0;
       Keys.Left := Ada.Strings.Fixed.Index (Env ("PARIS_KEYS"), "left") > 0;
    end if;
+   --  (and "wiggle": left and right in turn, half a second each)
+   if Env ("PARIS_KEYS") /= "" and then Ada.Strings.Fixed.Index (Env ("PARIS_KEYS"), "wiggle") > 0
+     and then Frame_Number > 100
+   then
+      Keys.Left := (Frame_Number / 30) mod 2 = 0;
+      Keys.Right := not Keys.Left;
+      if Frame_Number mod 10 = 0 then
+         Ada.Text_IO.Put_Line ("lean" & Integer (Car.Lean (Player) * 57.3)'Image
+                               & " speed" & Integer (Player.Speed * 3.6)'Image);
+      end if;
+   end if;
    --  keys or wheel: whichever was touched last
    if Wheel.Present then
       declare
