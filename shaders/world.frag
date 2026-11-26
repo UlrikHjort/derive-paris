@@ -783,6 +783,89 @@ Surface glassWall(vec2 uv, float h, vec3 tint, vec3 N, vec3 V)
     return s;
 }
 
+// Christmas in the windows: now and then a window with an advent candle
+// triangle on the sill, a paper star hanging high, or fairy lights along
+// the top; shops have strings of lights over the glass.  Returns the glow,
+// and in .a how much of the pane it covers (dark by day).
+float xdot(vec2 p, vec2 c, float r, float aa)
+{
+    return 1.0 - smoothstep(r - aa, r + aa, length(p - c));
+}
+
+vec4 xmasWindow(vec2 uv, vec2 cell, float h, float ground, vec2 fw)
+{
+    float pick = hash(cell * 2.71 + h * 53.0 + 11.0);
+    if (pick > (ground > 0.5 ? 0.25 : 0.11)) return vec4(0.0);
+    float kind = hash(cell * 1.93 + h * 7.0 + 3.0);
+    float aa = max(fw.x, fw.y) * 1.2 + 0.002;
+    vec2 p = vec2(uv.x, fract(uv.y));
+    vec3 warm = vec3(1.0, 0.78, 0.42);
+    vec3 glow = vec3(0.0);
+    float cover = 0.0;
+    float t = uTime;
+    if (ground > 0.5) {
+        // a string of lights sagging across the top of the shop window
+        float n = 18.0;
+        float k = floor((p.x - 0.1) / 0.8 * n);
+        float x = 0.1 + (k + 0.5) * 0.8 / n;
+        float sag = 0.03 * sin(3.14159 * (x - 0.1) / 0.8);
+        float on = step(0.0, k) * step(k, n - 1.0);
+        float d = xdot(p, vec2(x, 0.72 - sag), 0.016, aa) * on;
+        float c = hash(vec2(k, cell.x + h));
+        vec3 col = kind < 0.5 ? warm
+                 : c < 0.25 ? vec3(1.0, 0.25, 0.2) : c < 0.5 ? vec3(0.3, 1.0, 0.4)
+                 : c < 0.75 ? vec3(0.35, 0.55, 1.0) : vec3(1.0, 0.85, 0.3);
+        float tw = 0.65 + 0.35 * sin(t * 2.0 + k * 1.7 + h * 9.0);
+        glow += col * 2.2 * d * tw;
+        cover += d;
+        if (kind > 0.7) {   // and a star in the middle
+            vec2 q = p - vec2(0.5, 0.45);
+            float a = atan(q.y, q.x);
+            float r = 0.07 * (0.5 + 0.5 * cos(5.0 * a - 1.5708));
+            float st = 1.0 - smoothstep(r - aa, r + aa, length(q));
+            glow += warm * 2.2 * st;
+            cover += st;
+        }
+    } else if (kind < 0.45) {
+        // the advent candle triangle: seven bulbs on the sill
+        for (int i = -3; i <= 3; i++) {
+            float fi = float(i);
+            vec2 c = vec2(0.5 + fi * 0.045, 0.19 + (3.0 - abs(fi)) * 0.06);
+            float d = xdot(p, c, 0.013, aa);
+            glow += warm * 2.5 * d;
+            cover += d;
+        }
+        // and its dark wooden frame
+        float frame = 0.0;
+        vec2 l = p - vec2(0.5, 0.18);
+        frame += fpulse(-0.004, 0.004, abs(l.x) * 0.45 + l.y * 0.34 - 0.062, aa) * step(0.0, l.y) * step(l.y, 0.19);
+        frame += fpulse(0.0, 0.01, l.y, aa) * step(abs(l.x), 0.155);
+        cover += clamp(frame, 0.0, 1.0) * 0.8;
+    } else if (kind < 0.75) {
+        // a paper star hanging in the window
+        vec2 q = p - vec2(0.5, 0.66);
+        float a = atan(q.y, q.x);
+        float r = 0.10 * (0.5 + 0.5 * cos(5.0 * a - 1.5708));
+        float st = 1.0 - smoothstep(r - aa, r + aa, length(q));
+        float halo = exp(-length(q) / 0.05) * 0.25;
+        glow += warm * (2.2 * st + 1.5 * halo);
+        cover += st;
+        cover += fpulse(-0.002, 0.002, p.x - 0.5, aa) * step(0.74, p.y) * step(p.y, 0.86);   // its string
+    } else {
+        // fairy lights along the top of the window
+        float n = 9.0;
+        float k = floor((p.x - 0.33) / 0.34 * n);
+        float x = 0.33 + (k + 0.5) * 0.34 / n;
+        float sag = 0.025 * sin(3.14159 * (x - 0.33) / 0.34);
+        float on = step(0.0, k) * step(k, n - 1.0);
+        float d = xdot(p, vec2(x, 0.81 - sag), 0.013, aa) * on;
+        float tw = 0.6 + 0.4 * sin(t * 1.5 + k * 2.3 + h * 5.0);
+        glow += warm * 2.2 * d * tw;
+        cover += d;
+    }
+    return vec4(glow, clamp(cover, 0.0, 1.0));
+}
+
 Surface wall(vec2 uv, float seed, vec3 N, vec3 V)
 {
     Surface s = Surface(vec3(0), 0.0, 16.0, vec3(0), 0.0);
@@ -912,6 +995,13 @@ Surface wall(vec2 uv, float seed, vec3 N, vec3 V)
         vec3 lit = toLinear(warm) * glow * on * paneMask;
         vec3 avgLit = toLinear(vec3(1.0, 0.72, 0.45)) * 0.09;
         s.emissive = mix(avgLit, lit, detail) * uNight;
+    }
+
+    if (uXmas > 0.5) {
+        vec4 xm = xmasWindow(uv, cell, h, ground, fw) * w;
+        // seen from close by; from afar just a little warmth
+        c = mix(c, vec3(0.12, 0.08, 0.05), xm.a * detail);
+        s.emissive += toLinear(xm.rgb) * (0.25 + 1.6 * uNight) * detail;
     }
 
     s.albedo = toLinear(c);
