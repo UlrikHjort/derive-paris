@@ -872,6 +872,31 @@ package body Sound is
       (0, 0.75), (2, 0.25), (4, 1.0), (4, 1.0), (4, 1.0), (5, 0.75), (4, 0.25),
       (4, 1.0), (2, 1.0), (-99, 1.0), (2, 0.75), (4, 0.25), (5, 1.0), (5, 1.0),
       (5, 1.0), (7, 0.75), (5, 0.25), (4, 3.0), (-99, 2.0));
+   --  In December: Vive le vent (Jingle Bells, accordion)
+   Vive_Le_Vent : constant Tune_Notes :=
+     ((4, 1.0), (4, 1.0), (4, 2.0), (4, 1.0), (4, 1.0), (4, 2.0),
+      (4, 1.0), (7, 1.0), (0, 1.5), (2, 0.5), (4, 4.0),
+      (5, 1.0), (5, 1.0), (5, 1.5), (5, 0.5), (5, 1.0), (4, 1.0), (4, 1.0), (4, 0.5), (4, 0.5),
+      (4, 1.0), (2, 1.0), (2, 1.0), (4, 1.0), (2, 2.0), (7, 2.0),
+      (4, 1.0), (4, 1.0), (4, 2.0), (4, 1.0), (4, 1.0), (4, 2.0),
+      (4, 1.0), (7, 1.0), (0, 1.5), (2, 0.5), (4, 4.0),
+      (5, 1.0), (5, 1.0), (5, 1.5), (5, 0.5), (5, 1.0), (4, 1.0), (4, 1.0), (4, 0.5), (4, 0.5),
+      (7, 1.0), (7, 1.0), (5, 1.0), (2, 1.0), (0, 4.0), (-99, 2.0));
+   --  Douce nuit (Silent Night, violin)
+   Douce_Nuit : constant Tune_Notes :=
+     ((7, 1.5), (9, 0.5), (7, 1.0), (4, 3.0), (7, 1.5), (9, 0.5), (7, 1.0), (4, 3.0),
+      (14, 2.0), (14, 1.0), (11, 3.0), (12, 2.0), (12, 1.0), (7, 3.0),
+      (9, 2.0), (9, 1.0), (12, 1.5), (11, 0.5), (9, 1.0), (7, 1.5), (9, 0.5), (7, 1.0), (4, 3.0),
+      (9, 2.0), (9, 1.0), (12, 1.5), (11, 0.5), (9, 1.0), (7, 1.5), (9, 0.5), (7, 1.0), (4, 3.0),
+      (14, 2.0), (14, 1.0), (17, 1.5), (14, 0.5), (11, 1.0), (12, 3.0), (16, 3.0),
+      (12, 1.0), (7, 1.0), (4, 1.0), (7, 1.5), (5, 0.5), (2, 1.0), (0, 6.0), (-99, 2.0));
+   --  Mon beau sapin (O Tannenbaum, guitar)
+   Beau_Sapin : constant Tune_Notes :=
+     ((7, 1.0), (12, 0.75), (12, 0.25), (12, 1.5), (14, 0.5), (16, 0.75), (16, 0.25), (16, 1.5),
+      (16, 0.5), (14, 0.5), (16, 0.5), (17, 1.0), (11, 1.0), (14, 1.0), (12, 2.0), (-99, 1.0),
+      (7, 1.0), (12, 0.75), (12, 0.25), (12, 1.5), (14, 0.5), (16, 0.75), (16, 0.25), (16, 1.5),
+      (16, 0.5), (14, 0.5), (16, 0.5), (17, 1.0), (11, 1.0), (14, 1.0), (12, 2.0), (-99, 2.0));
+
    --  a drummer: kick and snare
    Drums : constant Tune_Notes :=
      ((-24, 1.0), (24, 1.0), (-24, 0.5), (-24, 0.5), (24, 1.0),
@@ -883,17 +908,20 @@ package body Sound is
 
    procedure Play_Busker (P : Params; Dt : Float) is
       Tempo : constant Float := (case P.Busker is when 2 => 0.55, when 3 => 0.4,
-                                                  when 5 => 0.3, when others => 0.42);
-      Instrument : constant Float := (case P.Busker is when 2 => 2.0, when 3 => 3.0,
+                                                  when 5 => 0.3, when 6 => 0.3, when 7 => 0.42,
+                                                  when 8 => 0.5, when others => 0.42);
+      Instrument : constant Float := (case P.Busker is when 2 | 8 => 2.0, when 3 | 7 => 3.0,
                                                        when 5 => 4.0, when others => 1.0);
       function Get (I : Positive) return Tune_Note is
         (case P.Busker is
             when 1 => Jacques (I), when 2 => Lune (I), when 3 => Avignon (I),
-            when 4 => Marseillaise (I), when others => Drums (I));
+            when 4 => Marseillaise (I), when 6 => Vive_Le_Vent (I), when 7 => Douce_Nuit (I),
+            when 8 => Beau_Sapin (I), when others => Drums (I));
       function Last return Positive is
         (case P.Busker is
             when 1 => Jacques'Last, when 2 => Lune'Last, when 3 => Avignon'Last,
-            when 4 => Marseillaise'Last, when others => Drums'Last);
+            when 4 => Marseillaise'Last, when 6 => Vive_Le_Vent'Last, when 7 => Douce_Nuit'Last,
+            when 8 => Beau_Sapin'Last, when others => Drums'Last);
    begin
       if P.Busker = 0 or else P.Busker_Level < 0.01 then
          Busker_Playing := 0;

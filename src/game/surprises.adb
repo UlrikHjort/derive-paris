@@ -475,6 +475,13 @@ package body Surprises is
 
    --  On the Fête de la Musique by about one lamp in eight; on other days
    --  by about one in eighty
+   --  What the musician by this lamp plays (1 .. 5); in December half of
+   --  them play a Christmas tune (6 .. 8) instead
+   function Tune_At (P : Vec3) return Natural is
+     (if Almanac.Month = 12 and then Hash (P.X * 1.7, P.Z * 0.9) < 0.5
+      then 6 + Natural (Float'Floor (Hash (P.X, P.Z + 3.0) * 2.99))
+      else 1 + Natural (Float'Floor (Hash (P.Z, P.X) * 4.99)));
+
    function Musician_At (I : Positive) return Boolean is
      (if Forced (Everywhere_F) then I mod 3 = 0
       elsif Fete_On then Lamps (I).H in 0.15 .. 0.27
@@ -663,7 +670,7 @@ package body Surprises is
                   begin
                      if D < Best then
                         Best := D;
-                        Busker_Tune := 1 + Natural (Float'Floor (Hash (Lamps (I).P.Z, Lamps (I).P.X) * 4.99));
+                        Busker_Tune := Tune_At (Lamps (I).P);
                         Busker_Loud := 1.0 - D / 30.0;
                         Busker_Side := Side_Of (Lamps (I).P);
                      end if;
@@ -1019,9 +1026,9 @@ package body Surprises is
             if Musician_At (I) and then Near (Lamps (I).P, 120.0) then
                declare
                   P    : constant Vec3 := Lamps (I).P + Vec3'(0.9, 0.0, 0.6);
-                  Tune : constant Natural := 1 + Natural (Float'Floor (Hash (Lamps (I).P.Z, Lamps (I).P.X) * 4.99));
+                  Tune : constant Natural := Tune_At (Lamps (I).P);
                   Prop : constant Figures.Prop_Kind :=
-                    (case Tune is when 2 => Figures.Guitar, when 3 => Figures.Violin,
+                    (case Tune is when 2 | 8 => Figures.Guitar, when 3 | 7 => Figures.Violin,
                                   when 5 => Figures.Drum, when others => Figures.Accordion);
                begin
                   Drawn_Musicians := Drawn_Musicians + 1;
